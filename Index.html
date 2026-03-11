@@ -1,0 +1,350 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <title>Galaxy Lotto Observer</title>
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
+    />
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <style>
+      body {
+        font-family: "Microsoft JhengHei", Arial, sans-serif;        
+        font: 3em Microsoft JhengHei;
+        background-color: #f8f9fa;
+
+      }
+
+      .main-container {
+        max-width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+        margin: 20px auto;
+        padding: 15px;
+        box-shadow: 2px 2px 6px rgba#dd2476;
+      }
+
+      .title-text-shadow {
+        text-shadow: 3px 3px 5px rgb(30, 242, 104);
+      }
+
+      .navbar-btn {
+        height: 80px;
+        font-size: 3rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        /* box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); */
+        transition: transform 0.2s;
+      }
+
+      .navbar-btn:active {
+        transform: scale(0.98);
+      }
+
+      .navbar-custom {
+        background-color: #0d6efd;
+        color: white;
+      }
+
+      .navbar-custom {
+        background-color: #0d6efd;
+        color: white;
+      }
+
+      .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.7);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+      }
+
+      .card-header {
+        margin-bottom: 0;
+        font-size: 4rem;        
+      }
+
+      .card:hover {
+        transform: translateY(-5px);
+        border-color: #00d2ff;
+        transition:
+          transform 0.2s,
+          border-color 0.2s;
+      }
+
+      .header-text {
+        font-size: 4rem;
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+
+      .label-text {
+        color: #6c757d;
+        font-size: 4rem;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      .value-text {
+        font-weight: bold;
+        font-size: 3rem;
+      }
+
+      .ball {
+        width: 120px;
+        height: 120px;
+        background: linear-gradient(135deg, #ff512f, #dd2476);
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 4.5rem;
+        color: white;
+        box-shadow: 0 0 5px rgba(221, 36, 118, 0.6);
+        margin: 3px;
+      }
+
+      .ball.special {
+        background: linear-gradient(135deg, #11998e, #38ef7d);
+        box-shadow: 0 0 5px rgba(56, 239, 125, 0.6);
+      }
+
+      @media (max-width: 576px) {
+        h1 {
+          font-size: 1.8rem;
+        }
+
+        .main-container {
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+
+        .ball {
+          width: 90px;
+          height: 90px;
+          font-size: 3rem;
+        }
+
+        .value-text {
+          font-size: 2rem;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="loadingSpin" class="loading-overlay">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+    <nav class="navbar navbar-custom sticky-top">
+      <div class="container-fluid">
+        <button
+          class="btn btn-light navbar-btn rounded"
+          type="button"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#offcanvasNavbar"
+          aria-controls="offcanvasNavbar"
+        >
+          <i class="fas fa-bars"></i>
+        </button>
+        <span class="navbar-brand mb-0 text-white mx-auto header-text title-text-shadow"
+          >Galaxy Lotto Observer</span
+        >
+      </div>
+    </nav>
+
+    <div
+      class="offcanvas offcanvas-start"
+      tabindex="-1"
+      id="offcanvasNavbar"
+      aria-labelledby="offcanvasNavbarLabel"
+    >
+      <div class="offcanvas-header">
+        <h5 class="offcanvas-title navbar-btn" id="offcanvasNavbarLabel">系統導航</h5>
+        <button
+          type="button"
+          class="btn-close text-reset"
+          data-bs-dismiss="offcanvas"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="offcanvas-body">
+        <!-- Navigation can be added here if needed -->
+      </div>
+    </div>
+
+    <div class="container main-container">
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h5 class="text-center header-text">預測查詢</h5>
+          <div class="row g-3 align-items-end">
+            <div class="col-md-6">
+              <label for="predictDate" class="form-label label-text"
+                >日期</label
+              >
+              <input
+                type="date"
+                class="form-control label-text"
+                id="predictDate"
+              />
+            </div>
+            <div class="col-md-6">
+              <label for="lottoSelect" class="form-label label-text"
+                >選擇彩種</label
+              >
+              <select id="lottoSelect" class="form-select label-text">
+                <option value="L539" selected>今彩 539</option>
+                <option value="L649">大樂透</option>
+                <option value="L638">威力彩</option>
+                <option value="LSix">六合彩</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <div class="d-grid">
+                <button
+                  class="btn btn-primary label-text text-white"
+                  type="button"
+                  id="predictButton"
+                >
+                  <i class="fas fa-search me-2"></i> 預測
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <hr/>
+
+      <h2 class="text-center header-text">最新開獎結果</h2>
+
+      <div id="loading" class="text-center mt-5">
+        <p class="mt-2 text-secondary">Scanning Nebula...</p>
+      </div>
+
+      <div id="app" class="d-flex flex-column gap-3"></div>
+    </div>
+
+    <script>
+      $(document).ready(function () {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        const dateStr =
+          d.getFullYear() +
+          "-" +
+          String(d.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(d.getDate()).padStart(2, "0");
+        $("#predictDate").val(dateStr);
+
+        $("#loadingSpin").css("display", "flex");
+
+        google.script.run
+          .withSuccessHandler(renderData)
+          .withFailureHandler(showError)
+          .getLastRecords();
+      });
+
+      function renderData(data) {
+        const $app = $("#app");
+        $("#loadingSpin").hide();
+        $("#loading").hide();
+
+        if (!data || Object.keys(data).length === 0) {
+          $app.html(
+            '<div class="col-12 text-center"><p class="text-muted">No observation records found.</p></div>',
+          );
+          return;
+        }
+
+        const names = {
+          L539: "今彩 539",
+          L649: "大樂透",
+          L638: "威力彩",
+          LSix: "六合彩",
+        };
+
+        const order = ["L539", "L649", "L638", "LSix"];
+
+        order.forEach((key) => {
+          if (data[key]) {
+            const record = data[key];
+
+            let ballsHtml = "";
+            Object.keys(record).forEach((k) => {
+              if (k.startsWith("L") && !isNaN(parseInt(k.substring(1)))) {
+                ballsHtml += `<div class="ball">${record[k]}</div>`;
+              }
+            });
+
+            if (record["S1"]) {
+              ballsHtml += `<div class="ball special">${record["S1"]}</div>`;
+            }
+
+            const cardHtml = `
+              <div class="card w-100 shadow-sm">
+                <div class="card-header fw-bold">
+                  ${names[key] || key}
+                </div>
+                <div class="card-body">
+                  <div class="row text-center mb-3">
+                    <div class="col-4">
+                      <div class="label-text">期數</div>
+                      <div class="value-text">${record["period"] || ""}</div>
+                    </div>
+                    <div class="col-4">
+                      <div class="label-text">日期</div>
+                      <div class="value-text">${formatDate(record["Date"])}</div>
+                    </div>
+                    <div class="col-4">
+                      <div class="label-text">總合</div>
+                      <div class="value-text">${record["Sum"] || "-"}</div>
+                    </div>
+                  </div>
+                  <div class="d-flex flex-wrap justify-content-center border-top pt-3 mt-3">
+                    ${ballsHtml}
+                  </div>
+                </div>
+              </div>
+          `;
+            $app.append(cardHtml);
+          }
+        });
+      }
+
+      function formatDate(dateStr) {
+        if (!dateStr) return "";
+        return dateStr.toString().split("T")[0];
+      }
+
+      function showError(error) {
+        $("#loadingSpin").hide();
+        $("#loading").html(
+          `<div class="alert alert-danger">Error: ${error.message}</div>`,
+        );
+      }
+    </script>
+  </body>
+</html>
