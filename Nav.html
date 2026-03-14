@@ -1,0 +1,72 @@
+<nav class="navbar navbar-custom sticky-top">
+  <div class="container-fluid">
+    <button
+      class="btn btn-light"
+      type="button"
+      data-bs-toggle="offcanvas"
+      data-bs-target="#offcanvasNavbar"
+      aria-controls="offcanvasNavbar"
+    >
+      <i class="fas fa-bars"></i>
+    </button>
+    <span class="navbar-brand mb-0 h1 text-white mx-auto"
+      >舒漾長照服務紀錄單管理系統</span
+    >
+  </div>
+</nav>
+
+<div
+  class="offcanvas offcanvas-start"
+  tabindex="-1"
+  id="offcanvasNavbar"
+  aria-labelledby="offcanvasNavbarLabel"
+>
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="offcanvasNavbarLabel">系統導航</h5>
+    <button
+      type="button"
+      class="btn-close text-reset"
+      data-bs-dismiss="offcanvas"
+      aria-label="Close"
+    ></button>
+  </div>
+
+  <div class="offcanvas-body">
+    <ul class="navbar-nav justify-content-end flex-grow-1 pe-3">
+      <li class="nav-item">
+        <a
+          class="nav-link"
+          id="navIndex"
+          href="javascript:void(0)"
+          onclick="openPageUrl('Index')"
+          ><i class="fas fa-home me-2"></i>首頁</a
+        >
+      </li>
+
+      <hr class="my-2" />
+
+      <li class="nav-item">
+        <a
+          class="nav-link text-primary fw-bold"
+          id="navDaily"
+          href="javascript:void(0)"
+          onclick=""
+        >
+          <i class="fas fa-sync-alt me-2"></i>每日資料維護
+        </a>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  const SCRIPT_URL = "<?!= getScriptUrl() ?>";
+  function openPageUrl(pageName, target = "_top") {
+    //網址
+    if (target === "_self" || target === "_top") {
+      window.top.location.href = SCRIPT_URL + "?page=" + pageName;
+    } else {
+      window.open(SCRIPT_URL + "?page=" + pageName, target);
+    }
+  }
+</script>

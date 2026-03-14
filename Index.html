@@ -22,10 +22,9 @@
 
     <style>
       body {
-        font-family: "Microsoft JhengHei", Arial, sans-serif;        
+        font-family: "Microsoft JhengHei", Arial, sans-serif;
         font: 3em Microsoft JhengHei;
         background-color: #f8f9fa;
-
       }
 
       .main-container {
@@ -80,7 +79,7 @@
 
       .card-header {
         margin-bottom: 0;
-        font-size: 4rem;        
+        font-size: 4rem;
       }
 
       .card:hover {
@@ -158,42 +157,8 @@
         <span class="visually-hidden">Loading...</span>
       </div>
     </div>
-    <nav class="navbar navbar-custom sticky-top">
-      <div class="container-fluid">
-        <button
-          class="btn btn-light navbar-btn rounded"
-          type="button"
-          data-bs-toggle="offcanvas"
-          data-bs-target="#offcanvasNavbar"
-          aria-controls="offcanvasNavbar"
-        >
-          <i class="fas fa-bars"></i>
-        </button>
-        <span class="navbar-brand mb-0 text-white mx-auto header-text title-text-shadow"
-          >Galaxy Lotto Observer</span
-        >
-      </div>
-    </nav>
 
-    <div
-      class="offcanvas offcanvas-start"
-      tabindex="-1"
-      id="offcanvasNavbar"
-      aria-labelledby="offcanvasNavbarLabel"
-    >
-      <div class="offcanvas-header">
-        <h5 class="offcanvas-title navbar-btn" id="offcanvasNavbarLabel">系統導航</h5>
-        <button
-          type="button"
-          class="btn-close text-reset"
-          data-bs-dismiss="offcanvas"
-          aria-label="Close"
-        ></button>
-      </div>
-      <div class="offcanvas-body">
-        <!-- Navigation can be added here if needed -->
-      </div>
-    </div>
+    <?!= includeNav(); ?>
 
     <div class="container main-container">
       <div class="card shadow-sm mb-4">
@@ -236,7 +201,7 @@
         </div>
       </div>
 
-      <hr/>
+      <hr />
 
       <h2 class="text-center header-text">最新開獎結果</h2>
 

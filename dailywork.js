@@ -10,7 +10,7 @@
 https://api.taiwanlottery.com/TLCAPIWeB/Lottery/Daily539Result?period=115000001
  */
 
-const mainspreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+
 
 function dailyupdate() {
   // 測試用，直接呼叫 updatenumber 函式並指定 sheetName
