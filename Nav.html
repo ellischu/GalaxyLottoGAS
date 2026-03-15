@@ -10,7 +10,7 @@
       <i class="fas fa-bars"></i>
     </button>
     <span class="navbar-brand mb-0 h1 text-white mx-auto"
-      >舒漾長照服務紀錄單管理系統</span
+      >Galaxy Lotto 管理系統</span
     >
   </div>
 </nav>
@@ -50,23 +50,11 @@
           class="nav-link text-primary fw-bold"
           id="navDaily"
           href="javascript:void(0)"
-          onclick=""
+          onclick="openPageUrl('UpdateAll')"
         >
-          <i class="fas fa-sync-alt me-2"></i>每日資料維護
+          <i class="fas fa-sync-alt me-2"></i>資料維護
         </a>
       </li>
     </ul>
   </div>
 </div>
-
-<script>
-  const SCRIPT_URL = "<?!= getScriptUrl() ?>";
-  function openPageUrl(pageName, target = "_top") {
-    //網址
-    if (target === "_self" || target === "_top") {
-      window.top.location.href = SCRIPT_URL + "?page=" + pageName;
-    } else {
-      window.open(SCRIPT_URL + "?page=" + pageName, target);
-    }
-  }
-</script>

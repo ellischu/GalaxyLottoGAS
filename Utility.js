@@ -99,6 +99,17 @@ function getScriptUrl() {
   return ScriptApp.getService().getUrl();
 }
 
+function includeFooter() {
+  let suggestUrl = "";
+  // const cache = CacheService.getScriptCache();
+  // const cacheKey = "SYSuggestUrl";
+
+  // 1. 嘗試從快取讀取，如果有就直接使用
+  // suggestUrl = cache.get(cacheKey);
+  const template = HtmlService.createTemplateFromFile("Footer");
+  // template.suggestUrl = suggestUrl;
+  return template.evaluate().getContent();
+}
 /**
  * 提供給 HTML 範本呼叫，用來載入導航列組件
  */
@@ -142,6 +153,7 @@ function combineData(sheetname) {
   const lCols = headers
     .map((h, i) => ({ h, i }))
     .filter((o) => o.h.match(/^L\d+$/))
+
     .map((o) => o.i);
   const s1Col = headers.indexOf("S1");
   const sumCol = headers.indexOf("Sum");
@@ -149,21 +161,37 @@ function combineData(sheetname) {
 
   // loop
   // 取得 srsheet1 的 L1,L2,L3,L4,L5 (L6: L649,L638,Lsix 要一起排序 )(S1:L649,L638,Lsix不排序) ,轉成 N1,N2,N3,N4,N5,N6,S1
+
+  // --- 批次處理邏輯 (支援續傳) ---
+  var progress = getProgress("Update_JOB");
+  var currentIndex = 1;
   var rowsToAdd = [];
 
-  for (var i = 1; i < srData.length; i++) {
+  if (progress) {
+    if (progress.status === "stop") {
+      clearProgress("Update_JOB");
+      return {
+        status: "stop",
+        message: "偵測到停止指令，已中斷更新。",
+        btntext: "確定",
+      };
+    }
+    currentIndex = progress.currentIndex || 1;
+  }
+
+  for (var i = currentIndex; i < srData.length; i++) {
     var row = srData[i];
     var d = row[dateCol];
     if (lastdate && d <= lastdate) continue;
 
-    Logger.log("date: " + d);
+    Logger.log("date: " + d + ", index: " + i);
     var nums = lCols.map((idx) => row[idx]).sort((a, b) => a - b); // N1...Nn
     var s1 = s1Col > -1 ? row[s1Col] : null;
     var sum = sumCol > -1 ? row[sumCol] : null;
 
     var datamap = getAllData(d);
 
-    //結合 Date,N1,N2...Nn,S1,Sum 以及 datamap 的資料 ，寫入 trsheet
+    // 結合 Date,N1,N2...Nn,S1,Sum 以及 datamap 的資料 ，寫入 trsheet
     var newRow = [d, ...nums];
     if (s1 !== null) newRow.push(s1);
     if (sum !== null) newRow.push(sum);
@@ -174,8 +202,41 @@ function combineData(sheetname) {
 
     rowsToAdd.push(newRow);
 
-    // 每50筆資料 update 一次
-    if (rowsToAdd.length >= 10) {
+    // 每 50 筆資料 update 一次    // 檢查是否快要超時
+    if (isNearTimeout()) {
+      saveProgress("Update_JOB", {
+        status: "continue",
+        currentIndex: i,
+        total: srData.length,
+      });
+
+      try {
+        if (rowsToAdd.length > 0) {
+          trsheet
+            .getRange(
+              trsheet.getLastRow() + 1,
+              1,
+              rowsToAdd.length,
+              rowsToAdd[0].length,
+            )
+            .setValues(rowsToAdd);
+        }
+      } catch (e) {
+        return { status: "error", message: "寫入試算表時發生錯誤：" + e };
+      }
+      rowsToAdd = [];
+      return {
+        status: "continue",
+        message: "已處理 " + i + " / " + srData.length + " 筆資料，正在續傳...",
+        currentIndex: i,
+        total: srData.length,
+      };
+    }
+  }
+
+  // 寫入剩餘的資料 (迴圈正常結束後)
+  if (rowsToAdd.length > 0) {
+    try {
       trsheet
         .getRange(
           trsheet.getLastRow() + 1,
@@ -184,24 +245,47 @@ function combineData(sheetname) {
           rowsToAdd[0].length,
         )
         .setValues(rowsToAdd);
-      rowsToAdd = [];
-      Logger.log("update trsheet");
+    } catch (e) {
+      return { status: "error", message: "最後寫入失敗：" + e };
     }
   }
 
-  // 寫入剩餘的資料
-  if (rowsToAdd.length > 0) {
-    trsheet
-      .getRange(
-        trsheet.getLastRow() + 1,
-        1,
-        rowsToAdd.length,
-        rowsToAdd[0].length,
-      )
-      .setValues(rowsToAdd);
-  }
+  // 全部完成
+  clearProgress("Update_JOB");
+  return {
+    status: "complete",
+    message: "全部處理完成！",
+    btntext: "確定",
+  };
 }
 
-function test() {
-  combineData("L539");
+var startTime = new Date().getTime();
+
+/** 檢查是否快要超時 (設定為 20 秒以確保安全) */
+function isNearTimeout() {
+  return new Date().getTime() - startTime > 1 * 60 * 1000;
+}
+
+/** 儲存/讀取進度 (PropertiesService 會存在雲端專案屬性中)
+ * @param {Object} data 進度物件，會被序列化成 JSON 字串存儲
+ */
+function saveProgress(propname, data) {
+  PropertiesService.getScriptProperties().setProperty(
+    propname,
+    JSON.stringify(data),
+  );
+}
+
+/**
+ * 讀取進度
+ * @ returns {Object|null} 進度物件，如果沒有則回傳 null *
+ */
+function getProgress(propname) {
+  var p = PropertiesService.getScriptProperties().getProperty(propname);
+  return p ? JSON.parse(p) : null;
+}
+
+/** 移除進度 */
+function clearProgress(propname) {
+  PropertiesService.getScriptProperties().deleteProperty(propname);
 }

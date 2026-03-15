@@ -10,8 +10,6 @@
 https://api.taiwanlottery.com/TLCAPIWeB/Lottery/Daily539Result?period=115000001
  */
 
-
-
 function dailyupdate() {
   // 測試用，直接呼叫 updatenumber 函式並指定 sheetName
   updatenumber("L539");
@@ -416,15 +414,9 @@ function getendPeriod(sheetName, url00, url01, startperiod) {
 }
 
 function doGet(e) {
-  return HtmlService.createTemplateFromFile('Index')
-      .evaluate()
-      .setTitle('Galaxy Lotto Observer')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  var page = e.parameter.page || "Index";
+  return HtmlService.createTemplateFromFile(page)
+    .evaluate()
+    .setTitle("Galaxy Lotto Observer")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
-
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename)
-      .getContent();
-}
-
-
