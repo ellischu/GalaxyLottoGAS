@@ -1,5 +1,17 @@
 const mainspreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
+function doGet(e) {
+  var page = e.parameter.page || "Index";
+  return HtmlService.createTemplateFromFile(page)
+    .evaluate()
+    .setTitle("Galaxy Lotto Observer")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * 取得最後一期號碼
+ * @returns 
+ */
 function getLastRecords() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheets = ["L539", "L649", "L638", "LSix"];
@@ -25,6 +37,11 @@ function getLastRecords() {
   return result;
 }
 
+/**
+ * 從網址取得 ID
+ * @param {*} url 網址
+ * @returns id
+ */
 function getIdFromUrl(url) {
   var id = "";
   try {
@@ -38,6 +55,12 @@ function getIdFromUrl(url) {
   return id;
 }
 
+/**
+ * 取得工作表網址
+ * @param {*} sheetName 工作表名稱
+ * @param {*} targetName 目標名稱
+ * @returns url
+ */
 function getTarget(sheetName, targetName) {
   var sheet = mainspreadsheet.getSheetByName(sheetName);
   if (!sheet) throw new Error("找不到 SYCompany 中的" + sheetName + "工作表");
@@ -55,6 +78,12 @@ function getTarget(sheetName, targetName) {
   return url;
 }
 
+/**
+ * 取得工作表相關資訊
+ * @param {*} sheetName 工作表名稱
+ * @param {*} targetName 目標名稱
+ * @returns 結構 url,id,spreadsheet 
+ */
 function getTargetsheet(sheetName, targetName) {
   var res = getTarget(sheetName, targetName);
   var fileId = getIdFromUrl(res);
@@ -70,6 +99,11 @@ function getTargetsheet(sheetName, targetName) {
   };
 }
 
+/**
+ * 
+ * @param {*} date type Date
+ * @returns 
+ */
 function getAllData(date) {
   const srsheet2 = mainspreadsheet.getSheetByName("AllData");
   if (!srsheet2) return [];
@@ -99,6 +133,10 @@ function getScriptUrl() {
   return ScriptApp.getService().getUrl();
 }
 
+/**
+ * 
+ * @returns 
+ */
 function includeFooter() {
   let suggestUrl = "";
   // const cache = CacheService.getScriptCache();
@@ -110,8 +148,10 @@ function includeFooter() {
   // template.suggestUrl = suggestUrl;
   return template.evaluate().getContent();
 }
+
 /**
  * 提供給 HTML 範本呼叫，用來載入導航列組件
+ * @returns 
  */
 function includeNav() {
   // 加入快取機制，避免每次都重新讀取檔案
@@ -125,149 +165,17 @@ function includeNav() {
   return content;
 }
 
-function combineData(sheetname) {
-  const trObj = getTargetsheet("Sheets", sheetname);
-  const trspreadsheet = trObj.spreadsheet;
-  let trsheet = trspreadsheet.getSheetByName("All");
-
-  if (!trsheet) {
-    trsheet = trspreadsheet.insertSheet("All");
-  }
-
-  const srsheet1 = mainspreadsheet.getSheetByName(sheetname);
-
-  // 檢查 trsheet 是否有資料，並取得最後一筆 Date 欄位資料
-  // 如果沒有資料則 srsheet1 從第一筆資料開始結合
-  let lastdate = null; //trsheet 的最後一筆 Date 欄位資料
-  const lastRow = trsheet.getLastRow();
-  if (lastRow > 1) {
-    var val = trsheet.getRange(lastRow, 1).getValue();
-    // 檢查回傳的值是否可以被轉換為有效的日期物件
-    if (val && !isNaN(new Date(val).getTime())) {
-      lastdate = new Date(val);
-    }
-  }
-
-  const srData = srsheet1.getDataRange().getValues();
-  const headers = srData[0];
-  const lCols = headers
-    .map((h, i) => ({ h, i }))
-    .filter((o) => o.h.match(/^L\d+$/))
-
-    .map((o) => o.i);
-  const s1Col = headers.indexOf("S1");
-  const sumCol = headers.indexOf("Sum");
-  const dateCol = headers.indexOf("Date");
-
-  // loop
-  // 取得 srsheet1 的 L1,L2,L3,L4,L5 (L6: L649,L638,Lsix 要一起排序 )(S1:L649,L638,Lsix不排序) ,轉成 N1,N2,N3,N4,N5,N6,S1
-
-  // --- 批次處理邏輯 (支援續傳) ---
-  var progress = getProgress("Update_JOB");
-  var currentIndex = 1;
-  var rowsToAdd = [];
-
-  if (progress) {
-    if (progress.status === "stop") {
-      clearProgress("Update_JOB");
-      return {
-        status: "stop",
-        message: "偵測到停止指令，已中斷更新。",
-        btntext: "確定",
-      };
-    }
-    currentIndex = progress.currentIndex || 1;
-  }
-
-  for (var i = currentIndex; i < srData.length; i++) {
-    var row = srData[i];
-    var d = row[dateCol];
-    if (lastdate && d <= lastdate) continue;
-
-    Logger.log("date: " + d + ", index: " + i);
-    var nums = lCols.map((idx) => row[idx]).sort((a, b) => a - b); // N1...Nn
-    var s1 = s1Col > -1 ? row[s1Col] : null;
-    var sum = sumCol > -1 ? row[sumCol] : null;
-
-    var datamap = getAllData(d);
-
-    // 結合 Date,N1,N2...Nn,S1,Sum 以及 datamap 的資料 ，寫入 trsheet
-    var newRow = [d, ...nums];
-    if (s1 !== null) newRow.push(s1);
-    if (sum !== null) newRow.push(sum);
-
-    if (datamap && datamap.length > 0) {
-      newRow = newRow.concat(datamap.slice(1));
-    }
-
-    rowsToAdd.push(newRow);
-
-    // 每 50 筆資料 update 一次    // 檢查是否快要超時
-    if (isNearTimeout()) {
-      saveProgress("Update_JOB", {
-        status: "continue",
-        currentIndex: i,
-        total: srData.length,
-      });
-
-      try {
-        if (rowsToAdd.length > 0) {
-          trsheet
-            .getRange(
-              trsheet.getLastRow() + 1,
-              1,
-              rowsToAdd.length,
-              rowsToAdd[0].length,
-            )
-            .setValues(rowsToAdd);
-        }
-      } catch (e) {
-        return { status: "error", message: "寫入試算表時發生錯誤：" + e };
-      }
-      rowsToAdd = [];
-      return {
-        status: "continue",
-        message: "已處理 " + i + " / " + srData.length + " 筆資料，正在續傳...",
-        currentIndex: i,
-        total: srData.length,
-      };
-    }
-  }
-
-  // 寫入剩餘的資料 (迴圈正常結束後)
-  if (rowsToAdd.length > 0) {
-    try {
-      trsheet
-        .getRange(
-          trsheet.getLastRow() + 1,
-          1,
-          rowsToAdd.length,
-          rowsToAdd[0].length,
-        )
-        .setValues(rowsToAdd);
-    } catch (e) {
-      return { status: "error", message: "最後寫入失敗：" + e };
-    }
-  }
-
-  // 全部完成
-  clearProgress("Update_JOB");
-  return {
-    status: "complete",
-    message: "全部處理完成！",
-    btntext: "確定",
-  };
-}
-
 var startTime = new Date().getTime();
 
 /** 檢查是否快要超時 (設定為 20 秒以確保安全) */
 function isNearTimeout() {
-  return new Date().getTime() - startTime > 1 * 60 * 1000;
+  return new Date().getTime() - startTime > 2 * 60 * 1000;
 }
 
-/** 儲存/讀取進度 (PropertiesService 會存在雲端專案屬性中)
- * @param {Object} data 進度物件，會被序列化成 JSON 字串存儲
+/**
+ * 儲存/讀取進度 (PropertiesService 會存在雲端專案屬性中)
+ * @param {*} propname 屬性名稱
+ * @param {*} data 進度物件，會被序列化成 JSON 字串存儲
  */
 function saveProgress(propname, data) {
   PropertiesService.getScriptProperties().setProperty(
@@ -278,7 +186,8 @@ function saveProgress(propname, data) {
 
 /**
  * 讀取進度
- * @ returns {Object|null} 進度物件，如果沒有則回傳 null *
+ * @param {*} propname 屬性名稱
+ * @returns {Object|null} 進度物件，如果沒有則回傳 null
  */
 function getProgress(propname) {
   var p = PropertiesService.getScriptProperties().getProperty(propname);

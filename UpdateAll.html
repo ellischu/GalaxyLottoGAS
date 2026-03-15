@@ -36,7 +36,7 @@
 
       .menu-btn {
         height: 80px;
-        font-size: 2rem;
+        font-size: 14px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -86,14 +86,30 @@
     <?!= includeNav(); ?>
 
     <div class="container main-container">
+      <div id="progressArea" class="mt-4" style="display: none">
+        <div class="d-flex justify-content-between mb-1">
+          <span id="progressLabel" class="text-muted small">準備處理...</span>
+          <span id="progressPercent" class="text-primary fw-bold small"
+            >0%</span
+          >
+        </div>
+        <div class="progress" style="height: 20px">
+          <div
+            id="progressBar"
+            class="progress-bar progress-bar-striped progress-bar-animated"
+            role="progressbar"
+            style="width: 0%"
+          ></div>
+        </div>
+        <p id="currentTask" class="text-center mt-2 text-secondary small"></p>
+      </div>
+      <hr />
       <div class="card shadow-sm mb-4">
+        <h5 class="text-center">更新表格</h5>
         <div class="card-body">
-          <h5 class="text-center">更新所有彩種</h5>
-          <div class="row g-3 align-items-end">
+          <div class="row align-items-end">
             <div class="col-12">
-              <label for="secLotto" class="form-label label-text"
-                >選擇彩種</label
-              >
+              <!-- <label for="secLotto" class="form-label label-text">合併表格</label> -->
               <select id="secLotto" class="form-select label-text">
                 <option value="L539">539</option>
                 <option value="L649">大樂透</option>
@@ -101,47 +117,53 @@
                 <option value="LSix">六合彩</option>
               </select>
             </div>
-
-            <hr />
-
-            <div id="progressArea" class="mt-4" style="display: none">
-              <div class="d-flex justify-content-between mb-1">
-                <span id="progressLabel" class="text-muted small"
-                  >準備處理...</span
-                >
-                <span id="progressPercent" class="text-primary fw-bold small"
-                  >0%</span
-                >
-              </div>
-              <div class="progress" style="height: 20px">
-                <div
-                  id="progressBar"
-                  class="progress-bar progress-bar-striped progress-bar-animated"
-                  role="progressbar"
-                  style="width: 0%"
-                ></div>
-              </div>
-              <p
-                id="currentTask"
-                class="text-center mt-2 text-secondary small"
-              ></p>
-            </div>
-            <div class="col-12">
+          </div>
+          <div class="row g-2 align-items-end">
+            <div class="col-6">
               <div class="d-grid">
                 <button
                   class="btn btn-primary label-text text-white"
                   type="button"
-                  id="btnUpdate"
+                  id="btnCmbUpdate"
                 >
-                  <i class="fas fa-sync-alt me-2"></i> 更新
+                  <i class="fas fa-sync-alt me-2"></i> 合併表格更新
                 </button>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="d-grid">
                 <button
                   class="btn btn-danger label-text text-white"
                   type="button"
-                  id="btnStop"
-                  style="display: none"
+                  id="btnCmbStop"
+                  disabled
                 >
-                  <i class="fas fa-stop me-2"></i> 停止
+                  <i class="fas fa-stop me-2"></i> 合併表格停止
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="row g-2 align-items-end">
+            <div class="col-6">
+              <div class="d-grid">
+                <button
+                  class="btn btn-primary label-text text-white"
+                  type="button"
+                  id="btnMissUpdate"
+                >
+                  <i class="fas fa-sync-alt me-2"></i> 遺漏表更新
+                </button>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="d-grid">
+                <button
+                  class="btn btn-danger label-text text-white"
+                  type="button"
+                  id="btnMissStop"
+                  disabled
+                >
+                  <i class="fas fa-stop me-2"></i> 遺漏表停止
                 </button>
               </div>
             </div>
@@ -154,26 +176,23 @@
       var UpdateStatus = null;
       $(document).ready(function () {
         $("#loadingSpin").css("display", "flex");
-        $("#btnUpdate").click(handleUpdate);
-        $("#btnStop").click(stopUpdate);
+        $("#btnCmbUpdate").click(handleCmbUpdate);
+        $("#btnCmbStop").click(stopCmbUpdate);
+        $("#btnMissUpdate").click(handleMissUpdate);
+        $("#btnMissStop").click(stopMissUpdate);
         $("#loadingSpin").hide();
+        sessionStorage.removeItem("UpdateStatus");
         google.script.run.clearProgress("Update_JOB");
       });
 
-      function handleUpdate(e) {
-        $("#btnUpdate").prop("disabled", true);
-        $("#secLotto").prop("disabled", true);
-        $("#se")
+      function handleCmbUpdate(e) {
         if (e) e.preventDefault();
         var lotto = $("#secLotto").val();
-        // console.log(lotto);
 
         const startProcess = () => {
-          // 初始化 UI
           $("#progressArea").show();
-          $("#btnStop").show();
           updateProgressBar(0, 100, "啟動中...");
-          callUpdate(lotto);
+          callCmbUpdate(lotto);
         };
         Swal.fire({
           title: "確認更新?",
@@ -184,19 +203,18 @@
         }).then((result) => {
           if (result.isConfirmed) {
             UpdateStatus = sessionStorage.getItem("UpdateStatus");
-            // console.log(UpdateStatus);
             if (UpdateStatus === null) {
               sessionStorage.setItem("UpdateStatus", "continue");
             }
+            freeUI("Cmb");
             startProcess();
           } else {
-            $("#btnUpdate").prop("disabled", false);
+            resetUI();
           }
         });
       }
 
-      // 建立一個可以遞迴呼叫的函式
-      function callUpdate(lotto) {
+      function callCmbUpdate(lotto) {
         UpdateStatus = sessionStorage.getItem("UpdateStatus");
         // console.log(UpdateStatus);
         if (UpdateStatus == "stop") {
@@ -207,11 +225,19 @@
             confirmButtonText: "確定",
             showCloseButton: true,
           }).then(() => {
-            sessionStorage.setItem("UpdateStatus", null);
+            sessionStorage.removeItem("UpdateStatus");
             resetUI();
-            google.script.run.clearProgress("Update_JOB");
-            //重新戴入頁面
-            openPageUrl("UpdateAll");
+            // 必須等待後端 clearProgress 完成後才重新載入頁面
+            // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
+            google.script.run
+              .withSuccessHandler(function () {
+                //重新戴入頁面
+                setTimeout(function () {
+                  openPageUrl("UpdateAll");
+                }, 100);
+              })
+              .withFailureHandler(showError) // 也可以加上錯誤處理
+              .clearProgress("Update_JOB");
           });
           return;
         } else {
@@ -221,8 +247,10 @@
                 // 計算並更新百分比
                 let percent = Math.round((res.currentIndex / res.total) * 100);
                 updateProgressBar(percent, 100, res.message);
-                // 繼續下一回合
-                callUpdate(lotto);
+                // 停上一下再繼續下一回合
+                setTimeout(() => {
+                  callCmbUpdate(lotto);
+                }, 2000);
               } else if (res.status === "complete") {
                 // 完成
                 updateProgressBar(100, 100, res.message);
@@ -233,7 +261,7 @@
                   confirmButtonText: res.btntext,
                   showCloseButton: true,
                 }).then(() => {
-                  sessionStorage.setItem("UpdateStatus", null);
+                  sessionStorage.removeItem("UpdateStatus");
                   resetUI();
                 });
               } else if (res.status === "error") {
@@ -245,7 +273,7 @@
                   confirmButtonText: res.btntext,
                   showCloseButton: true,
                 }).then(() => {
-                  sessionStorage.setItem("UpdateStatus", null);
+                  sessionStorage.removeItem("UpdateStatus");
                   resetUI();
                 });
               }
@@ -257,7 +285,6 @@
                 text: err.message,
                 confirmButtonText: "確定",
                 showCloseButton: true,
-                setTimeout: 2000,
               }).then(() => {
                 resetUI();
               });
@@ -266,8 +293,123 @@
         }
       }
 
-      function stopUpdate() {
-        $("#btnStop")
+      function stopCmbUpdate() {
+        $("#btnCmbStop")
+          .prop("disabled", true)
+          .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
+        sessionStorage.setItem("UpdateStatus", "stop");
+      }
+
+      function handleMissUpdate(e) {
+        if (e) e.preventDefault();
+        var lotto = $("#secLotto").val();
+
+        const startProcess = () => {
+          $("#progressArea").show();
+          updateProgressBar(0, 100, "啟動中...");
+          callMissUpdate(lotto);
+        };
+        Swal.fire({
+          title: "確認更新?",
+          icon: "question",
+          showCancelButton: true,
+          confirmButtonText: "確定",
+          cancelButtonText: "取消",
+        }).then((result) => {
+          if (result.isConfirmed) {
+            UpdateStatus = sessionStorage.getItem("UpdateStatus");
+            if (UpdateStatus === null) {
+              sessionStorage.setItem("UpdateStatus", "continue");
+            }
+            freeUI("Cmb");
+            startProcess();
+          } else {
+            resetUI();
+          }
+        });
+      }
+
+      function callMissUpdate(lotto) {
+        UpdateStatus = sessionStorage.getItem("UpdateStatus");
+        // console.log(UpdateStatus);
+        if (UpdateStatus == "stop") {
+          Swal.fire({
+            icon: "warning",
+            title: "處理停止",
+            text: "處理停止",
+            confirmButtonText: "確定",
+            showCloseButton: true,
+          }).then(() => {
+            sessionStorage.removeItem("UpdateStatus");
+            resetUI();
+            // 必須等待後端 clearProgress 完成後才重新載入頁面
+            // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
+            google.script.run
+              .withSuccessHandler(function () {
+                //重新戴入頁面
+                setTimeout(function () {
+                  openPageUrl("UpdateAll");
+                }, 100);
+              })
+              .withFailureHandler(showError) // 也可以加上錯誤處理
+              .clearProgress("Update_JOB");
+          });
+          return;
+        } else {
+          google.script.run
+            .withSuccessHandler(function (res) {
+              if (res.status === "continue") {
+                // 計算並更新百分比
+                let percent = Math.round((res.currentIndex / res.total) * 100);
+                updateProgressBar(percent, 100, res.message);
+                // 停上一下再繼續下一回合
+                setTimeout(() => {
+                  callCmbUpdate(lotto);
+                }, 2000);
+              } else if (res.status === "complete") {
+                // 完成
+                updateProgressBar(100, 100, res.message);
+                Swal.fire({
+                  icon: "success",
+                  title: "處理完成",
+                  text: res.message,
+                  confirmButtonText: res.btntext,
+                  showCloseButton: true,
+                }).then(() => {
+                  sessionStorage.removeItem("UpdateStatus");
+                  resetUI();
+                });
+              } else if (res.status === "error") {
+                // 處理錯誤情況
+                Swal.fire({
+                  icon: "error",
+                  title: "處理失敗",
+                  text: res.message,
+                  confirmButtonText: res.btntext,
+                  showCloseButton: true,
+                }).then(() => {
+                  sessionStorage.removeItem("UpdateStatus");
+                  resetUI();
+                });
+              }
+            })
+            .withFailureHandler(function (err) {
+              Swal.fire({
+                icon: "error",
+                title: "系統錯誤",
+                text: err.message,
+                confirmButtonText: "確定",
+                showCloseButton: true,
+              }).then(() => {
+                resetUI();
+              });
+            })
+            .genMissData(lotto);
+        }
+      }
+
+      function stopMissUpdate() {
+        $("#btnMissStop")
           .prop("disabled", true)
           .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
         sessionStorage.setItem("UpdateStatus", "stop");
@@ -279,17 +421,33 @@
         $("#progressLabel").text(message);
       }
 
+      function freeUI(btn) {
+        $("#btnCmbUpdate").prop("disabled", true);
+        $("#btnCmbStop").prop("disabled", !(btn === "Cmb"));
+        $("#btnMissUpdate").prop("disabled", true);
+        $("#btnMissStop").prop("disabled", !(btn === "Miss"));
+        $("#secLotto").prop("disabled", true);
+      }
+
       function resetUI() {
-        $("#btnStop")
-          .prop("disabled", false)
-          .html('<i class="fas fa-stop me-2"></i> 停止');
-        $("#btnUpdate").prop("disabled", false);
+        $("#btnCmbUpdate").prop("disabled", false);
+        $("#btnCmbStop")
+          .prop("disabled", true)
+          .html('<i class="fas fa-stop me-2"></i> 合併表格停止');
+        $("#btnMissUpdate").prop("disabled", false);
+        $("#btnMissStop")
+          .prop("disabled", true)
+          .html('<i class="fas fa-stop me-2"></i> 遺漏表停止');
         $("#secLotto").prop("disabled", false);
-        $("#btnStop").hide();
         $("#progressArea").fadeOut();
         $("#progressBar").width("0%");
         $("#progressPercent").text("0%");
-        sessionStorage.setItem("UpdateStatus", null);
+        sessionStorage.removeItem("UpdateStatus");
+      }
+
+      function showError(err) {
+        resetUI();
+        Swal.fire("系統錯誤", err.message, "error");
       }
     </script>
   </body>

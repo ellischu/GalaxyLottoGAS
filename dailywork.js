@@ -11,11 +11,27 @@ https://api.taiwanlottery.com/TLCAPIWeB/Lottery/Daily539Result?period=115000001
  */
 
 function dailyupdate() {
-  // 測試用，直接呼叫 updatenumber 函式並指定 sheetName
+  // 直接呼叫 updatenumber 函式並指定 sheetName
   updatenumber("L539");
+  Logger.log("已抓取L539");
   updatenumber("L649");
+  Logger.log("已抓取L649");
   updatenumber("L638");
+  Logger.log("已抓取L638");
   updatenumber("LSix");
+  Logger.log("已抓取LSix");
+  // 合併
+  var result = combineData("L539");
+  Logger.log("已合併L539" + result.message);
+
+  result = combineData("L649");
+  Logger.log("已合併L649" + result.message);
+
+  result = combineData("L638");
+  Logger.log("已合併L638" + result.message);
+
+  // result = combineData("LSix");
+  // Logger.log("已合併LSix" + result.message);
 }
 
 function updatenumber(sheetName) {
@@ -131,7 +147,7 @@ function updatenumber(sheetName) {
           item.drawNumberAppear[5],
           item.drawNumberAppear[6], // 特別號對應到 S1 欄位，請根據實際 API 回傳結構調整
           // item.drawNumberAppear 的值的總合對應到 Sum 欄位，請根據實際 API 回傳結構調整
-          item.drawNumberAppear.reduce(function (a, b) {
+          item.drawNumberAppear.slice(0, 6).reduce(function (a, b) {
             return a + b;
           }, 0),
           // series 的值對應到 series 欄位，請根據實際 API 回傳結構調整,由 period 的值倒數3位轉成數字(interger)對應到 series 欄位
@@ -411,12 +427,4 @@ function getendPeriod(sheetName, url00, url01, startperiod) {
   } else {
     return startperiod;
   }
-}
-
-function doGet(e) {
-  var page = e.parameter.page || "Index";
-  return HtmlService.createTemplateFromFile(page)
-    .evaluate()
-    .setTitle("Galaxy Lotto Observer")
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
