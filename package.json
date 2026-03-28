@@ -2,5 +2,27 @@
   "dependencies": {
     "axios": "^1.13.5",
     "cheerio": "^1.2.0"
-  }
+  },
+  "name": "code",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dailywork.js",
+  "devDependencies": {
+    "@types/google-apps-script": "^2.0.8"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ellischu2017/GalaxyLotto.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ellischu2017/GalaxyLotto/issues"
+  },
+  "homepage": "https://github.com/ellischu2017/GalaxyLotto#readme"
 }

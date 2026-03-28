@@ -1,0 +1,159 @@
+<script>
+  /**
+   * 檢查外部函式庫載入狀態
+   * 驗證 jQuery, Bootstrap, SweetAlert2 是否已定義
+   */
+  (function() {
+    const libs = {
+      'jQuery': typeof jQuery !== 'undefined',
+      'Bootstrap': typeof bootstrap !== 'undefined',
+      'SweetAlert2': typeof Swal !== 'undefined'
+    };
+
+    const missing = Object.keys(libs).filter(name => !libs[name]);
+
+    if (missing.length > 0) {
+      const errorMsg = "關鍵函式庫載入失敗: " + missing.join(", ");
+      console.error(errorMsg);
+      // 若檢測到缺失，等待 1.5 秒後再次檢查（給予 Fallback 腳本一點時間）
+      setTimeout(() => {
+        const stillMissing = missing.some(name => {
+          if (name === 'jQuery') return typeof window.jQuery === 'undefined';
+          if (name === 'Bootstrap') return typeof window.bootstrap === 'undefined';
+          if (name === 'SweetAlert2') return typeof window.Swal === 'undefined';
+          return false;
+        });
+        
+        if (stillMissing) {
+          console.error("備援載入亦失敗。");
+        }
+      }, 1500);
+    } else {
+      console.info("所有外部資源 (jQuery, Bootstrap, Swal2) 載入成功。");
+    }
+  })();
+
+  /**
+   * 共用頁面跳轉函式
+   */
+  const SCRIPT_URL = "<?!= getScriptUrl() ?>";
+
+  function openPageUrl(pageName, target = "_top") {
+    if (target === "_self" || target === "_top") {
+      // 1. 自動關閉 Bootstrap 的 Offcanvas 導覽列
+      if (typeof bootstrap !== 'undefined') {
+        const offcanvasElement = document.querySelector(".offcanvas.show");
+        if (offcanvasElement) {
+          const bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+          if (bsOffcanvas) bsOffcanvas.hide();
+        }
+      }
+
+      // 2. 顯示頁面切換 Loading (使用重構後的 AppUI)
+      if (window.AppUI) {
+        AppUI.loading("頁面跳轉中", "正在載入，請稍候...");
+      }
+
+      window.top.location.href = SCRIPT_URL + "?page=" + pageName;
+    } else {
+      window.open(SCRIPT_URL + "?page=" + pageName, target);
+    }
+  }
+
+
+  /**
+   * 全域 UI 控制物件
+   */
+  window.AppUI = {
+    // 通用 Loading
+    loading: function(title = "處理中", text = "請稍候...", options = {}) {
+      if (typeof Swal === 'undefined') {
+        console.warn("Swal 未定義，降級使用 console 紀錄");
+        return Promise.resolve();
+      }
+      return Swal.fire({
+        title: title,
+        text: text,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => { Swal.showLoading(); },
+        ...options
+      });
+    },
+
+    // 科技感 Loading (Nebula Style)
+    loadingNebula: function(text = "正在獲取最新開獎紀錄") {
+      return this.loading('<span style="letter-spacing: 2px;">SCANNING NEBULA</span>', text, {
+        background: '#1a1a2e',
+        color: '#00d2ff',
+        loaderHtml: '<div class="spinner-grow text-info" style="width: 3rem; height: 3rem;" role="status"></div>'
+      });
+    },
+
+    // 成功提示
+    success: function(title, text, timer = 2000) {
+      return Swal.fire({
+        icon: "success",
+        title: title,
+        text: text,
+        timer: timer,
+        showConfirmButton: timer ? false : true
+      });
+    },
+
+    // 錯誤提示
+    error: function(title, text) {
+      return Swal.fire({
+        icon: "error",
+        title: title,
+        text: text || "發生未知錯誤"
+      });
+    },
+
+    // 確認視窗
+    confirm: function(title, text = "", timer = null) {
+      return Swal.fire({
+        title: title,
+        text: text,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "確定",
+        cancelButtonText: "取消",
+        timer: timer,
+        timerProgressBar: !!timer
+      });
+    },
+
+    // Toast 吐司訊息 (非阻斷式通知)
+    toast: function(title, icon = "success", timer = 3000) {
+      const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: timer,
+        timerProgressBar: true,
+        didOpen: (toast) => {
+          toast.onmouseenter = Swal.stopTimer;
+          toast.onmouseleave = Swal.resumeTimer;
+        }
+      });
+      return Toast.fire({ icon, title });
+    },
+
+    // 關閉視窗
+    close: function() {
+      Swal.close();
+    },
+
+    // 系統錯誤處理
+    showCommonError: function(error) {
+      console.error(error);
+      this.error("系統錯誤", error.message || error);
+    }
+  };
+
+  // 相容舊代碼
+  function showCommonError(error) {
+    AppUI.showCommonError(error);
+  }
+</script>

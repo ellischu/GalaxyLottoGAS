@@ -3,68 +3,39 @@
   <head>
     <base target="_top" />
     <title>Galaxy Lotto Observer</title>
-
+    <!-- 使用 jsDelivr 組合 CSS 請求 -->
     <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
       rel="stylesheet"
+      href="https://cdn.jsdelivr.net/combine/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css,npm/sweetalert2@11/dist/sweetalert2.min.css"
     />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
-    />
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- 載入 JS 函式庫 (jQuery, Bootstrap, SweetAlert2) -->
+    <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.0/dist/jquery.min.js,npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js,npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
+    <!-- 自動備援機制 (Fallback) -->
+    <script>
+      // @ts-ignore
+      window.jQuery || document.write(<?!= JSON.stringify(include("Lib_jQuery")).replace(/<\/script>/gi, '<\\/script>') ?>);
+      // @ts-ignore
+      window.bootstrap || document.write(<?!= JSON.stringify(include("Lib_Bootstrap")).replace(/<\/script>/gi, '<\\/script>') ?>);
+      // @ts-ignore
+      window.Swal || document.write(<?!= JSON.stringify(include("Lib_Swal")).replace(/<\/script>/gi, '<\\/script>') ?>);
+    </script>
+
+    <?!= includeStyles(); ?> <?!= include('Scripts'); ?>
 
     <style>
-      /* 自定義樣式以優化手機體驗 */
-      body {
-        background-color: #f8f9fa;
-        font-family: "Microsoft JhengHei", Arial, sans-serif;
-      }
-
+      /* Index 專屬樣式 */
       .main-container {
         max-width: 1080px;
-        /* 手機優先，限制最大寬度 */
-        margin: 20px auto;
-        padding: 15px;
       }
 
       .menu-btn {
-        height: 80px;
         font-size: 1.2rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        transition: transform 0.2s;
-      }
-
-      .menu-btn:active {
-        transform: scale(0.98);
-      }
-
-      .navbar-custom {
-        background-color: #0d6efd;
-        /* Bootstrap Primary Color */
-        color: white;
-      }
-
-      .loading-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(255, 255, 255, 0.7);
-        display: none;
-        justify-content: center;
-        align-items: center;
-        z-index: 999;
       }
 
       .title-text-shadow {
@@ -91,9 +62,7 @@
       }
 
       .label-text {
-        color: #6c757d;
         font-size: 24px;
-        font-weight: bold;
         margin-bottom: 5px;
       }
 
@@ -125,12 +94,6 @@
   </head>
 
   <body>
-    <div id="loadingSpin" class="loading-overlay">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
-      </div>
-    </div>
-
     <?!= includeNav(); ?>
 
     <div class="container main-container">
@@ -186,103 +149,109 @@
     </div>
 
     <script>
-      $(document).ready(function () {
-        const d = new Date();
-        d.setDate(d.getDate() + 1);
-        const dateStr =
-          d.getFullYear() +
-          "-" +
-          String(d.getMonth() + 1).padStart(2, "0") +
-          "-" +
-          String(d.getDate()).padStart(2, "0");
-        $("#predictDate").val(dateStr);
+      /**
+       * 使用 IIFE 封裝 jQuery 邏輯，避免 $ 命名衝突
+       */
+      (function ($) {
+        $(document).ready(function () {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          const dateStr =
+            d.getFullYear() +
+            "-" +
+            String(d.getMonth() + 1).padStart(2, "0") +
+            "-" +
+            String(d.getDate()).padStart(2, "0");
+          $("#predictDate").val(dateStr);
 
-        $("#loadingSpin").css("display", "flex");
+          // 使用封裝後的物件
+          AppUI.loadingNebula();
 
-        google.script.run
-          .withSuccessHandler(renderData)
-          .withFailureHandler(showError)
-          .getLastRecords();
-      });
+          google.script.run
+            .withSuccessHandler(window.renderData)
+            .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+            .getLastRecords();
+        });
 
-      function renderData(data) {
-        const $app = $("#app");
-        $("#loadingSpin").hide();
-        $("#loading").hide();
+        window.renderData = function (data) {
+          const $app = $("#app");
+          AppUI.close();
+          $("#loading").hide();
 
-        if (!data || Object.keys(data).length === 0) {
-          $app.html(
-            '<div class="col-12 text-center"><p class="text-muted">No observation records found.</p></div>',
-          );
-          return;
-        }
+          if (!data || Object.keys(data).length === 0) {
+            $app.html(
+              '<div class="col-12 text-center"><p class="text-muted">No observation records found.</p></div>',
+            );
+            return;
+          }
 
-        const names = {
-          L539: "今彩 539",
-          L649: "大樂透",
-          L638: "威力彩",
-          LSix: "六合彩",
+          const names = {
+            L539: "今彩 539",
+            L649: "大樂透",
+            L638: "威力彩",
+            LSix: "六合彩",
+          };
+
+          const order = ["L539", "L649", "L638", "LSix"];
+
+          order.forEach((key) => {
+            if (data[key]) {
+              const record = data[key];
+
+              let ballsHtml = "";
+              Object.keys(record).forEach((k) => {
+                if (k.startsWith("L") && !isNaN(parseInt(k.substring(1)))) {
+                  ballsHtml += `<div class="ball">${record[k]}</div>`;
+                }
+              });
+
+              if (record["S1"]) {
+                ballsHtml += `<div class="ball special">${record["S1"]}</div>`;
+              }
+
+              const cardHtml = `
+                <div class="card w-100 shadow-sm">
+                  <div class="card-header fw-bold">
+                    ${names[key] || key}
+                  </div>
+                  <div class="card-body">
+                    <div class="row text-center mb-3">
+                      <div class="col-4">
+                        <div class="label-text">期數</div>
+                        <div class="value-text">${record["period"] || ""}</div>
+                      </div>
+                      <div class="col-4">
+                        <div class="label-text">日期</div>
+                        <div class="value-text">${window.formatDate(record["Date"])}</div>
+                      </div>
+                      <div class="col-4">
+                        <div class="label-text">總合</div>
+                        <div class="value-text">${record["Sum"] || "-"}</div>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-wrap justify-content-center border-top pt-3 mt-3">
+                      ${ballsHtml}
+                    </div>
+                  </div>
+                </div>
+            `;
+              $app.append(cardHtml);
+            }
+          });
         };
 
-        const order = ["L539", "L649", "L638", "LSix"];
+        window.formatDate = function (dateStr) {
+          if (!dateStr) return "";
+          return dateStr.toString().split("T")[0];
+        };
 
-        order.forEach((key) => {
-          if (data[key]) {
-            const record = data[key];
-
-            let ballsHtml = "";
-            Object.keys(record).forEach((k) => {
-              if (k.startsWith("L") && !isNaN(parseInt(k.substring(1)))) {
-                ballsHtml += `<div class="ball">${record[k]}</div>`;
-              }
-            });
-
-            if (record["S1"]) {
-              ballsHtml += `<div class="ball special">${record["S1"]}</div>`;
-            }
-
-            const cardHtml = `
-              <div class="card w-100 shadow-sm">
-                <div class="card-header fw-bold">
-                  ${names[key] || key}
-                </div>
-                <div class="card-body">
-                  <div class="row text-center mb-3">
-                    <div class="col-4">
-                      <div class="label-text">期數</div>
-                      <div class="value-text">${record["period"] || ""}</div>
-                    </div>
-                    <div class="col-4">
-                      <div class="label-text">日期</div>
-                      <div class="value-text">${formatDate(record["Date"])}</div>
-                    </div>
-                    <div class="col-4">
-                      <div class="label-text">總合</div>
-                      <div class="value-text">${record["Sum"] || "-"}</div>
-                    </div>
-                  </div>
-                  <div class="d-flex flex-wrap justify-content-center border-top pt-3 mt-3">
-                    ${ballsHtml}
-                  </div>
-                </div>
-              </div>
-          `;
-            $app.append(cardHtml);
-          }
-        });
-      }
-
-      function formatDate(dateStr) {
-        if (!dateStr) return "";
-        return dateStr.toString().split("T")[0];
-      }
-
-      function showError(error) {
-        $("#loadingSpin").hide();
-        $("#loading").html(
-          `<div class="alert alert-danger">Error: ${error.message}</div>`,
-        );
-      }
+        window.showError = function (error) {
+          Swal.close();
+          $("#loading").html(
+            `<div class="alert alert-danger">Error: ${error.message}</div>`,
+          );
+        };
+      })(jQuery.noConflict());
     </script>
   </body>
   <?!= includeFooter(); ?>

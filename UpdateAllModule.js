@@ -123,3 +123,18 @@ function combineData(sheetname) {
     btntext: "確定",
   };
 }
+
+function genMissData(sheetname) {
+  const trObj = getTargetsheet("Sheets", sheetname);
+  const trspreadsheet = trObj.spreadsheet;
+  let trsheet = trspreadsheet.getSheetByName("Miss");
+  if (!trsheet) {
+    trsheet = trspreadsheet.insertSheet("Miss");
+  }
+  clearProgress("Miss_JOB");
+  return {
+    status: "complete",
+    message: "全部處理完成！",
+    btntext: "確定",
+  };
+}

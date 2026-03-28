@@ -4,85 +4,45 @@
     <base target="_top" />
     <title>Galaxy Lotto Observer - Update All</title>
 
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
-    />
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 使用 jsDelivr 組合 CSS 請求 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/combine/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css,npm/sweetalert2@11/dist/sweetalert2.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- 載入 JS 函式庫 (jQuery, Bootstrap, SweetAlert2) -->
+    <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.0/dist/jquery.min.js,npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js,npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
+    <!-- 自動備援機制 (Fallback) -->
+    <script>
+      // @ts-ignore
+      window.jQuery || document.write(<?!= JSON.stringify(include("Lib_jQuery")).replace(/<\/script>/gi, '<\\/script>') ?>);
+      // 同步檢查並載入 Bootstrap 與 SweetAlert2 備援
+      // @ts-ignore
+      window.bootstrap || document.write(<?!= JSON.stringify(include("Lib_Bootstrap")).replace(/<\/script>/gi, '<\\/script>') ?>);
+      // @ts-ignore
+      window.Swal || document.write(<?!= JSON.stringify(include("Lib_Swal")).replace(/<\/script>/gi, '<\\/script>') ?>);
+    </script>
+
+    <?!= includeStyles(); ?>
+    <?!= include('Scripts'); ?>
 
     <style>
-      /* 自定義樣式以優化手機體驗 */
-      body {
-        background-color: #f8f9fa;
-        font-family: "Microsoft JhengHei", Arial, sans-serif;
-      }
-
+      /* UpdateAll 專屬樣式 */
       .main-container {
         max-width: 600px;
-        /* 手機優先，限制最大寬度 */
-        margin: 20px auto;
-        padding: 15px;
       }
 
       .menu-btn {
-        height: 80px;
         font-size: 14px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        transition: transform 0.2s;
-      }
-
-      .menu-btn:active {
-        transform: scale(0.98);
-      }
-
-      .navbar-custom {
-        background-color: #0d6efd;
-        /* Bootstrap Primary Color */
-        color: white;
-      }
-
-      .loading-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(255, 255, 255, 0.7);
-        display: none;
-        justify-content: center;
-        align-items: center;
-        z-index: 999;
       }
 
       .label-text {
-        color: #6c757d;
         font-size: 24px;
-        font-weight: bold;
         margin-bottom: 5px;
       }
     </style>
   </head>
 
   <body>
-    <div id="loadingSpin" class="loading-overlay">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
-      </div>
-    </div>
-
     <?!= includeNav(); ?>
 
     <div class="container main-container">
@@ -173,19 +133,22 @@
     </div>
 
     <script>
-      var UpdateStatus = null;
+      /* global google, AppUI, openPageUrl */
+      (function($) {
+        /** @type {string|null} */
+        var UpdateStatus = null;
+
       $(document).ready(function () {
-        $("#loadingSpin").css("display", "flex");
         $("#btnCmbUpdate").click(handleCmbUpdate);
         $("#btnCmbStop").click(stopCmbUpdate);
         $("#btnMissUpdate").click(handleMissUpdate);
         $("#btnMissStop").click(stopMissUpdate);
-        $("#loadingSpin").hide();
         sessionStorage.removeItem("UpdateStatus");
         google.script.run.clearProgress("Update_JOB");
+        google.script.run.clearProgress("Miss_JOB");
       });
 
-      function handleCmbUpdate(e) {
+      window.handleCmbUpdate = function(e) {
         if (e) e.preventDefault();
         var lotto = $("#secLotto").val();
 
@@ -194,37 +157,25 @@
           updateProgressBar(0, 100, "啟動中...");
           callCmbUpdate(lotto);
         };
-        Swal.fire({
-          title: "確認更新?",
-          icon: "question",
-          showCancelButton: true,
-          confirmButtonText: "確定",
-          cancelButtonText: "取消",
-        }).then((result) => {
+        AppUI.confirm("確認更新合併表格?", "這將會從來源抓取新資料。").then((result) => {
           if (result.isConfirmed) {
             UpdateStatus = sessionStorage.getItem("UpdateStatus");
             if (UpdateStatus === null) {
               sessionStorage.setItem("UpdateStatus", "continue");
             }
-            freeUI("Cmb");
+            window.freeUI("Cmb");
             startProcess();
           } else {
-            resetUI();
+            window.resetUI();
           }
         });
-      }
+      };
 
-      function callCmbUpdate(lotto) {
+      window.callCmbUpdate = function(lotto) {
         UpdateStatus = sessionStorage.getItem("UpdateStatus");
         // console.log(UpdateStatus);
         if (UpdateStatus == "stop") {
-          Swal.fire({
-            icon: "warning",
-            title: "處理停止",
-            text: "處理停止",
-            confirmButtonText: "確定",
-            showCloseButton: true,
-          }).then(() => {
+          AppUI.error("處理停止", "使用者已手動終止更新").then(() => {
             sessionStorage.removeItem("UpdateStatus");
             resetUI();
             // 必須等待後端 clearProgress 完成後才重新載入頁面
@@ -236,7 +187,7 @@
                   openPageUrl("UpdateAll");
                 }, 100);
               })
-              .withFailureHandler(showError) // 也可以加上錯誤處理
+              .withFailureHandler(window.showError)
               .clearProgress("Update_JOB");
           });
           return;
@@ -254,53 +205,30 @@
               } else if (res.status === "complete") {
                 // 完成
                 updateProgressBar(100, 100, res.message);
-                Swal.fire({
-                  icon: "success",
-                  title: "處理完成",
-                  text: res.message,
-                  confirmButtonText: res.btntext,
-                  showCloseButton: true,
-                }).then(() => {
+                AppUI.success("處理完成", res.message).then(() => {
                   sessionStorage.removeItem("UpdateStatus");
-                  resetUI();
+                  window.resetUI();
                 });
               } else if (res.status === "error") {
                 // 處理錯誤情況
-                Swal.fire({
-                  icon: "error",
-                  title: "處理失敗",
-                  text: res.message,
-                  confirmButtonText: res.btntext,
-                  showCloseButton: true,
-                }).then(() => {
-                  sessionStorage.removeItem("UpdateStatus");
-                  resetUI();
+                AppUI.error("處理失敗", res.message).then(() => {
+                   window.resetUI();
                 });
               }
             })
-            .withFailureHandler(function (err) {
-              Swal.fire({
-                icon: "error",
-                title: "系統錯誤",
-                text: err.message,
-                confirmButtonText: "確定",
-                showCloseButton: true,
-              }).then(() => {
-                resetUI();
-              });
-            })
+            .withFailureHandler(AppUI.showCommonError.bind(AppUI))
             .combineData(lotto);
         }
-      }
+      };
 
-      function stopCmbUpdate() {
+      window.stopCmbUpdate = function() {
         $("#btnCmbStop")
           .prop("disabled", true)
           .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
         sessionStorage.setItem("UpdateStatus", "stop");
-      }
+      };
 
-      function handleMissUpdate(e) {
+      window.handleMissUpdate = function(e) {
         if (e) e.preventDefault();
         var lotto = $("#secLotto").val();
 
@@ -309,39 +237,27 @@
           updateProgressBar(0, 100, "啟動中...");
           callMissUpdate(lotto);
         };
-        Swal.fire({
-          title: "確認更新?",
-          icon: "question",
-          showCancelButton: true,
-          confirmButtonText: "確定",
-          cancelButtonText: "取消",
-        }).then((result) => {
+        AppUI.confirm("確認更新遺漏表?").then((result) => {
           if (result.isConfirmed) {
             UpdateStatus = sessionStorage.getItem("UpdateStatus");
             if (UpdateStatus === null) {
               sessionStorage.setItem("UpdateStatus", "continue");
             }
-            freeUI("Cmb");
+            window.freeUI("Miss");
             startProcess();
           } else {
-            resetUI();
+            window.resetUI();
           }
         });
-      }
+      };
 
-      function callMissUpdate(lotto) {
+      window.callMissUpdate = function(lotto) {
         UpdateStatus = sessionStorage.getItem("UpdateStatus");
         // console.log(UpdateStatus);
         if (UpdateStatus == "stop") {
-          Swal.fire({
-            icon: "warning",
-            title: "處理停止",
-            text: "處理停止",
-            confirmButtonText: "確定",
-            showCloseButton: true,
-          }).then(() => {
+          AppUI.error("處理停止", "遺漏表更新已終止").then(() => {
             sessionStorage.removeItem("UpdateStatus");
-            resetUI();
+            window.resetUI();
             // 必須等待後端 clearProgress 完成後才重新載入頁面
             // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
             google.script.run
@@ -351,8 +267,8 @@
                   openPageUrl("UpdateAll");
                 }, 100);
               })
-              .withFailureHandler(showError) // 也可以加上錯誤處理
-              .clearProgress("Update_JOB");
+              .withFailureHandler(window.showError)
+              .clearProgress("Miss_JOB");
           });
           return;
         } else {
@@ -364,72 +280,49 @@
                 updateProgressBar(percent, 100, res.message);
                 // 停上一下再繼續下一回合
                 setTimeout(() => {
-                  callCmbUpdate(lotto);
+                  callMissUpdate(lotto);
                 }, 2000);
               } else if (res.status === "complete") {
                 // 完成
                 updateProgressBar(100, 100, res.message);
-                Swal.fire({
-                  icon: "success",
-                  title: "處理完成",
-                  text: res.message,
-                  confirmButtonText: res.btntext,
-                  showCloseButton: true,
-                }).then(() => {
+                AppUI.success("處理完成", res.message).then(() => {
                   sessionStorage.removeItem("UpdateStatus");
-                  resetUI();
+                  window.resetUI();
                 });
               } else if (res.status === "error") {
                 // 處理錯誤情況
-                Swal.fire({
-                  icon: "error",
-                  title: "處理失敗",
-                  text: res.message,
-                  confirmButtonText: res.btntext,
-                  showCloseButton: true,
-                }).then(() => {
-                  sessionStorage.removeItem("UpdateStatus");
-                  resetUI();
+                AppUI.error("處理失敗", res.message).then(() => {
+                  window.resetUI();
                 });
               }
             })
-            .withFailureHandler(function (err) {
-              Swal.fire({
-                icon: "error",
-                title: "系統錯誤",
-                text: err.message,
-                confirmButtonText: "確定",
-                showCloseButton: true,
-              }).then(() => {
-                resetUI();
-              });
-            })
+            .withFailureHandler(AppUI.showCommonError.bind(AppUI))
             .genMissData(lotto);
         }
-      }
+      };
 
-      function stopMissUpdate() {
+      window.stopMissUpdate = function() {
         $("#btnMissStop")
           .prop("disabled", true)
           .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
         sessionStorage.setItem("UpdateStatus", "stop");
-      }
+      };
 
-      function updateProgressBar(percent, total, message) {
+      window.updateProgressBar = function(percent, total, message) {
         $("#progressBar").width(percent + "%");
         $("#progressPercent").text(percent + "%");
         $("#progressLabel").text(message);
-      }
+      };
 
-      function freeUI(btn) {
+      window.freeUI = function(btn) {
         $("#btnCmbUpdate").prop("disabled", true);
         $("#btnCmbStop").prop("disabled", !(btn === "Cmb"));
         $("#btnMissUpdate").prop("disabled", true);
         $("#btnMissStop").prop("disabled", !(btn === "Miss"));
         $("#secLotto").prop("disabled", true);
-      }
+      };
 
-      function resetUI() {
+      window.resetUI = function() {
         $("#btnCmbUpdate").prop("disabled", false);
         $("#btnCmbStop")
           .prop("disabled", true)
@@ -443,12 +336,14 @@
         $("#progressBar").width("0%");
         $("#progressPercent").text("0%");
         sessionStorage.removeItem("UpdateStatus");
-      }
+      };
 
-      function showError(err) {
-        resetUI();
-        Swal.fire("系統錯誤", err.message, "error");
-      }
+      window.showError = function(err) {
+        window.resetUI();
+        AppUI.showCommonError(err);
+      };
+
+      })(jQuery.noConflict());
     </script>
   </body>
   <?!= includeFooter(); ?>

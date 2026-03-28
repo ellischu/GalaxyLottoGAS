@@ -1,5 +1,8 @@
 const mainspreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
+// 從屬性服務取得版本號，若無則預設為 v1.0
+const CACHE_VERSION = PropertiesService.getScriptProperties().getProperty("APP_VERSION") || "v1.3"; 
+
 function doGet(e) {
   var page = e.parameter.page || "Index";
   return HtmlService.createTemplateFromFile(page)
@@ -134,19 +137,87 @@ function getScriptUrl() {
 }
 
 /**
+ * 取得應用程式全域組態 (優先從 PropertiesService 取得)
+ * @param {string} key 設定名稱
+ * @param {any} defaultValue 預設值
+ */
+function getAppSetting(key, defaultValue = null) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = CACHE_VERSION + "_prop_" + key;
+  
+  // 1. 嘗試從快取讀取
+  const cachedVal = cache.get(cacheKey);
+  if (cachedVal !== null) return cachedVal;
+
+  // 2. 快取失效，從 PropertiesService 讀取
+  const propVal = PropertiesService.getScriptProperties().getProperty(key);
+  if (propVal !== null) {
+    // 3. 同步回快取，以便下次快速讀取 (快取 6 小時)
+    cache.put(cacheKey, propVal, 21600);
+    return propVal;
+  }
+  
+  // 如果屬性中找不到，可以擴充為去 "Settings" 工作表查找
+  return defaultValue;
+}
+
+/**
+ * 更新應用程式全域組態
+ */
+function setAppSetting(key, value) {
+  const stringValue = typeof value === "object" ? JSON.stringify(value) : value.toString();
+  
+  // 1. 寫入持久化儲存 (PropertiesService)
+  PropertiesService.getScriptProperties().setProperty(key, stringValue);
+  
+  // 2. 同步更新快取 (CacheService)
+  const cache = CacheService.getScriptCache();
+  const cacheKey = CACHE_VERSION + "_prop_" + key;
+  cache.put(cacheKey, stringValue, 21600);
+}
+
+/**
+ * 載入共用 CSS 樣式
+ */
+function includeStyles() {
+  return HtmlService.createHtmlOutputFromFile('Styles').getContent();
+}
+
+/**
+ * 通用載入函式，支援解析 HTML 內的 scriptlets (如 <?!= ... ?>)
+ * 用於載入 Scripts.html 等含有動態變數的檔案
+ */
+function include(filename) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = CACHE_VERSION + "_html_" + filename; // 使用版本號作為前綴
+  const cached = cache.get(cacheKey);
+  
+  if (cached) return cached;
+
+  const content = HtmlService.createTemplateFromFile(filename)
+    .evaluate()
+    .getContent();
+    
+  // 快取 6 小時 (21600 秒)
+  cache.put(cacheKey, content, 21600);
+  return content;
+}
+
+/**
+ * 手動清理快取的工具函式
+ * 可以從編輯器執行，或與前端按鈕綁定
+ */
+function clearAllCache() {
+  const cache = CacheService.getScriptCache();
+  // 由於無法列出所有 Key，建議直接更改 CACHE_VERSION
+}
+
+/**
  * 
  * @returns 
  */
 function includeFooter() {
-  let suggestUrl = "";
-  // const cache = CacheService.getScriptCache();
-  // const cacheKey = "SYSuggestUrl";
-
-  // 1. 嘗試從快取讀取，如果有就直接使用
-  // suggestUrl = cache.get(cacheKey);
-  const template = HtmlService.createTemplateFromFile("Footer");
-  // template.suggestUrl = suggestUrl;
-  return template.evaluate().getContent();
+  return include("Footer");
 }
 
 /**
@@ -154,17 +225,10 @@ function includeFooter() {
  * @returns 
  */
 function includeNav() {
-  // 加入快取機制，避免每次都重新讀取檔案
-  // var cache = CacheService.getScriptCache();
-  // var cachedNav = cache.get("NavHTML");
-  // if (cachedNav) return cachedNav;
-
-  var template = HtmlService.createTemplateFromFile("Nav");
-  var content = template.evaluate().getContent();
-  // cache.put("NavHTML", content, 21600); // 快取 6 小時
-  return content;
+  return include("Nav");
 }
 
+/** @type {number} */
 var startTime = new Date().getTime();
 
 /** 檢查是否快要超時 (設定為 20 秒以確保安全) */

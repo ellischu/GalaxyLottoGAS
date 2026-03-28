@@ -30,8 +30,8 @@ function dailyupdate() {
   result = combineData("L638");
   Logger.log("已合併L638" + result.message);
 
-  // result = combineData("LSix");
-  // Logger.log("已合併LSix" + result.message);
+  result = combineData("LSix");
+  Logger.log("已合併LSix" + result.message);
 }
 
 function updatenumber(sheetName) {

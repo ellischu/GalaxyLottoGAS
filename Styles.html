@@ -1,0 +1,46 @@
+<style>
+  /* 共用全域樣式 */
+  body {
+    background-color: #f8f9fa;
+    font-family: "Microsoft JhengHei", Arial, sans-serif;
+  }
+
+  .navbar-custom {
+    background-color: #0d6efd;
+    color: white;
+  }
+
+  .main-container {
+    margin: 20px auto;
+    padding: 15px;
+  }
+
+  .menu-btn {
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+  }
+
+  .menu-btn:active {
+    transform: scale(0.98);
+  }
+
+  .label-text {
+    color: #6c757d;
+    font-weight: bold;
+  }
+
+  /* 自定義 SweetAlert2 Loading 顏色 (當不使用 loaderHtml 時) */
+  .custom-loader-blue .swal2-loader {
+    border-color: #0d6efd transparent #0d6efd transparent !important;
+  }
+
+  /* 讓 Swal2 的彈窗稍微圓潤一點，符合現代 UI */
+  .swal2-popup {
+    border-radius: 15px !important;
+    padding: 2rem !important;
+  }
+</style>
