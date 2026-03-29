@@ -1,8 +1,5 @@
 const mainspreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
-// 從屬性服務取得版本號，若無則預設為 v1.0
-const CACHE_VERSION = PropertiesService.getScriptProperties().getProperty("APP_VERSION") || "v1.3"; 
-
 function doGet(e) {
   var page = e.parameter.page || "Index";
   return HtmlService.createTemplateFromFile(page)
@@ -11,9 +8,19 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// 從屬性服務取得版本號，若無則預設為 v1.0
+/**
+ * 動態取得當前快取版本號，確保清理快取後能立即 bust cache
+ */
+function getCacheVersion() {
+  return (
+    PropertiesService.getScriptProperties().getProperty("APP_VERSION") || "v1.3"
+  );
+}
+
 /**
  * 取得最後一期號碼
- * @returns 
+ * @returns
  */
 function getLastRecords() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -66,7 +73,7 @@ function getIdFromUrl(url) {
  */
 function getTarget(sheetName, targetName) {
   var sheet = mainspreadsheet.getSheetByName(sheetName);
-  if (!sheet) throw new Error("找不到 SYCompany 中的" + sheetName + "工作表");
+  if (!sheet) throw new Error("找不到主試算表中的 " + sheetName + " 工作表");
 
   var data = sheet.getDataRange().getValues();
   var url = "";
@@ -85,7 +92,7 @@ function getTarget(sheetName, targetName) {
  * 取得工作表相關資訊
  * @param {*} sheetName 工作表名稱
  * @param {*} targetName 目標名稱
- * @returns 結構 url,id,spreadsheet 
+ * @returns 結構 url,id,spreadsheet
  */
 function getTargetsheet(sheetName, targetName) {
   var res = getTarget(sheetName, targetName);
@@ -103,26 +110,31 @@ function getTargetsheet(sheetName, targetName) {
 }
 
 /**
- * 
+ *
  * @param {*} date type Date
- * @returns 
+ * @returns
  */
 function getAllData(date) {
   const srsheet2 = mainspreadsheet.getSheetByName("AllData");
   if (!srsheet2) return [];
   // 以 date find Date 欄位,並傳回 整列資料
   var data = srsheet2.getDataRange().getValues();
-  var targetDate = new Date(date);
-  targetDate.setHours(0, 0, 0, 0);
+  // 統一轉換為時間戳記進行比較，避免 Date 物件與字串混合的問題
+  var parseTime = function (v) {
+    if (!v) return 0;
+    var d =
+      v instanceof Date
+        ? new Date(v)
+        : new Date(v.toString().replace(/-/g, "/"));
+    return isNaN(d.getTime()) ? 0 : d.setHours(0, 0, 0, 0);
+  };
+
+  var targetTime = parseTime(date);
 
   for (var i = 1; i < data.length; i++) {
-    var rowDate = data[i][0]; // Assuming Date is in column 1
-    if (rowDate instanceof Date) {
-      var d = new Date(rowDate);
-      d.setHours(0, 0, 0, 0);
-      if (d.getTime() === targetDate.getTime()) {
-        return data[i];
-      }
+    var rowTime = parseTime(data[i][0]);
+    if (rowTime > 0 && rowTime === targetTime) {
+      return data[i];
     }
   }
   return [];
@@ -143,8 +155,8 @@ function getScriptUrl() {
  */
 function getAppSetting(key, defaultValue = null) {
   const cache = CacheService.getScriptCache();
-  const cacheKey = CACHE_VERSION + "_prop_" + key;
-  
+  const cacheKey = getCacheVersion() + "_prop_" + key;
+
   // 1. 嘗試從快取讀取
   const cachedVal = cache.get(cacheKey);
   if (cachedVal !== null) return cachedVal;
@@ -156,7 +168,7 @@ function getAppSetting(key, defaultValue = null) {
     cache.put(cacheKey, propVal, 21600);
     return propVal;
   }
-  
+
   // 如果屬性中找不到，可以擴充為去 "Settings" 工作表查找
   return defaultValue;
 }
@@ -165,14 +177,15 @@ function getAppSetting(key, defaultValue = null) {
  * 更新應用程式全域組態
  */
 function setAppSetting(key, value) {
-  const stringValue = typeof value === "object" ? JSON.stringify(value) : value.toString();
-  
+  const stringValue =
+    typeof value === "object" ? JSON.stringify(value) : value.toString();
+
   // 1. 寫入持久化儲存 (PropertiesService)
   PropertiesService.getScriptProperties().setProperty(key, stringValue);
-  
+
   // 2. 同步更新快取 (CacheService)
   const cache = CacheService.getScriptCache();
-  const cacheKey = CACHE_VERSION + "_prop_" + key;
+  const cacheKey = getCacheVersion() + "_prop_" + key;
   cache.put(cacheKey, stringValue, 21600);
 }
 
@@ -180,7 +193,7 @@ function setAppSetting(key, value) {
  * 載入共用 CSS 樣式
  */
 function includeStyles() {
-  return HtmlService.createHtmlOutputFromFile('Styles').getContent();
+  return HtmlService.createHtmlOutputFromFile("Styles").getContent();
 }
 
 /**
@@ -189,15 +202,15 @@ function includeStyles() {
  */
 function include(filename) {
   const cache = CacheService.getScriptCache();
-  const cacheKey = CACHE_VERSION + "_html_" + filename; // 使用版本號作為前綴
+  const cacheKey = getCacheVersion() + "_html_" + filename; // 使用版本號作為前綴
   const cached = cache.get(cacheKey);
-  
+
   if (cached) return cached;
 
   const content = HtmlService.createTemplateFromFile(filename)
     .evaluate()
     .getContent();
-    
+
   // 快取 6 小時 (21600 秒)
   cache.put(cacheKey, content, 21600);
   return content;
@@ -205,16 +218,57 @@ function include(filename) {
 
 /**
  * 手動清理快取的工具函式
- * 可以從編輯器執行，或與前端按鈕綁定
+ * @param {boolean} isMajor 是否為大版本更新 (預設 false)
  */
-function clearAllCache() {
-  const cache = CacheService.getScriptCache();
-  // 由於無法列出所有 Key，建議直接更改 CACHE_VERSION
+function clearAllCache(isMajor = false) {
+  const props = PropertiesService.getScriptProperties();
+  const currentVersion = props.getProperty("APP_VERSION") || "v1.3";
+  const versionMatch = currentVersion.match(/(\d+)\.(\d+)/);
+  let newVersion = "v1.4";
+
+  if (versionMatch) {
+    let major = parseInt(versionMatch[1]);
+    let minor = parseInt(versionMatch[2]);
+    if (isMajor) {
+      major++;
+      minor = 0;
+    } else {
+      minor++;
+    }
+    newVersion = `v${major}.${minor}`;
+  }
+
+  props.setProperty("APP_VERSION", newVersion);
+  return {
+    status: "success",
+    newVersion: newVersion,
+    systemProps: props.getProperties(), // 回傳所有系統變數清單
+  };
 }
 
 /**
- * 
- * @returns 
+ * 檢查快取服務狀態
+ * @returns {Object} 狀態物件
+ */
+function getCacheStatus() {
+  try {
+    const cache = CacheService.getScriptCache();
+    if (!cache) return { ok: false, message: "無法取得快取服務" };
+
+    // 進行簡單的讀寫測試
+    const testKey = "STATUS_CHECK_" + new Date().getTime();
+    cache.put(testKey, "OK", 60);
+    const val = cache.get(testKey);
+
+    return { ok: val === "OK", version: getCacheVersion() };
+  } catch (e) {
+    return { ok: false, message: e.toString() };
+  }
+}
+
+/**
+ *
+ * @returns
  */
 function includeFooter() {
   return include("Footer");
@@ -222,7 +276,7 @@ function includeFooter() {
 
 /**
  * 提供給 HTML 範本呼叫，用來載入導航列組件
- * @returns 
+ * @returns
  */
 function includeNav() {
   return include("Nav");

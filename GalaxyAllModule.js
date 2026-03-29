@@ -1,9 +1,4 @@
-/**
- * 
- * @param {*} sheetname 
- * @returns 
- */
-function combineData(sheetname) {
+function combineData_Legacy(sheetname) {
   const trObj = getTargetsheet("Sheets", sheetname);
   const trspreadsheet = trObj.spreadsheet;
   let trsheet = trspreadsheet.getSheetByName("All");
@@ -129,12 +124,7 @@ function combineData(sheetname) {
   };
 }
 
-/**
- * 
- * @param {*} sheetname 
- * @returns 
- */
-function genMissData(sheetname) {
+function genMissData_Legacy(sheetname) {
   const trObj = getTargetsheet("Sheets", sheetname);
   const trspreadsheet = trObj.spreadsheet;
   let trsheet = trspreadsheet.getSheetByName("Miss");
@@ -329,4 +319,3 @@ function genMissData(sheetname) {
     btntext: "確定",
   };
 }
-

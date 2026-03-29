@@ -1,0 +1,428 @@
+<script>
+  /**
+   * Predict 頁面專屬邏輯
+   */
+  (function ($) {
+    $(document).ready(function () {
+      // 初始化預測日期為明天
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      const dateStr =
+        d.getFullYear() +
+        "-" +
+        String(d.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(d.getDate()).padStart(2, "0");
+      $("#predictDate").val(dateStr);
+
+      $("#predictButton").click(handlePredict);
+
+      // 初始化顯示模式狀態
+      const isDetailed = localStorage.getItem("detailedMode") === "true";
+      $("#displayModeToggle").prop("checked", isDetailed);
+
+      // 還原上次清理快取前的備份設定
+      const backup = JSON.parse(
+        localStorage.getItem("sys_backup_settings") || "{}",
+      );
+      if (backup.isReloaded) {
+        if (backup.lotto) $("#lottoSelect").val(backup.lotto);
+        if (backup.date) $("#predictDate").val(backup.date);
+        if (backup.useTrend !== undefined)
+          $("#useTrend").prop("checked", backup.useTrend);
+
+        AppUI.toast("系統快取已重置", "success");
+        localStorage.removeItem("sys_backup_settings");
+      }
+    });
+
+    window.handlePredict = function () {
+      const lotto = $("#lottoSelect").val();
+      const date = $("#predictDate").val();
+      const useTrend = $("#useTrend").is(":checked");
+
+      if (!date) {
+        AppUI.error("錯誤", "請選擇預測日期");
+        return;
+      }
+
+      AppUI.loading("計算中", "正在掃描星系規律並分析相關性...");
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          AppUI.close();
+          if (res.status === "error") {
+            AppUI.error("預測失敗", res.message);
+            return;
+          }
+          renderPrediction(res);
+        })
+        .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+        .getPrediction(lotto, date, useTrend);
+    };
+
+    window.toggleDisplayMode = function (isDetailed) {
+      localStorage.setItem("detailedMode", isDetailed);
+      AppUI.toast(isDetailed ? "切換至詳細分析" : "切換至精簡模式", "info");
+      if (window.lastPredData) {
+        renderPrediction(window.lastPredData);
+      }
+    };
+
+    window.renderPrediction = function (res) {
+      const $area = $("#predictionArea");
+      const isDetailed = localStorage.getItem("detailedMode") === "true";
+
+      let html = `
+        <div class="card border-primary shadow mb-3">
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <span class="fw-bold"><i class="fas fa-magic me-2"></i>AI 星球預測結果</span>
+            <span class="badge bg-light text-primary">${res.date}</span>
+          </div>
+          <div class="card-body">`;
+
+      // 如果是強制繞過快取，顯示醒目標籤
+      if (res.bypassCache) {
+        html += `
+          <div class="text-center mb-3"><span class="badge rounded-pill bg-danger anim-pulse"><i class="fas fa-bolt me-1"></i> 即時運算中 (Bypass Cache)</span></div>`;
+      }
+
+      // 顯示異常警示
+      if (res.isDeviated) {
+        html += `
+          <div class="alert alert-warning border-warning shadow-sm mb-3 small">
+            <i class="fas fa-exclamation-triangle me-2"></i><strong>數據異常：</strong> 當前日期係數與歷史常態偏差過大。
+          </div>`;
+      }
+
+      // 顯示命中結果 (如果該日期已有開獎)
+      if (res.actualDraw) {
+        html += `
+          <div class="alert alert-success py-2 px-3 mb-3 text-center border-2">
+            <div class="small mb-1">當日開獎：<strong>${res.actualDraw.join(", ")}</strong></div>
+            <div class="fw-bold text-success">獲利星等：${res.profitStars} / ${res.maxStars}</div>
+          </div>`;
+      }
+
+      // 渲染球體
+      html += `<div class="d-flex flex-wrap justify-content-center">`;
+      res.results.forEach((item) => {
+        const isHit =
+          res.actualDraw && res.actualDraw.includes(Number(item.number));
+        const repeatBadge = item.isRepeat
+          ? `<span class="badge bg-dark position-absolute top-0 start-50 translate-middle-x" style="z-index:1; font-size:0.6rem; margin-top:-5px;">連莊</span>`
+          : "";
+        const skipBadge = item.isSkip
+          ? `<span class="badge bg-info text-dark position-absolute start-50 translate-middle-x" style="z-index:1; font-size:0.6rem; margin-top:55px;">隔期</span>`
+          : "";
+        const penaltyIcon = item.isHeatPenalized
+          ? `<i class="fas fa-balance-scale-right penalty-icon position-absolute" style="margin-left: 20px; margin-top: -10px;" title="AI 偵測到過熱，已施加權重懲罰。"></i>`
+          : "";
+
+        html += `
+          <div class="text-center m-2" style="position: relative;">
+            ${isHit ? '<span class="badge bg-success position-absolute top-0 start-50 translate-middle-x" style="z-index:2; font-size:0.6rem; margin-top:-15px;"><i class="fas fa-check"></i> 命中</span>' : ""}
+            <span class="badge ${item.statusColor} mb-1" style="font-size: 0.7rem;">${item.status}</span>
+            ${repeatBadge}${skipBadge}${penaltyIcon}
+            <div class="ball ${item.isPotentialCold ? "anim-twinkle" : ""} ${isHit ? "border border-3 border-success" : ""}">${item.number}</div>
+            <div class="small text-muted mt-1">${item.probability}</div>
+          </div>`;
+      });
+      html += `</div>`;
+
+      // 詳細模式下的額外分析圖表
+      if (isDetailed && res.confidenceHistory) {
+        html += `
+          <div class="mt-4 pt-3 border-top">
+            <h6 class="text-center mb-2 fw-bold text-secondary small"><i class="fas fa-chart-line me-2"></i>AI 捕捉信心指數趨勢 (近 10 期)</h6>
+            <div class="d-flex justify-content-center gap-3 mb-2">
+              <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" id="chkRepeat" checked onclick="updateChartVisibility(0, this.checked)">
+                <label class="form-check-label" for="chkRepeat">連莊</label>
+              </div>
+              <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" id="chkSkip" checked onclick="updateChartVisibility(1, this.checked)">
+                <label class="form-check-label" for="chkSkip">隔期</label>
+              </div>
+              <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" id="chkConsec" checked onclick="updateChartVisibility(2, this.checked)">
+                <label class="form-check-label" for="chkConsec">連號</label>
+              </div>
+              <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" id="chkRare" checked onclick="updateChartVisibility(3, this.checked)">
+                <label class="form-check-label" for="chkRare">冷門</label>
+              </div>
+              <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" id="chkTail" checked onclick="updateChartVisibility(4, this.checked)">
+                <label class="form-check-label" for="chkTail">尾數</label>
+              </div>
+              <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" id="chkSum" checked onclick="updateChartVisibility(5, this.checked)">
+                <label class="form-check-label" for="chkSum">和值</label>
+              </div>
+              <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" id="chkAvg" checked onclick="updateChartVisibility(6, this.checked)">
+                <label class="form-check-label" for="chkAvg">平均</label>
+              </div>
+            </div>
+            <canvas id="confidenceChart" style="max-height: 180px;"></canvas>
+          </div>
+          
+          <div class="mt-4 pt-3 border-top">
+            <h6 class="text-center mb-3 fw-bold text-secondary small"><i class="fas fa-bullseye me-2"></i>歷史預測準確度統計 (命中球數)</h6>
+            <canvas id="accuracyChart" style="max-height: 150px;"></canvas>
+          </div>`;
+      }
+
+      // 顯示 AI 洞察
+      if (res.learningInsights) {
+        html += `
+          <div class="alert alert-info py-2 px-3 mt-3 mb-0 shadow-sm small">
+            <i class="fas fa-brain me-2"></i><strong>AI 學習：</strong> ${res.learningMode}<br/>
+            <i class="fas fa-lightbulb me-2 text-warning"></i><strong>關鍵指標：</strong> ${res.learningInsights.join("、")}
+          </div>`;
+      }
+
+      // 詳細模式：相似度列表
+      if (isDetailed && res.top3Matches) {
+        html += `
+          <div class="mt-4 pt-3 border-top">
+            <h6 class="text-center mb-3 fw-bold text-secondary small"><i class="fas fa-project-diagram me-2"></i>核心相似星系路徑</h6>
+            <div class="list-group list-group-flush">`;
+        res.top3Matches.forEach((m, idx) => {
+          html += `
+            <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center small" onclick="showCoeffCompare(${idx})">
+              <span><i class="fas fa-calendar-day me-2 text-muted"></i>${m.date}</span>
+              <span class="badge bg-info rounded-pill">${(m.score * 100).toFixed(2)} 星值</span>
+            </button>`;
+        });
+        html += `</div></div>`;
+      }
+
+      html += `</div></div>`;
+
+      $area.html(html).slideDown();
+      window.lastPredData = res; // 暫存資料供比對視窗使用
+      if (isDetailed && res.confidenceHistory) {
+        initConfidenceChart(res.confidenceHistory);
+        initAccuracyChart(res.confidenceHistory);
+      }
+    };
+
+    window.updateChartVisibility = function (index, visible) {
+      if (window.myConfChart) {
+        window.myConfChart.setDatasetVisibility(index, visible);
+        window.myConfChart.update();
+      }
+    };
+
+    /**
+     * 初始化信心指數折線圖
+     */
+    window.initConfidenceChart = function (history) {
+      const ctx = document.getElementById("confidenceChart").getContext("2d");
+      if (window.myConfChart) window.myConfChart.destroy();
+
+      window.myConfChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: history.map((h) => h.label),
+          datasets: [
+            {
+              label: "連莊捕捉",
+              data: history.map((h) => h.repeat),
+              borderColor: "#ff512f",
+              backgroundColor: "#ff512f33",
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: "隔期捕捉",
+              data: history.map((h) => h.skip),
+              borderColor: "#11998e",
+              backgroundColor: "#11998e33",
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: "連號捕捉",
+              data: history.map((h) => h.consec || 0),
+              borderColor: "#8e44ad",
+              backgroundColor: "#8e44ad33",
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: "稀有捕捉",
+              data: history.map((h) => h.rare),
+              borderColor: "#00d2ff",
+              backgroundColor: "#00d2ff33",
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: "尾數捕捉",
+              data: history.map((h) => h.tail || 0),
+              borderColor: "#e67e22",
+              backgroundColor: "#e67e2233",
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: "和值穩定",
+              data: history.map((h) => h.sum || 0),
+              borderColor: "#1abc9c",
+              backgroundColor: "#1abc9c33",
+              tension: 0.3,
+              fill: false,
+            },
+            {
+              label: "平均信心",
+              data: history.map((h) =>
+                Math.round(
+                  (h.repeat +
+                    h.skip +
+                    (h.consec || 0) +
+                    h.rare +
+                    (h.tail || 0) +
+                    (h.sum || 0)) /
+                    6,
+                ),
+              ),
+              borderColor: "#6c757d",
+              backgroundColor: "#6c757d33",
+              borderDash: [5, 5], // 設置為虛線以區分特定指標
+              borderWidth: 2,
+              tension: 0.3,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (e, elements) => {
+            if (elements.length > 0) {
+              const idx = elements[0].index;
+              const h = history[idx];
+              if (h && h.coeffs) {
+                // 點擊折線圖上的點，觸發係數比對
+                window.showCoeffCompare(null, {
+                  date: h.fullDate,
+                  coeffs: h.coeffs,
+                });
+              }
+            }
+          },
+          onHover: (e, el) => {
+            // 游標移入資料點時切換手型
+            e.native.target.style.cursor = el[0] ? "pointer" : "default";
+          },
+          plugins: { legend: { labels: { boxWidth: 12, font: { size: 10 } } } },
+          scales: {
+            y: {
+              min: 0,
+              max: 100,
+              ticks: { font: { size: 9 }, callback: (v) => v + "%" },
+            },
+            x: { ticks: { font: { size: 9 } } },
+          },
+        },
+      });
+    };
+
+    /**
+     * 初始化準確度(命中率)柱狀圖
+     */
+    window.initAccuracyChart = function (history) {
+      const ctx = document.getElementById("accuracyChart").getContext("2d");
+      if (window.myAccChart) window.myAccChart.destroy();
+
+      window.myAccChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: history.map((h) => h.label),
+          datasets: [
+            {
+              label: "命中球數",
+              data: history.map((h) => h.hits),
+              backgroundColor: history.map((h) =>
+                h.hits >= 2 ? "#38ef7d" : "#ffc107",
+              ),
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          onClick: (e, elements) => {
+            if (elements.length > 0) {
+              const idx = elements[0].index;
+              const h = history[idx];
+              if (h.hitNumbers && h.hitNumbers.length > 0) {
+                AppUI.alertHtml(
+                  `<i class="fas fa-trophy text-warning me-2"></i>命中詳情 (${h.label})`,
+                  `<div class="text-center">該期命中號碼：<br><h3 class="text-success mt-2 fw-bold">${h.hitNumbers.join(", ")}</h3><p class="text-muted small mt-2">共命中 ${h.hits} 顆球</p></div>`,
+                );
+              } else {
+                AppUI.toast("該期未命中任何預測號碼", "info");
+              }
+            }
+          },
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 9 } } },
+            x: { ticks: { font: { size: 9 } } },
+          },
+        },
+      });
+    };
+
+    /**
+     * 顯示係數比對視窗
+     * @param {number} matchIdx 索引 (來自 top3Matches)
+     * @param {Object} customMatch 自定義比對資料 (來自圖表點擊)
+     */
+    window.showCoeffCompare = function (matchIdx, customMatch = null) {
+      const res = window.lastPredData;
+      const match = customMatch || res.top3Matches[matchIdx];
+      const headers = res.allDataHeaders;
+      const target = res.targetCoeffs;
+      const historical = match.coeffs;
+
+      let table = `
+        <div class="table-responsive">
+          <table class="table table-sm table-hover small">
+            <thead class="table-light">
+              <tr><th>係數名稱</th><th>目標值</th><th>歷史值</th><th>數值差異</th><th>百分比差異</th></tr>
+            </thead>
+            <tbody>`;
+      headers.forEach((h, i) => {
+        const v1 = parseFloat(target[i]);
+        const v2 = parseFloat(historical[i]);
+        const diff = (v1 - v2).toFixed(2);
+        let pctDiff = "0%";
+        let bgStyle = "";
+
+        if (!isNaN(v1) && !isNaN(v2) && v2 !== 0) {
+          const pct = ((v1 - v2) / Math.abs(v2)) * 100;
+          pctDiff = (pct > 0 ? "+" : "") + pct.toFixed(1) + "%";
+          const alpha = Math.min(0.4, Math.abs(pct) / 200);
+          bgStyle = `background-color: rgba(${pct > 0 ? "255,0,0" : "0,0,255"}, ${alpha})`;
+        }
+
+        table += `<tr>
+          <td>${h}</td>
+          <td>${target[i]}</td>
+          <td>${historical[i]}</td>
+          <td class="${diff == 0 ? "text-success fw-bold" : ""}">${diff}</td>
+          <td style="${bgStyle}">${pctDiff}</td>
+        </tr>`;
+      });
+      table += `</tbody></table></div>`;
+
+      AppUI.alertLarge(`星系比對: ${match.date}`, table);
+    };
+  })(jQuery);
+</script>

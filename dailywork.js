@@ -32,6 +32,16 @@ function dailyupdate() {
 
   result = combineData("LSix");
   Logger.log("已合併LSix" + result.message);
+
+
+  genMissData("L539");
+  Logger.log("已生成L539遺漏值");
+  genMissData("L649");
+  Logger.log("已生成L649遺漏值");
+  genMissData("L638");
+  Logger.log("已生成L638遺漏值");
+  genMissData("LSix");
+  Logger.log("已生成LSix遺漏值");
 }
 
 function updatenumber(sheetName) {

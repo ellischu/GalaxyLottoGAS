@@ -13,20 +13,11 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     />
 
-    <!-- 載入 JS 函式庫 (jQuery, Bootstrap, SweetAlert2) -->
     <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.0/dist/jquery.min.js,npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js,npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 
     <!-- 自動備援機制 (Fallback) -->
-    <script>
-      // @ts-ignore
-      window.jQuery || document.write(<?!= JSON.stringify(include("Lib_jQuery")).replace(/<\/script>/gi, '<\\/script>') ?>);
-      // @ts-ignore
-      window.bootstrap || document.write(<?!= JSON.stringify(include("Lib_Bootstrap")).replace(/<\/script>/gi, '<\\/script>') ?>);
-      // @ts-ignore
-      window.Swal || document.write(<?!= JSON.stringify(include("Lib_Swal")).replace(/<\/script>/gi, '<\\/script>') ?>);
-    </script>
-
-    <?!= includeStyles(); ?> <?!= include('Scripts'); ?>
+    <?!= include("Lib_jQuery") ?> <?!= include("Lib_Bootstrap") ?> <?!=
+    include("Lib_Swal") ?> <?!= includeStyles(); ?> <?!= include('Scripts'); ?>
 
     <style>
       /* Index 專屬樣式 */
@@ -80,7 +71,7 @@
         align-items: center;
         justify-content: center;
         font-weight: bold;
-        font-size: 50px;
+        font-size: 45px;
         color: white;
         box-shadow: 0 0 5px rgba(221, 36, 118, 0.6);
         margin: 3px;
@@ -90,6 +81,74 @@
         background: linear-gradient(135deg, #11998e, #38ef7d);
         box-shadow: 0 0 5px rgba(56, 239, 125, 0.6);
       }
+
+      /* 呼吸燈效果動畫：用於極罕見連號警示 */
+      @keyframes pulse-red {
+        0% {
+          box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+          transform: scale(1);
+        }
+        70% {
+          box-shadow: 0 0 0 15px rgba(220, 53, 69, 0);
+          transform: scale(1.01);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+          transform: scale(1);
+        }
+      }
+
+      .anim-pulse {
+        animation: pulse-red 1.5s infinite cubic-bezier(0.66, 0, 0, 1);
+        border: 2px solid #dc3545 !important;
+        font-weight: bold;
+      }
+
+      /* 星光閃爍效果動畫：用於潛力冷門球 */
+      @keyframes twinkle {
+        0%,
+        100% {
+          box-shadow:
+            0 0 5px rgba(255, 255, 0, 0.5),
+            0 0 10px rgba(255, 255, 0, 0.3);
+          transform: scale(1);
+        }
+        50% {
+          box-shadow:
+            0 0 15px rgba(255, 255, 0, 0.8),
+            0 0 25px rgba(255, 255, 0, 0.6);
+          transform: scale(1.05);
+        }
+      }
+      .ball.anim-twinkle {
+        animation: twinkle 2s infinite alternate; /* 調整動畫時間和效果 */
+      }
+
+      /* 過熱風險：顯眼閃爍與陰影效果 */
+      @keyframes overheat-pulse {
+        0% {
+          box-shadow: 0 0 2px rgba(220, 53, 69, 0.4);
+        }
+        50% {
+          box-shadow: 0 0 12px rgba(220, 53, 69, 0.8);
+          transform: scale(1.01);
+        }
+        100% {
+          box-shadow: 0 0 2px rgba(220, 53, 69, 0.4);
+        }
+      }
+      .anim-overheat {
+        animation: overheat-pulse 1s infinite ease-in-out;
+        background: rgba(220, 53, 69, 0.05);
+        border-radius: 4px;
+      }
+
+      /* AI 降權標籤樣式 */
+      .penalty-icon {
+        font-size: 0.7rem;
+        color: #6c757d;
+        cursor: help;
+      }
     </style>
   </head>
 
@@ -97,47 +156,21 @@
     <?!= includeNav(); ?>
 
     <div class="container main-container">
-      <div class="card shadow-sm mb-4">
+      <!-- 前往預測頁面的快捷入口 -->
+      <div class="card border-primary shadow-sm mb-4">
         <div class="card-body">
-          <h5 class="text-center header-text">預測查詢</h5>
-          <div class="row g-3 align-items-end">
-            <div class="col-md-6">
-              <label for="predictDate" class="form-label label-text"
-                >日期</label
-              >
-              <input
-                type="date"
-                class="form-control label-text"
-                id="predictDate"
-              />
-            </div>
-            <div class="col-md-6">
-              <label for="lottoSelect" class="form-label label-text"
-                >選擇彩種</label
-              >
-              <select id="lottoSelect" class="form-select label-text">
-                <option value="L539" selected>今彩 539</option>
-                <option value="L649">大樂透</option>
-                <option value="L638">威力彩</option>
-                <option value="LSix">六合彩</option>
-              </select>
-            </div>
-            <div class="col-12">
-              <div class="d-grid">
-                <button
-                  class="btn btn-primary label-text text-white"
-                  type="button"
-                  id="predictButton"
-                >
-                  <i class="fas fa-search me-2"></i> 預測
-                </button>
-              </div>
-            </div>
-          </div>
+          <h5 class="text-center fw-bold text-primary mb-3">AI 星球規律分析</h5>
+          <p class="text-center text-secondary small">
+            利用星系路徑演算法，為您找出最具潛力的幸運號碼。
+          </p>
+          <button
+            class="btn btn-primary w-100 label-text text-white py-3"
+            onclick="openPageUrl('Predict')"
+          >
+            <i class="fas fa-magic me-2"></i> 前往 AI 智慧預測
+          </button>
         </div>
       </div>
-
-      <hr />
 
       <h2 class="text-center header-text">最新開獎結果</h2>
 
@@ -154,16 +187,6 @@
        */
       (function ($) {
         $(document).ready(function () {
-          const d = new Date();
-          d.setDate(d.getDate() + 1);
-          const dateStr =
-            d.getFullYear() +
-            "-" +
-            String(d.getMonth() + 1).padStart(2, "0") +
-            "-" +
-            String(d.getDate()).padStart(2, "0");
-          $("#predictDate").val(dateStr);
-
           // 使用封裝後的物件
           AppUI.loadingNebula();
 
@@ -251,8 +274,8 @@
             `<div class="alert alert-danger">Error: ${error.message}</div>`,
           );
         };
-      })(jQuery.noConflict());
+      })(jQuery);
     </script>
+    <?!= includeFooter(); ?>
   </body>
-  <?!= includeFooter(); ?>
 </html>

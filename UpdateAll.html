@@ -5,25 +5,20 @@
     <title>Galaxy Lotto Observer - Update All</title>
 
     <!-- 使用 jsDelivr 組合 CSS 請求 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/combine/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css,npm/sweetalert2@11/dist/sweetalert2.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/combine/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css,npm/sweetalert2@11/dist/sweetalert2.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
 
-    <!-- 載入 JS 函式庫 (jQuery, Bootstrap, SweetAlert2) -->
     <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.0/dist/jquery.min.js,npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js,npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 
     <!-- 自動備援機制 (Fallback) -->
-    <script>
-      // @ts-ignore
-      window.jQuery || document.write(<?!= JSON.stringify(include("Lib_jQuery")).replace(/<\/script>/gi, '<\\/script>') ?>);
-      // 同步檢查並載入 Bootstrap 與 SweetAlert2 備援
-      // @ts-ignore
-      window.bootstrap || document.write(<?!= JSON.stringify(include("Lib_Bootstrap")).replace(/<\/script>/gi, '<\\/script>') ?>);
-      // @ts-ignore
-      window.Swal || document.write(<?!= JSON.stringify(include("Lib_Swal")).replace(/<\/script>/gi, '<\\/script>') ?>);
-    </script>
-
-    <?!= includeStyles(); ?>
-    <?!= include('Scripts'); ?>
+    <?!= include("Lib_jQuery") ?> <?!= include("Lib_Bootstrap") ?> <?!=
+    include("Lib_Swal") ?> <?!= includeStyles(); ?> <?!= include('Scripts'); ?>
 
     <style>
       /* UpdateAll 專屬樣式 */
@@ -134,217 +129,222 @@
 
     <script>
       /* global google, AppUI, openPageUrl */
-      (function($) {
+      (function ($) {
         /** @type {string|null} */
         var UpdateStatus = null;
 
-      $(document).ready(function () {
-        $("#btnCmbUpdate").click(handleCmbUpdate);
-        $("#btnCmbStop").click(stopCmbUpdate);
-        $("#btnMissUpdate").click(handleMissUpdate);
-        $("#btnMissStop").click(stopMissUpdate);
-        sessionStorage.removeItem("UpdateStatus");
-        google.script.run.clearProgress("Update_JOB");
-        google.script.run.clearProgress("Miss_JOB");
-      });
-
-      window.handleCmbUpdate = function(e) {
-        if (e) e.preventDefault();
-        var lotto = $("#secLotto").val();
-
-        const startProcess = () => {
-          $("#progressArea").show();
-          updateProgressBar(0, 100, "啟動中...");
-          callCmbUpdate(lotto);
-        };
-        AppUI.confirm("確認更新合併表格?", "這將會從來源抓取新資料。").then((result) => {
-          if (result.isConfirmed) {
-            UpdateStatus = sessionStorage.getItem("UpdateStatus");
-            if (UpdateStatus === null) {
-              sessionStorage.setItem("UpdateStatus", "continue");
-            }
-            window.freeUI("Cmb");
-            startProcess();
-          } else {
-            window.resetUI();
-          }
+        $(document).ready(function () {
+          $("#btnCmbUpdate").click(handleCmbUpdate);
+          $("#btnCmbStop").click(stopCmbUpdate);
+          $("#btnMissUpdate").click(handleMissUpdate);
+          $("#btnMissStop").click(stopMissUpdate);
+          sessionStorage.removeItem("UpdateStatus");
+          google.script.run.clearProgress("Update_JOB");
+          google.script.run.clearProgress("Miss_JOB");
         });
-      };
 
-      window.callCmbUpdate = function(lotto) {
-        UpdateStatus = sessionStorage.getItem("UpdateStatus");
-        // console.log(UpdateStatus);
-        if (UpdateStatus == "stop") {
-          AppUI.error("處理停止", "使用者已手動終止更新").then(() => {
-            sessionStorage.removeItem("UpdateStatus");
-            resetUI();
-            // 必須等待後端 clearProgress 完成後才重新載入頁面
-            // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
-            google.script.run
-              .withSuccessHandler(function () {
-                //重新戴入頁面
-                setTimeout(function () {
-                  openPageUrl("UpdateAll");
-                }, 100);
-              })
-              .withFailureHandler(window.showError)
-              .clearProgress("Update_JOB");
-          });
-          return;
-        } else {
-          google.script.run
-            .withSuccessHandler(function (res) {
-              if (res.status === "continue") {
-                // 計算並更新百分比
-                let percent = Math.round((res.currentIndex / res.total) * 100);
-                updateProgressBar(percent, 100, res.message);
-                // 停上一下再繼續下一回合
-                setTimeout(() => {
-                  callCmbUpdate(lotto);
-                }, 2000);
-              } else if (res.status === "complete") {
-                // 完成
-                updateProgressBar(100, 100, res.message);
-                AppUI.success("處理完成", res.message).then(() => {
-                  sessionStorage.removeItem("UpdateStatus");
-                  window.resetUI();
-                });
-              } else if (res.status === "error") {
-                // 處理錯誤情況
-                AppUI.error("處理失敗", res.message).then(() => {
-                   window.resetUI();
-                });
+        window.handleCmbUpdate = function (e) {
+          if (e) e.preventDefault();
+          var lotto = $("#secLotto").val();
+
+          const startProcess = () => {
+            $("#progressArea").show();
+            updateProgressBar(0, 100, "啟動中...");
+            callCmbUpdate(lotto);
+          };
+          AppUI.confirm("確認更新合併表格?", "這將會從來源抓取新資料。").then(
+            (result) => {
+              if (result.isConfirmed) {
+                UpdateStatus = sessionStorage.getItem("UpdateStatus");
+                if (UpdateStatus === null) {
+                  sessionStorage.setItem("UpdateStatus", "continue");
+                }
+                window.freeUI("Cmb");
+                startProcess();
+              } else {
+                window.resetUI();
               }
-            })
-            .withFailureHandler(AppUI.showCommonError.bind(AppUI))
-            .combineData(lotto);
-        }
-      };
-
-      window.stopCmbUpdate = function() {
-        $("#btnCmbStop")
-          .prop("disabled", true)
-          .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
-        sessionStorage.setItem("UpdateStatus", "stop");
-      };
-
-      window.handleMissUpdate = function(e) {
-        if (e) e.preventDefault();
-        var lotto = $("#secLotto").val();
-
-        const startProcess = () => {
-          $("#progressArea").show();
-          updateProgressBar(0, 100, "啟動中...");
-          callMissUpdate(lotto);
+            },
+          );
         };
-        AppUI.confirm("確認更新遺漏表?").then((result) => {
-          if (result.isConfirmed) {
-            UpdateStatus = sessionStorage.getItem("UpdateStatus");
-            if (UpdateStatus === null) {
-              sessionStorage.setItem("UpdateStatus", "continue");
-            }
-            window.freeUI("Miss");
-            startProcess();
+
+        window.callCmbUpdate = function (lotto) {
+          UpdateStatus = sessionStorage.getItem("UpdateStatus");
+          // console.log(UpdateStatus);
+          if (UpdateStatus == "stop") {
+            AppUI.error("處理停止", "使用者已手動終止更新").then(() => {
+              sessionStorage.removeItem("UpdateStatus");
+              resetUI();
+              // 必須等待後端 clearProgress 完成後才重新載入頁面
+              // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
+              google.script.run
+                .withSuccessHandler(function () {
+                  //重新戴入頁面
+                  setTimeout(function () {
+                    openPageUrl("UpdateAll");
+                  }, 100);
+                })
+                .withFailureHandler(window.showError)
+                .clearProgress("Update_JOB");
+            });
+            return;
           } else {
-            window.resetUI();
-          }
-        });
-      };
-
-      window.callMissUpdate = function(lotto) {
-        UpdateStatus = sessionStorage.getItem("UpdateStatus");
-        // console.log(UpdateStatus);
-        if (UpdateStatus == "stop") {
-          AppUI.error("處理停止", "遺漏表更新已終止").then(() => {
-            sessionStorage.removeItem("UpdateStatus");
-            window.resetUI();
-            // 必須等待後端 clearProgress 完成後才重新載入頁面
-            // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
             google.script.run
-              .withSuccessHandler(function () {
-                //重新戴入頁面
-                setTimeout(function () {
-                  openPageUrl("UpdateAll");
-                }, 100);
+              .withSuccessHandler(function (res) {
+                if (res.status === "continue") {
+                  // 計算並更新百分比
+                  let percent = Math.round(
+                    (res.currentIndex / res.total) * 100,
+                  );
+                  updateProgressBar(percent, 100, res.message);
+                  // 停上一下再繼續下一回合
+                  setTimeout(() => {
+                    callCmbUpdate(lotto);
+                  }, 2000);
+                } else if (res.status === "complete") {
+                  // 完成
+                  updateProgressBar(100, 100, res.message);
+                  AppUI.success("處理完成", res.message).then(() => {
+                    sessionStorage.removeItem("UpdateStatus");
+                    window.resetUI();
+                  });
+                } else if (res.status === "error") {
+                  // 處理錯誤情況
+                  AppUI.error("處理失敗", res.message).then(() => {
+                    window.resetUI();
+                  });
+                }
               })
-              .withFailureHandler(window.showError)
-              .clearProgress("Miss_JOB");
-          });
-          return;
-        } else {
-          google.script.run
-            .withSuccessHandler(function (res) {
-              if (res.status === "continue") {
-                // 計算並更新百分比
-                let percent = Math.round((res.currentIndex / res.total) * 100);
-                updateProgressBar(percent, 100, res.message);
-                // 停上一下再繼續下一回合
-                setTimeout(() => {
-                  callMissUpdate(lotto);
-                }, 2000);
-              } else if (res.status === "complete") {
-                // 完成
-                updateProgressBar(100, 100, res.message);
-                AppUI.success("處理完成", res.message).then(() => {
-                  sessionStorage.removeItem("UpdateStatus");
-                  window.resetUI();
-                });
-              } else if (res.status === "error") {
-                // 處理錯誤情況
-                AppUI.error("處理失敗", res.message).then(() => {
-                  window.resetUI();
-                });
+              .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+              .combineData(lotto);
+          }
+        };
+
+        window.stopCmbUpdate = function () {
+          $("#btnCmbStop")
+            .prop("disabled", true)
+            .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
+          sessionStorage.setItem("UpdateStatus", "stop");
+        };
+
+        window.handleMissUpdate = function (e) {
+          if (e) e.preventDefault();
+          var lotto = $("#secLotto").val();
+
+          const startProcess = () => {
+            $("#progressArea").show();
+            updateProgressBar(0, 100, "啟動中...");
+            callMissUpdate(lotto);
+          };
+          AppUI.confirm("確認更新遺漏表?").then((result) => {
+            if (result.isConfirmed) {
+              UpdateStatus = sessionStorage.getItem("UpdateStatus");
+              if (UpdateStatus === null) {
+                sessionStorage.setItem("UpdateStatus", "continue");
               }
-            })
-            .withFailureHandler(AppUI.showCommonError.bind(AppUI))
-            .genMissData(lotto);
-        }
-      };
+              window.freeUI("Miss");
+              startProcess();
+            } else {
+              window.resetUI();
+            }
+          });
+        };
 
-      window.stopMissUpdate = function() {
-        $("#btnMissStop")
-          .prop("disabled", true)
-          .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
-        sessionStorage.setItem("UpdateStatus", "stop");
-      };
+        window.callMissUpdate = function (lotto) {
+          UpdateStatus = sessionStorage.getItem("UpdateStatus");
+          // console.log(UpdateStatus);
+          if (UpdateStatus == "stop") {
+            AppUI.error("處理停止", "遺漏表更新已終止").then(() => {
+              sessionStorage.removeItem("UpdateStatus");
+              window.resetUI();
+              // 必須等待後端 clearProgress 完成後才重新載入頁面
+              // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
+              google.script.run
+                .withSuccessHandler(function () {
+                  //重新戴入頁面
+                  setTimeout(function () {
+                    openPageUrl("UpdateAll");
+                  }, 100);
+                })
+                .withFailureHandler(window.showError)
+                .clearProgress("Miss_JOB");
+            });
+            return;
+          } else {
+            google.script.run
+              .withSuccessHandler(function (res) {
+                if (res.status === "continue") {
+                  // 計算並更新百分比
+                  let percent = Math.round(
+                    (res.currentIndex / res.total) * 100,
+                  );
+                  updateProgressBar(percent, 100, res.message);
+                  // 停上一下再繼續下一回合
+                  setTimeout(() => {
+                    callMissUpdate(lotto);
+                  }, 2000);
+                } else if (res.status === "complete") {
+                  // 完成
+                  updateProgressBar(100, 100, res.message);
+                  AppUI.success("處理完成", res.message).then(() => {
+                    sessionStorage.removeItem("UpdateStatus");
+                    window.resetUI();
+                  });
+                } else if (res.status === "error") {
+                  // 處理錯誤情況
+                  AppUI.error("處理失敗", res.message).then(() => {
+                    window.resetUI();
+                  });
+                }
+              })
+              .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+              .genMissData(lotto);
+          }
+        };
 
-      window.updateProgressBar = function(percent, total, message) {
-        $("#progressBar").width(percent + "%");
-        $("#progressPercent").text(percent + "%");
-        $("#progressLabel").text(message);
-      };
+        window.stopMissUpdate = function () {
+          $("#btnMissStop")
+            .prop("disabled", true)
+            .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
+          sessionStorage.setItem("UpdateStatus", "stop");
+        };
 
-      window.freeUI = function(btn) {
-        $("#btnCmbUpdate").prop("disabled", true);
-        $("#btnCmbStop").prop("disabled", !(btn === "Cmb"));
-        $("#btnMissUpdate").prop("disabled", true);
-        $("#btnMissStop").prop("disabled", !(btn === "Miss"));
-        $("#secLotto").prop("disabled", true);
-      };
+        window.updateProgressBar = function (percent, total, message) {
+          $("#progressBar").width(percent + "%");
+          $("#progressPercent").text(percent + "%");
+          $("#progressLabel").text(message);
+        };
 
-      window.resetUI = function() {
-        $("#btnCmbUpdate").prop("disabled", false);
-        $("#btnCmbStop")
-          .prop("disabled", true)
-          .html('<i class="fas fa-stop me-2"></i> 合併表格停止');
-        $("#btnMissUpdate").prop("disabled", false);
-        $("#btnMissStop")
-          .prop("disabled", true)
-          .html('<i class="fas fa-stop me-2"></i> 遺漏表停止');
-        $("#secLotto").prop("disabled", false);
-        $("#progressArea").fadeOut();
-        $("#progressBar").width("0%");
-        $("#progressPercent").text("0%");
-        sessionStorage.removeItem("UpdateStatus");
-      };
+        window.freeUI = function (btn) {
+          $("#btnCmbUpdate").prop("disabled", true);
+          $("#btnCmbStop").prop("disabled", !(btn === "Cmb"));
+          $("#btnMissUpdate").prop("disabled", true);
+          $("#btnMissStop").prop("disabled", !(btn === "Miss"));
+          $("#secLotto").prop("disabled", true);
+        };
 
-      window.showError = function(err) {
-        window.resetUI();
-        AppUI.showCommonError(err);
-      };
+        window.resetUI = function () {
+          $("#btnCmbUpdate").prop("disabled", false);
+          $("#btnCmbStop")
+            .prop("disabled", true)
+            .html('<i class="fas fa-stop me-2"></i> 合併表格停止');
+          $("#btnMissUpdate").prop("disabled", false);
+          $("#btnMissStop")
+            .prop("disabled", true)
+            .html('<i class="fas fa-stop me-2"></i> 遺漏表停止');
+          $("#secLotto").prop("disabled", false);
+          $("#progressArea").fadeOut();
+          $("#progressBar").width("0%");
+          $("#progressPercent").text("0%");
+          sessionStorage.removeItem("UpdateStatus");
+        };
 
-      })(jQuery.noConflict());
+        window.showError = function (err) {
+          window.resetUI();
+          AppUI.showCommonError(err);
+        };
+      })(jQuery);
     </script>
+    <?!= includeFooter(); ?>
   </body>
-  <?!= includeFooter(); ?>
 </html>

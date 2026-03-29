@@ -12,6 +12,25 @@
     <span class="navbar-brand mb-0 h1 text-white mx-auto"
       >Galaxy Lotto 管理系統</span
     >
+    <!-- 系統狀態指示燈 (修正定位確保顯示) -->
+    <div
+      class="position-absolute end-0 me-2"
+      style="top: 50%; transform: translateY(-50%); z-index: 1030"
+    >
+      <span
+        id="cacheStatusBadge"
+        class="badge rounded-pill bg-secondary"
+        style="
+          font-size: 10px;
+          cursor: help;
+          min-width: 60px;
+          display: inline-block;
+        "
+        title="檢查快取狀態..."
+      >
+        <i class="fas fa-circle-notch fa-spin"></i>
+      </span>
+    </div>
   </div>
 </nav>
 
@@ -48,6 +67,17 @@
       <li class="nav-item">
         <a
           class="nav-link text-primary"
+          id="navPredict"
+          href="javascript:void(0)"
+          onclick="openPageUrl('Predict')"
+        >
+          <i class="fas fa-magic me-2"></i>星系預測
+        </a>
+      </li>
+
+      <li class="nav-item">
+        <a
+          class="nav-link text-primary"
           id="navDaily"
           href="javascript:void(0)"
           onclick="openPageUrl('UpdateAll')"
@@ -55,6 +85,119 @@
           <i class="fas fa-sync-alt me-2"></i>資料維護
         </a>
       </li>
+
+      <hr class="my-2" />
+
+      <li class="nav-item">
+        <a
+          class="nav-link text-danger"
+          id="navClearCache"
+          href="javascript:void(0)"
+          onclick="handleClearCache()"
+        >
+          <i class="fas fa-broom me-2"></i>清理快取
+        </a>
+      </li>
     </ul>
   </div>
 </div>
+
+<script>
+  /**
+   * 處理清理快取的 UI 邏輯
+   */
+  function handleClearCache() {
+    // 1. 關閉 Offcanvas 導覽列
+    const offcanvasElement = document.querySelector("#offcanvasNavbar");
+    if (offcanvasElement) {
+      const bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+      if (bsOffcanvas) bsOffcanvas.hide();
+    }
+
+    // 2. 彈出確認視窗
+    AppUI.confirm(
+      "確定要清理系統快取？",
+      "這將會清除所有暫存的頁面與設定資料，下次載入時會重新從伺服器獲取。",
+    ).then((result) => {
+      if (result.isConfirmed) {
+        // 3. 顯示 Loading
+        AppUI.loading("清理中", "正在清除星系快取資料...");
+
+        // 4. 呼叫後端 clearAllCache
+        google.script.run
+          .withSuccessHandler(function (res) {
+            // 備份當前預測設定
+            const backup = {
+              lotto: $("#lottoSelect").val(),
+              date: $("#predictDate").val(),
+              useTrend: $("#useTrend").is(":checked"),
+              isReloaded: true
+            };
+            localStorage.setItem("sys_backup_settings", JSON.stringify(backup));
+
+            // 清除客戶端本地儲存 (如低捕捉率計數器)
+            localStorage.clear();
+            // 顯示成功訊息，並在使用者關閉視窗後重新載入頁面
+            AppUI.success(
+              "清理完成",
+              "星系快取已重置，頁面即將重新載入。",
+              3000,
+            ).then(() => {
+              window.open(SCRIPT_URL, "_top");
+            });
+          })
+          .withFailureHandler(function (err) {
+            AppUI.showCommonError(err);
+          })
+          .clearAllCache();
+      }
+    });
+  }
+
+  // --- 腳本容錯與載入優化 ---
+  // 確保 jQuery 載入完成後才執行 setupNav
+  (function initNav() {
+    const checkJQuery = setInterval(() => {
+      if (window.jQuery) {
+        clearInterval(checkJQuery);
+        setupNav();
+      }
+    }, 50); // 每 50ms 檢查一次
+
+    // 若 3 秒後仍未載入則停止檢查，避免無限迴圈
+    setTimeout(() => {
+      if (!window.jQuery)
+        console.error("jQuery 載入超時，部分功能可能無法使用。");
+      clearInterval(checkJQuery);
+    }, 3000);
+  })();
+
+  function setupNav() {
+    $(document).ready(function () {
+      checkSystemStatus();
+    });
+  }
+
+  function checkSystemStatus() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        const $badge = $("#cacheStatusBadge");
+        if (res.ok) {
+          $badge
+            .removeClass("bg-secondary")
+            .addClass("bg-success")
+            .html(
+              '<i class="fas fa-check-circle me-1"></i>快取: ' + res.version,
+            )
+            .attr("title", "系統快取功能正常運作中");
+        } else {
+          $badge
+            .removeClass("bg-secondary")
+            .addClass("bg-danger")
+            .html('<i class="fas fa-times-circle me-1"></i>快取異常')
+            .attr("title", "快取失敗: " + res.message);
+        }
+      })
+      .getCacheStatus();
+  }
+</script>
