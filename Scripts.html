@@ -4,20 +4,22 @@
    * 驗證 jQuery, Bootstrap, SweetAlert2 是否已定義
    */
   (function () {
-    const libs = {
+    var libs = {
       jQuery: typeof jQuery !== "undefined",
       Bootstrap: typeof bootstrap !== "undefined",
       SweetAlert2: typeof Swal !== "undefined",
     };
 
-    const missing = Object.keys(libs).filter((name) => !libs[name]);
+    var missing = Object.keys(libs).filter(function (name) {
+      return !libs[name];
+    });
 
     if (missing.length > 0) {
-      const errorMsg = "關鍵函式庫載入失敗: " + missing.join(", ");
+      var errorMsg = "關鍵函式庫載入失敗: " + missing.join(", ");
       console.error(errorMsg);
       // 若檢測到缺失，等待 1.5 秒後再次檢查（給予 Fallback 腳本一點時間）
-      setTimeout(() => {
-        const stillMissing = missing.some((name) => {
+      setTimeout(function () {
+        var stillMissing = missing.some(function (name) {
           if (name === "jQuery") return typeof window.jQuery === "undefined";
           if (name === "Bootstrap")
             return typeof window.bootstrap === "undefined";
@@ -40,13 +42,13 @@
    */
   function injectScriptContent(scriptContent) {
     try {
-      const script = document.createElement("script");
+      var script = document.createElement("script");
       // 使用 .text 屬性處理大型腳本字串在部分環境下的相容性
       script.text = scriptContent;
       document.head.appendChild(script);
       console.log("Fallback script injected via DOM.");
     } catch (e) {
-      console.warn("DOM 注入失敗，嘗試使用 eval 載入:", e);
+      console.warn("DOM 注入失敗:", e);
       eval(scriptContent);
     }
   }
@@ -54,27 +56,44 @@
   /**
    * 共用頁面跳轉函式
    */
-  const SCRIPT_URL = "<?!= getScriptUrl() ?>";
+  var SCRIPT_URL = "<?!= getScriptUrl() ?>";
 
-  function openPageUrl(pageName, target = "_top") {
+  function openPageUrl(pageName, target, forceReload) {
+    target = target || "_top";
+    pageName = pageName || "Index";
+
     if (target === "_self" || target === "_top") {
       // 1. 自動關閉 Bootstrap 的 Offcanvas 導覽列
       if (typeof bootstrap !== "undefined") {
-        const offcanvasElement = document.querySelector(".offcanvas.show");
+        var offcanvasElement = document.querySelector(".offcanvas.show");
         if (offcanvasElement) {
-          const bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+          var bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
           if (bsOffcanvas) bsOffcanvas.hide();
         }
       }
 
-      // 2. 顯示頁面切換 Loading (使用重構後的 AppUI)
-      if (window.AppUI) {
+      // 2. 顯示頁面切換 Loading (若為強制重載則跳過，避免與成功訊息衝突)
+      if (window.AppUI && !forceReload) {
         AppUI.loading("頁面跳轉中", "正在載入，請稍候...");
       }
 
-      window.open(SCRIPT_URL + "?page=" + pageName, "_top");
+      // 3. 組合 URL，若 forceReload 為 true 則加上時間戳記避開快取
+      var url =
+        SCRIPT_URL +
+        (SCRIPT_URL.indexOf("?") === -1 ? "?" : "&") +
+        "page=" +
+        pageName;
+      if (forceReload) url += "&t=" + Date.now();
+
+      window.open(url, "_top");
     } else {
-      window.open(SCRIPT_URL + "?page=" + pageName, target);
+      var url =
+        SCRIPT_URL +
+        (SCRIPT_URL.indexOf("?") === -1 ? "?" : "&") +
+        "page=" +
+        pageName +
+        (forceReload ? "&t=" + Date.now() : "");
+      window.open(url, target);
     }
   }
 
@@ -82,26 +101,31 @@
    * 全域 UI 控制物件
    */
   window.AppUI = {
-    // 通用 Loading
-    loading: function (title = "處理中", text = "請稍候...", options = {}) {
+    /** 通用 Loading 效果 */
+    loading: function (title, text, options) {
+      title = title || "處理中";
+      text = text || "請稍候...";
+      options = options || {};
       if (typeof Swal === "undefined") {
         console.warn("Swal 未定義，降級使用 console 紀錄");
         return Promise.resolve();
       }
-      return Swal.fire({
+
+      var swalOptions = {
         title: title,
         text: text,
         allowOutsideClick: false,
         showConfirmButton: false,
-        didOpen: () => {
+        didOpen: function () {
           Swal.showLoading();
         },
-        ...options,
-      });
+      };
+      return Swal.fire(Object.assign(swalOptions, options));
     },
 
     // 科技感 Loading (Nebula Style)
-    loadingNebula: function (text = "正在獲取最新開獎紀錄") {
+    loadingNebula: function (text) {
+      text = text || "正在獲取最新開獎紀錄";
       return this.loading(
         '<span style="letter-spacing: 2px;">SCANNING NEBULA</span>',
         text,
@@ -115,7 +139,8 @@
     },
 
     // 彈出 HTML 內容視窗
-    alertHtml: function (title, html, width = "600px") {
+    alertHtml: function (title, html, width) {
+      width = width || "600px";
       return Swal.fire({
         title: title,
         html: html,
@@ -131,45 +156,120 @@
     },
 
     // 成功提示
-    success: function (title, text, timer = 2000) {
-      let timerInterval;
+    success: function (title, text, timer) {
+      if (timer === undefined) timer = 2000;
+      var timerInterval;
       return Swal.fire({
         icon: "success",
         title: title,
         html:
-          `<div>${text}</div>` +
+          "<div>" +
+          text +
+          "</div>" +
           (timer
-            ? `<div class="mt-3 small text-muted">視窗將在 <b></b> 秒後自動關閉並重載</div>`
+            ? '<div class="mt-3 small text-muted">視窗將在 <b></b> 秒後自動關閉</div>'
             : ""),
         timer: timer,
         timerProgressBar: !!timer,
         showConfirmButton: !timer,
-        didOpen: () => {
+        didOpen: function () {
           if (timer) {
-            const b = Swal.getHtmlContainer().querySelector("b");
-            timerInterval = setInterval(() => {
-              const timeLeft = Swal.getTimerLeft();
+            var b = Swal.getHtmlContainer().querySelector("b");
+            timerInterval = setInterval(function () {
+              var timeLeft = Swal.getTimerLeft();
               if (b) b.textContent = Math.ceil(timeLeft / 1000);
             }, 100);
           }
         },
-        willClose: () => {
+        willClose: function () {
           clearInterval(timerInterval);
         },
       });
     },
 
     // 錯誤提示
-    error: function (title, text) {
-      return Swal.fire({
+    error: function (title, text, debugInfo, showRetry) {
+      window._lastErrorTitle = title;
+      window._lastErrorText = text;
+      var options = {
         icon: "error",
         title: title,
         text: text || "發生未知錯誤",
+      };
+
+      // 在頁尾增加功能按鈕區
+      var footerLinks = [];
+      if (debugInfo && debugInfo.stack) {
+        window._lastDebugStack = debugInfo.stack;
+        footerLinks.push(
+          '<a href="javascript:void(0)" onclick="AppUI.showDebugStack()" class="text-danger fw-bold small"><i class="fas fa-bug me-1"></i>查看詳細錯誤</a>',
+        );
+      }
+      footerLinks.push(
+        '<a href="javascript:void(0)" onclick="AppUI.copyErrorInfo()" class="text-secondary small ms-3"><i class="fas fa-copy me-1"></i>複製錯誤回報</a>',
+      );
+      if (showRetry) {
+        footerLinks.push(
+          '<a href="javascript:void(0)" onclick="clearCacheAndRetry()" class="text-primary fw-bold small ms-3"><i class="fas fa-sync me-1"></i>清理快取並重試</a>',
+        );
+      }
+
+      options.footer =
+        '<div class="d-flex justify-content-center w-100">' +
+        footerLinks.join("") +
+        "</div>";
+
+      return Swal.fire(options);
+    },
+
+    // 複製錯誤資訊到剪貼簿供回報使用
+    copyErrorInfo: function () {
+      var report =
+        "【Galaxy Lotto 系統錯誤回報】\n" +
+        "時間：" +
+        new Date().toLocaleString() +
+        "\n" +
+        "標題：" +
+        (window._lastErrorTitle || "N/A") +
+        "\n" +
+        "內容：" +
+        (window._lastErrorText || "N/A") +
+        "\n";
+
+      if (window._lastDebugStack) {
+        report += "\n--- Stack Trace ---\n" + window._lastDebugStack;
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(report).then(function () {
+          AppUI.toast("錯誤資訊已複製到剪貼簿", "success");
+        });
+      } else {
+        // 針對舊版環境的備援方案
+        console.log("Clipboard API 不可用，回傳格式化內容：", report);
+        AppUI.toast("複製失敗，請開啟控制台手動複製", "error");
+      }
+    },
+
+    // 顯示堆疊追蹤資訊
+    showDebugStack: function (stack) {
+      var content = stack || window._lastDebugStack || "無可用堆疊資訊";
+      return Swal.fire({
+        title: "詳細錯誤資訊 (Stack Trace)",
+        html:
+          '<pre class="text-start bg-light p-3 border rounded" style="font-size: 13px; max-height: 450px; overflow: auto; white-space: pre-wrap; font-family: Consolas, monospace;">' +
+          content +
+          "</pre>",
+        width: "90%",
+        confirmButtonText: "關閉",
+        showCloseButton: true,
       });
     },
 
     // 確認視窗
-    confirm: function (title, text = "", timer = null) {
+    confirm: function (title, text, timer) {
+      text = text || "";
+      timer = timer || null;
       return Swal.fire({
         title: title,
         text: text,
@@ -183,30 +283,34 @@
     },
 
     // Toast 吐司訊息 (非阻斷式通知)
-    toast: function (title, icon = "success", timer = 3000) {
-      const Toast = Swal.mixin({
+    toast: function (title, icon, timer) {
+      icon = icon || "success";
+      timer = timer || 3000;
+      var Toast = Swal.mixin({
         toast: true,
         position: "top-end",
         showConfirmButton: false,
         timer: timer,
         timerProgressBar: true,
-        didOpen: (toast) => {
-          toast.onmouseenter = Swal.stopTimer;
-          toast.onmouseleave = Swal.resumeTimer;
+        didOpen: function (toast) {
+          toast.addEventListener("mouseenter", Swal.stopTimer);
+          toast.addEventListener("mouseleave", Swal.resumeTimer);
         },
       });
-      return Toast.fire({ icon, title });
+      return Toast.fire({ icon: icon, title: title });
     },
 
-    // 關閉視窗
+    /** 關閉當前所有 SweetAlert2 視窗 */
     close: function () {
       Swal.close();
     },
 
-    // 系統錯誤處理
+    /** 統一的系統錯誤處理入口 */
     showCommonError: function (error) {
-      console.error(error);
-      this.error("系統錯誤", error.message || error);
+      console.error("AppUI System Error:", error);
+      // 確保 errorMsg 永遠是字串，避免 Swal 渲染異常
+      const errorMsg = error && error.message ? error.message : String(error);
+      this.error("系統錯誤", errorMsg);
     },
   };
 

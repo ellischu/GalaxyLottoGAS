@@ -3,6 +3,7 @@
   body {
     background-color: #f8f9fa;
     font-family: "Microsoft JhengHei", Arial, sans-serif;
+    line-height: 1.6;
   }
 
   .navbar-custom {
@@ -13,8 +14,10 @@
   .main-container {
     margin: 20px auto;
     padding: 15px;
+    max-width: 1080px;
   }
 
+  /* 卡片與按鈕基礎樣式 */
   .menu-btn {
     height: 80px;
     display: flex;
@@ -28,9 +31,454 @@
     transform: scale(0.98);
   }
 
+  .card:hover {
+    transform: translateY(-5px);
+    border-color: #00d2ff;
+    transition:
+      transform 0.2s,
+      border-color 0.2s;
+  }
+
+  .card-header {
+    margin-bottom: 0;
+    font-size: 1.75rem;
+  }
+
+  /* 文字樣式：預設為桌機版，rem 確保基礎可讀性 */
   .label-text {
     color: #6c757d;
     font-weight: bold;
+    font-size: calc(2.25rem * var(--font-scale));
+    margin-bottom: 5px;
+  }
+
+  .header-text {
+    font-size: 3.5rem;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .value-text {
+    font-weight: bold;
+    font-size: 2.25rem;
+  }
+
+  .title-text-shadow {
+    text-shadow: 3px 3px 5px rgb(30, 242, 104);
+  }
+
+  /* 球體樣式 */
+  .ball {
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(135deg, #ff512f, #dd2476);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 4rem;
+    color: white;
+    box-shadow: 0 0 5px rgba(221, 36, 118, 0.6);
+    margin: 3px;
+  }
+
+  .ball.special {
+    background: linear-gradient(135deg, #11998e, #38ef7d);
+    box-shadow: 0 0 5px rgba(56, 239, 125, 0.6);
+  }
+
+  /* 動畫效果 */
+  @keyframes pulse-red {
+    0% {
+      box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+      transform: scale(1);
+    }
+    30% {
+      transform: scale(1.1);
+    }
+    50% {
+      transform: scale(0.96);
+    }
+    70% {
+      box-shadow: 0 0 0 15px rgba(220, 53, 69, 0);
+      transform: scale(1.04);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+      transform: scale(1);
+    }
+  }
+  .anim-pulse {
+    animation: pulse-red 1.2s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+    border: 2px solid #dc3545 !important;
+  }
+
+  @keyframes pulse-purple {
+    0% {
+      box-shadow: 0 0 0 0 rgba(111, 66, 193, 0.7);
+      transform: scale(1);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(111, 66, 193, 0);
+      transform: scale(1.05);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(111, 66, 193, 0);
+      transform: scale(1);
+    }
+  }
+  .anim-pulse-purple {
+    animation: pulse-purple 1.5s infinite ease-in-out;
+    background-color: #6f42c1 !important;
+    position: relative;
+    overflow: hidden; /* 確保流光不會超出徽章邊界 */
+  }
+
+  @keyframes gold-glitter {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  .badge-hit-glitter {
+    background: linear-gradient(
+      -45deg,
+      #ffd700,
+      #ffae00,
+      #fff9aa,
+      #ffae00,
+      #ffd700
+    );
+    background-size: 400% 400%;
+    animation: gold-glitter 3s ease infinite;
+    color: #5c4300 !important;
+    font-weight: bold !important;
+    border: 1px solid #ffcc00 !important;
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.8);
+    text-shadow: 0 0 2px rgba(255, 255, 255, 0.5);
+  }
+
+  /* 增加光暈流光效果 (Shimmer Effect) */
+  .anim-pulse-purple::after {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -150%;
+    width: 50%;
+    height: 200%;
+    background: linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.4) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    transform: rotate(25deg);
+    animation: shimmer 3s infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      left: -150%;
+    }
+    100% {
+      left: 150%;
+    }
+  }
+
+  @keyframes twinkle {
+    0%,
+    100% {
+      box-shadow: 0 0 5px rgba(255, 255, 0, 0.5);
+      transform: scale(1);
+    }
+    50% {
+      box-shadow: 0 0 15px rgba(255, 255, 0, 0.8);
+      transform: scale(1.05);
+    }
+  }
+  .ball.anim-twinkle {
+    animation: twinkle 2s infinite alternate;
+  }
+
+  @keyframes overheat-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 2px rgba(220, 53, 69, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 12px rgba(220, 53, 69, 0.8);
+      transform: scale(1.01);
+    }
+  }
+  .anim-overheat {
+    animation: overheat-pulse 1s infinite ease-in-out;
+    background: rgba(220, 53, 69, 0.05);
+  }
+
+  .penalty-icon {
+    font-size: calc(1.4rem * var(--font-scale));
+    color: #dc3545; /* 改為紅色更具警示感 */
+    cursor: pointer;
+    top: calc(
+      3.2rem * var(--font-scale)
+    ); /* 向下移動，避開上方狀態標籤並落在球體上 */
+    left: 50%;
+    margin-left: calc(
+      2.2rem * var(--font-scale)
+    ); /* 縮減水平偏移，使其更貼合球體內圈 */
+    z-index: 3;
+    text-shadow:
+      1px 1px 3px rgba(255, 255, 255, 0.9),
+      0 0 5px rgba(0, 0, 0, 0.2);
+    animation: penalty-blink 0.8s infinite alternate ease-in-out;
+  }
+
+  /* 強化開關控制項 (Switch) 的觸控面積與比例 */
+  .form-check-input {
+    width: calc(4rem * var(--font-scale)) !important;
+    height: calc(2rem * var(--font-scale)) !important;
+    margin-top: 0 !important;
+    /* 確保內部的開關圓鈕或勾選勾勾隨比例縮放 */
+    background-size: calc(1.5rem * var(--font-scale)) !important;
+    cursor: pointer;
+    transition:
+      box-shadow 0.2s ease-in-out,
+      border-color 0.2s ease-in-out,
+      transform 0.1s ease-in-out !important;
+  }
+
+  /* 增加點擊時的縮放與微弱震動回饋 (Haptic Feedback 視覺版) */
+  .form-check-input:active {
+    animation: haptic-vibrate 0.1s linear infinite;
+  }
+
+  @keyframes haptic-vibrate {
+    0% {
+      transform: scale(0.96) translate(0, 0);
+    }
+    25% {
+      transform: scale(0.96)
+        translate(calc(1px * var(--font-scale)), calc(-1px * var(--font-scale)));
+    }
+    50% {
+      transform: scale(0.96)
+        translate(calc(-1px * var(--font-scale)), calc(1px * var(--font-scale)));
+    }
+    75% {
+      transform: scale(0.96)
+        translate(calc(1px * var(--font-scale)), calc(1px * var(--font-scale)));
+    }
+    100% {
+      transform: scale(0.96) translate(0, 0);
+    }
+  }
+
+  .form-check-input:checked {
+    box-shadow: 0 0 calc(12px * var(--font-scale)) rgba(13, 110, 253, 0.5) !important;
+    border-color: rgba(13, 110, 253, 0.8) !important;
+  }
+
+  .form-check {
+    padding-left: calc(4.8rem * var(--font-scale));
+    min-height: calc(2.5rem * var(--font-scale));
+    display: flex;
+    align-items: center;
+  }
+
+  /* 修正開關外觀，使其維持膠囊狀圓角 */
+  .form-switch .form-check-input {
+    border-radius: calc(2rem * var(--font-scale)) !important;
+  }
+
+  .form-check-label {
+    margin-left: 10px;
+  }
+
+  /* 詳細分析模式啟用時的強化樣式 */
+  .detailed-label-active {
+    color: #052c65 !important; /* 極高對比深藍 */
+    text-shadow: 0 0 10px rgba(13, 110, 253, 0.2);
+    transition: all 0.3s ease;
+  }
+
+  /* 圖表下方圖例專屬樣式：縮小勾選框，放大文字 */
+  .chart-legend-container {
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 10px;
+  }
+
+  .chart-legend-container .form-check {
+    padding-left: calc(2.2rem * var(--font-scale));
+    margin-bottom: 5px;
+  }
+
+  .chart-legend-container .form-check-input {
+    width: calc(1.6rem * var(--font-scale)) !important;
+    height: calc(1.6rem * var(--font-scale)) !important;
+    background-size: calc(1rem * var(--font-scale)) !important;
+  }
+
+  .chart-legend-container .form-check-label {
+    font-size: calc(1.4rem * var(--font-scale)) !important;
+    color: #495057;
+    font-weight: 500;
+    border: 2px solid transparent;
+    padding: 2px 10px;
+    border-radius: 6px;
+    background: white;
+    transition: all 0.2s ease;
+  }
+
+  [data-bs-theme="dark"] .detailed-label-active {
+    color: #cfe2ff !important; /* 深色模式下的高亮藍 */
+    text-shadow: 0 0 15px rgba(13, 110, 253, 0.6);
+  }
+
+  @keyframes penalty-blink {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0.6;
+      transform: scale(1.2);
+    }
+  }
+
+  /* 手指觸控友善按鈕 */
+  #predictButton,
+  #goToPredictBtn {
+    padding: 0.8rem 1.5rem;
+    min-height: 3.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      transform 0.1s ease,
+      filter 0.1s ease;
+  }
+
+  #predictButton:active,
+  #goToPredictBtn:active {
+    transform: scale(0.96);
+    filter: brightness(0.85);
+  }
+
+  /* Footer 樣式 */
+  .footer-section {
+    margin-top: 50px;
+    padding: 20px 0;
+    text-align: center;
+    border-top: 1px solid #dee2e6;
+    color: #6c757d;
+  }
+  .footer-section a {
+    color: #dc3545;
+    text-decoration: none;
+    font-weight: bold;
+  }
+
+  /* === 響應式優化：針對平板與手機 (解決顯示太小的問題) === */
+  @media (max-width: 992px) {
+    .header-text {
+      font-size: 3rem;
+    }
+    .card-header {
+      font-size: 2.8rem;
+    }
+    .label-text,
+    .value-text {
+      font-size: 2.2rem;
+    }
+    .ball {
+      width: 100px;
+      height: 100px;
+      font-size: 3.5rem;
+    }
+    #predictButton,
+    #goToPredictBtn {
+      min-height: 6rem;
+    }
+  }
+
+  @media (max-width: 576px) {
+    .header-text {
+      font-size: 3.5rem;
+    } /* 手機版標題要更醒目 */
+    .label-text,
+    .value-text {
+      font-size: 2.5rem;
+    }
+    .ball {
+      width: 90px;
+      height: 90px;
+      font-size: 3.2rem;
+    }
+    #predictButton,
+    #goToPredictBtn {
+      min-height: 7rem;
+      font-size: 2.5rem;
+    }
+    .main-container {
+      padding: 10px;
+    }
+  }
+
+  /* === 夜間模式 (Dark Mode) === */
+  [data-bs-theme="dark"] body {
+    background-color: #121212;
+    color: #e0e0e0;
+  }
+  [data-bs-theme="dark"] .card {
+    background-color: #1e1e1e;
+    border-color: #333;
+  }
+  [data-bs-theme="dark"] .card-body,
+  [data-bs-theme="dark"] .card-header {
+    color: #fff;
+  }
+  [data-bs-theme="dark"] .text-secondary {
+    color: #b0b0b0 !important;
+  }
+  [data-bs-theme="dark"] .bg-light-subtle {
+    background-color: #2a2a2a !important;
+  }
+  [data-bs-theme="dark"] .table {
+    color: #e0e0e0;
+  }
+  [data-bs-theme="dark"] .table-light {
+    --bs-table-bg: #2d2d2d;
+    --bs-table-color: #fff;
+  }
+
+  /* === Retina 高解析度螢幕優化 (High DPI Optimization) === */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .ball {
+      /* 使用多重精細陰影提升立體感與邊緣平滑度 */
+      box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.15),
+        inset 0 -3px 6px rgba(0, 0, 0, 0.2),
+        inset 0 2px 4px rgba(255, 255, 255, 0.3);
+      /* 開啟字體平滑抗鋸齒 */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      /* 強制 GPU 渲染以確保漸層邊緣細緻 */
+      transform: translateZ(0);
+    }
+    .ball.special {
+      box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.15),
+        inset 0 -3px 6px rgba(0, 0, 0, 0.2),
+        inset 0 2px 4px rgba(255, 255, 255, 0.3);
+    }
   }
 
   /* 自定義 SweetAlert2 Loading 顏色 (當不使用 loaderHtml 時) */
@@ -42,5 +490,63 @@
   .swal2-popup {
     border-radius: 15px !important;
     padding: 2rem !important;
+  }
+
+  /* 吉星與凶星組合樣式 */
+  .lucky-combo {
+    color: #198754;
+    font-weight: bold;
+    background-color: #d1e7dd;
+    padding: 1px 4px;
+    border-radius: 4px;
+    border: 1px solid #badbcc;
+    white-space: nowrap;
+  }
+
+  .unlucky-combo {
+    color: #dc3545;
+    font-weight: bold;
+    background-color: #f8d7da;
+    padding: 1px 4px;
+    border-radius: 4px;
+    border: 1px solid #f5c2c7;
+    white-space: nowrap;
+  }
+
+  /* 週期性指標對比樣式 */
+  .comp-match {
+    color: #198754 !important;
+    background-color: #d1e7dd !important;
+    font-weight: bold;
+  }
+  .comp-mismatch {
+    color: #6c757d !important;
+    opacity: 0.7;
+  }
+
+  /* 微光載入動畫 (Shimmer Loading) */
+  .loading-shimmer {
+    background-color: rgba(0, 0, 0, 0.05) !important;
+    position: relative;
+    overflow: hidden;
+    min-height: 1.2rem;
+    display: inline-block;
+    border-radius: 4px;
+  }
+
+  .loading-shimmer::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -150%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.4) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    animation: shimmer 2s infinite;
   }
 </style>

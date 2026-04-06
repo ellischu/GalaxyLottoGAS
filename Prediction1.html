@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <?!= includeStyles(); ?> <?!=
+    HtmlService.createHtmlOutputFromFile('Prediction1_Style').getContent(); ?>
+  </head>
+  <body>
+    <?!= includeNav(); ?>
+    <div class="container main-container">
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h5 class="text-center header-text">AI 智慧預測系統 V1</h5>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label label-text">日期</label>
+              <input
+                type="date"
+                id="predDate"
+                class="form-control label-text"
+              />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label label-text">選擇彩種</label>
+              <select id="lottoType" class="form-select label-text">
+                <option value="L539">今彩 539</option>
+                <option value="L649">大樂透 649</option>
+                <option value="L638">威力彩 638</option>
+                <option value="LSix">六合彩</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label label-text">推薦數量</label>
+              <select id="topN" class="form-select label-text">
+                <option value="10">10 個</option>
+                <option value="7">精選 7 顆</option>
+                <option value="5">嚴選 5 顆</option>
+              </select>
+            </div>
+            <div class="col-md-6 mt-2">
+              <div class="form-check form-switch">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="useTrend"
+                  checked
+                />
+                <label class="form-check-label label-text" for="useTrend">
+                  <i class="fas fa-temperature-high me-1"></i>考慮冷熱權重趨勢
+                </label>
+              </div>
+            </div>
+            <div class="col-md-6 mt-2">
+              <div class="form-check form-switch">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="displayModeToggle"
+                  onchange="toggleDisplayMode(this.checked)"
+                />
+                <label
+                  class="form-check-label label-text fw-bold text-primary"
+                  for="displayModeToggle"
+                >
+                  <i class="fas fa-eye me-1"></i>詳細分析模式
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 縮放比例控制區 (同步首頁邏輯) -->
+          <div class="row mt-3">
+            <div class="col-12">
+              <div
+                class="d-flex align-items-center gap-3 bg-light-subtle p-2 rounded border"
+              >
+                <label
+                  class="form-label label-text mb-0 small"
+                  style="white-space: nowrap"
+                  ><i class="fas fa-search-plus me-1"></i>介面縮放</label
+                >
+                <input
+                  type="range"
+                  class="form-range"
+                  id="fontScaleRange"
+                  min="0.8"
+                  max="1.5"
+                  step="0.1"
+                  value="1.0"
+                />
+                <span id="fontScaleValue" class="badge bg-primary">1.0x</span>
+              </div>
+            </div>
+          </div>
+
+          <button
+            class="btn btn-primary w-100 mt-3 label-text text-white"
+            onclick="runPrediction()"
+          >
+            <i class="fas fa-search me-2"></i> 開始智慧預測
+          </button>
+        </div>
+      </div>
+
+      <!-- AI 智能建議區 (比照 Predict.html) -->
+      <div id="aiSuggestionArea" class="mb-4"></div>
+
+      <div id="resultArea" class="mb-4"></div>
+
+      <div class="card shadow-sm mt-4 mb-5 d-none" id="historyCard">
+        <div class="card-header bg-dark text-white">
+          <i class="fas fa-chart-area me-2"></i>歷史 10 期命中趨勢 (回測)
+        </div>
+        <div class="card-body">
+          <canvas id="historyChart" style="width: 100%; height: 300px"></canvas>
+        </div>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+    <?!= include('Scripts'); ?> <?!=
+    HtmlService.createHtmlOutputFromFile('Prediction1_JS').getContent(); ?> <?!=
+    includeFooter(); ?>
+  </body>
+</html>

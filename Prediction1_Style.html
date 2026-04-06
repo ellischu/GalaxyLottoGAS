@@ -1,0 +1,161 @@
+<style>
+  body {
+    background-color: #f8f9fa;
+    font-family: "Microsoft JhengHei", sans-serif;
+  }
+  .lotto-ball {
+    width: 55px;
+    height: 55px;
+    background: radial-gradient(circle at 30% 30%, #fff, #f00);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 1.3rem;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+    margin-bottom: 5px;
+    transition: transform 0.3s;
+  }
+  .lotto-ball.hit {
+    background: radial-gradient(circle at 30% 30%, #ffd700, #ff8c00);
+    border: 2px solid #fff;
+    transform: scale(1.1);
+  }
+  .bg-rebound {
+    background-color: #6610f2 !important;
+    color: #fff !important;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 10px rgba(102, 16, 242, 0.8);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+  }
+  .animate-pulse {
+    animation: pulse 2s infinite;
+  }
+  /* 強化 Checkbox 旁圖示顯示：跟隨系統字體縮放比例 */
+  .form-check-label i {
+    font-size: calc(1.8rem * var(--font-scale, 1));
+    vertical-align: middle;
+    margin-bottom: 0.2rem;
+    margin-right: 5px;
+  }
+  /* 移除與全域 Styles.html 衝突的 transform，改用全域定義的寬高 */
+  .form-check-input {
+    cursor: pointer;
+    margin-right: 10px !important;
+    flex-shrink: 0; /* 防止開關被文字擠壓變形 */
+    border: 1px solid rgba(0, 0, 0, 0.25) !important; /* 增加邊框確保在淺色背景下可見 */
+    background-color: #fff;
+  }
+  .form-check-input:checked {
+    background-color: #0d6efd;
+  }
+
+  /* --- 深色模式科幻開關配色 --- */
+  [data-bs-theme="dark"] .form-check-input {
+    background-color: #333;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+  }
+  [data-bs-theme="dark"] .form-check-input:checked {
+    background-color: #00d2ff !important; /* 科幻青色 */
+    border-color: #00d2ff !important;
+    box-shadow: 0 0 15px rgba(0, 210, 255, 0.5) !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='white'/%3e%3c/svg%3e");
+  }
+
+  @keyframes pulse {
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  .animate-flash {
+    animation: flash 1.5s ease-in-out infinite;
+  }
+  @keyframes flash {
+    0% {
+      opacity: 1;
+      box-shadow: 0 0 5px #6610f2;
+    }
+    50% {
+      opacity: 0.7;
+      box-shadow:
+        0 0 15px #6610f2,
+        0 0 25px #6610f2,
+        0 0 35px #ffffff;
+    }
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 5px #6610f2;
+    }
+  }
+  /* 連莊標籤：深色金屬感配淡白光 */
+  .badge-repeat {
+    background-color: #212529 !important;
+    color: #fff !important;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    letter-spacing: 1px;
+  }
+  /* 隔期標籤：科幻青色發光 */
+  .badge-skip {
+    background-color: #0dcaf0 !important;
+    color: #212529 !important;
+    box-shadow: 0 0 8px rgba(13, 202, 240, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    letter-spacing: 1px;
+    animation: skip-glow-pulse 2.5s infinite ease-in-out;
+  }
+  @keyframes skip-glow-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 5px rgba(13, 202, 240, 0.5);
+      opacity: 1;
+    }
+    50% {
+      box-shadow: 0 0 15px rgba(13, 202, 240, 0.8);
+      opacity: 0.9;
+    }
+  }
+  .ball-container {
+    width: 60px;
+  }
+  .card {
+    border-radius: 15px;
+    border: none;
+  }
+
+  @media (max-width: 576px) {
+    .lotto-ball {
+      width: 40px;
+      height: 40px;
+      font-size: 1rem;
+    }
+    .form-label {
+      font-size: 0.85rem;
+    }
+    /* 詳細模式下的環境係數表格行動端優化 */
+    #envTableBody td {
+      padding: 0.5rem 0.25rem !important;
+      font-size: 0.85rem;
+      vertical-align: middle;
+    }
+    #envTableBody .ps-3 {
+      padding-left: 0.6rem !important;
+    }
+    #envTableBody .badge {
+      font-size: 0.75rem;
+      padding: 0.35em 0.5em;
+      white-space: nowrap;
+    }
+    .table-responsive {
+      max-height: 450px !important; /* 手機版縮短滾動區域避免頁面過長 */
+    }
+  }
+</style>

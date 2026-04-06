@@ -33,7 +33,6 @@ function dailyupdate() {
   result = combineData("LSix");
   Logger.log("已合併LSix" + result.message);
 
-
   genMissData("L539");
   Logger.log("已生成L539遺漏值");
   genMissData("L649");
@@ -42,6 +41,8 @@ function dailyupdate() {
   Logger.log("已生成L638遺漏值");
   genMissData("LSix");
   Logger.log("已生成LSix遺漏值");
+
+  return { status: "complete", message: "每日更新任務已全數執行完畢" };
 }
 
 function updatenumber(sheetName) {
@@ -193,6 +194,7 @@ function updatenumber(sheetName) {
   Logger.log(
     "成功寫入 " + dataToWrite.length + " 筆資料到 " + sheetName + " 工作表",
   );
+  return { status: "success", message: "工作表 " + sheetName + " 更新完成" };
 }
 
 function scrapeDailyCash(sheetName, period) {

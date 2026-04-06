@@ -2,6 +2,8 @@
 <html>
   <head>
     <base target="_top" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Galaxy Lotto Observer - AI 智慧預測</title>
     <!-- 使用 jsDelivr 組合 CSS 請求 -->
     <link
@@ -19,99 +21,6 @@
     <!-- 自動備援機制 (Fallback) -->
     <?!= include("Lib_jQuery") ?> <?!= include("Lib_Bootstrap") ?> <?!=
     include("Lib_Swal") ?> <?!= includeStyles(); ?> <?!= include('Scripts'); ?>
-
-    <style>
-      /* Predict 專屬樣式 */
-      .main-container {
-        max-width: 1080px;
-      }
-
-      .header-text {
-        font-size: 32px;
-        font-weight: bold;
-        margin-bottom: 4px;
-      }
-
-      .label-text {
-        font-size: 24px;
-        margin-bottom: 5px;
-      }
-
-      .ball {
-        width: 70px;
-        height: 70px;
-        background: linear-gradient(135deg, #ff512f, #dd2476);
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        font-size: 45px;
-        color: white;
-        box-shadow: 0 0 5px rgba(221, 36, 118, 0.6);
-        margin: 3px;
-      }
-
-      .ball.special {
-        background: linear-gradient(135deg, #11998e, #38ef7d);
-        box-shadow: 0 0 5px rgba(56, 239, 125, 0.6);
-      }
-
-      @keyframes pulse-red {
-        0% {
-          box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
-          transform: scale(1);
-        }
-        70% {
-          box-shadow: 0 0 0 15px rgba(220, 53, 69, 0);
-          transform: scale(1.01);
-        }
-        100% {
-          box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
-          transform: scale(1);
-        }
-      }
-      .anim-pulse {
-        animation: pulse-red 1.5s infinite cubic-bezier(0.66, 0, 0, 1);
-        border: 2px solid #dc3545 !important;
-      }
-
-      @keyframes twinkle {
-        0%,
-        100% {
-          box-shadow: 0 0 5px rgba(255, 255, 0, 0.5);
-          transform: scale(1);
-        }
-        50% {
-          box-shadow: 0 0 15px rgba(255, 255, 0, 0.8);
-          transform: scale(1.05);
-        }
-      }
-      .ball.anim-twinkle {
-        animation: twinkle 2s infinite alternate;
-      }
-
-      @keyframes overheat-pulse {
-        0%,
-        100% {
-          box-shadow: 0 0 2px rgba(220, 53, 69, 0.4);
-        }
-        50% {
-          box-shadow: 0 0 12px rgba(220, 53, 69, 0.8);
-          transform: scale(1.01);
-        }
-      }
-      .anim-overheat {
-        animation: overheat-pulse 1s infinite ease-in-out;
-        background: rgba(220, 53, 69, 0.05);
-      }
-
-      .penalty-icon {
-        font-size: 0.7rem;
-        color: #6c757d;
-        cursor: help;
-      }
-    </style>
   </head>
 
   <body>
@@ -122,7 +31,7 @@
         <div class="card-body">
           <h5 class="text-center header-text">AI 星系規律預測</h5>
           <div class="row g-3 align-items-end">
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label for="predictDate" class="form-label label-text"
                 >日期</label
               >
@@ -132,7 +41,7 @@
                 id="predictDate"
               />
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label for="lottoSelect" class="form-label label-text"
                 >選擇彩種</label
               >
@@ -141,6 +50,16 @@
                 <option value="L649">大樂透</option>
                 <option value="L638">威力彩</option>
                 <option value="LSix">六合彩</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="topNSelect" class="form-label label-text"
+                >推薦數量</label
+              >
+              <select id="topNSelect" class="form-select label-text">
+                <option value="10" selected>推薦 10 顆</option>
+                <option value="7">精選 7 顆</option>
+                <option value="5">嚴選 5 顆</option>
               </select>
             </div>
 
@@ -152,12 +71,9 @@
                   id="useTrend"
                   checked
                 />
-                <label
-                  class="form-check-label label-text"
-                  for="useTrend"
-                  style="font-size: 18px"
-                >
-                  考慮冷熱號權重趨勢 (基於遺漏表分析)
+                <label class="form-check-label label-text" for="useTrend">
+                  <i class="fas fa-temperature-high me-1"></i>考慮冷熱號權重趨勢
+                  (基於遺漏表分析)
                 </label>
               </div>
             </div>
@@ -194,6 +110,9 @@
 
       <hr />
 
+      <!-- AI 智能建議區 -->
+      <div id="aiSuggestionArea" class="mb-4"></div>
+
       <!-- 預測結果顯示區 -->
       <div id="predictionArea" class="mb-4" style="display: none"></div>
     </div>
@@ -202,6 +121,5 @@
   </body>
 </html>
 <!--
-[PROMPT_SUGGESTION]在 Predict.html 中增加一個「歷史預測準確度統計」的區塊，顯示近 10 期的命中率圖表。[/PROMPT_SUGGESTION]
-[PROMPT_SUGGESTION]將 Index.html 的最新開獎結果改為卡片式輪播（Carousel）效果，以節省垂直空間。[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]在 Predict.html 中增加一個「歷史預測準確度統計」的區塊，顯示近 60 期的命中率圖表。[/PROMPT_SUGGESTION]
 -->

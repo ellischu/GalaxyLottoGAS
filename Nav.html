@@ -21,7 +21,7 @@
         id="cacheStatusBadge"
         class="badge rounded-pill bg-secondary"
         style="
-          font-size: 10px;
+          font-size: 18px;
           cursor: help;
           min-width: 60px;
           display: inline-block;
@@ -77,6 +77,17 @@
 
       <li class="nav-item">
         <a
+          class="nav-link text-info"
+          id="navPrediction1"
+          href="javascript:void(0)"
+          onclick="openPageUrl('Prediction1')"
+        >
+          <i class="fas fa-brain me-2"></i>智慧預測 V1
+        </a>
+      </li>
+
+      <li class="nav-item">
+        <a
           class="nav-link text-primary"
           id="navDaily"
           href="javascript:void(0)"
@@ -87,6 +98,17 @@
       </li>
 
       <hr class="my-2" />
+
+      <li class="nav-item">
+        <a
+          class="nav-link text-warning"
+          id="navRefreshMapping"
+          href="javascript:void(0)"
+          onclick="handleRefreshMapping()"
+        >
+          <i class="fas fa-sync me-2"></i>刷新對照表
+        </a>
+      </li>
 
       <li class="nav-item">
         <a
@@ -104,13 +126,44 @@
 
 <script>
   /**
+   * 處理刷新對照表快取的 UI 邏輯
+   */
+  function handleRefreshMapping() {
+    // 1. 關閉 Offcanvas 導覽列
+    var offcanvasElement = document.querySelector("#offcanvasNavbar");
+    if (offcanvasElement) {
+      var bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+      if (bsOffcanvas) bsOffcanvas.hide();
+    }
+
+    // 2. 顯示 Loading
+    AppUI.loading("同步中", "正在重新讀取對照表資料...");
+
+    // 3. 呼叫後端 refreshMappingCache
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res.status === "success") {
+          AppUI.success("刷新成功", res.message, 2000).then(function () {
+            checkSystemStatus(); // 同步更新導航列的版本指示燈
+          });
+        } else {
+          AppUI.showCommonError(res);
+        }
+      })
+      .withFailureHandler(function (err) {
+        AppUI.showCommonError(err);
+      })
+      .refreshMappingCache();
+  }
+
+  /**
    * 處理清理快取的 UI 邏輯
    */
   function handleClearCache() {
     // 1. 關閉 Offcanvas 導覽列
-    const offcanvasElement = document.querySelector("#offcanvasNavbar");
+    var offcanvasElement = document.querySelector("#offcanvasNavbar");
     if (offcanvasElement) {
-      const bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+      var bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
       if (bsOffcanvas) bsOffcanvas.hide();
     }
 
@@ -118,7 +171,7 @@
     AppUI.confirm(
       "確定要清理系統快取？",
       "這將會清除所有暫存的頁面與設定資料，下次載入時會重新從伺服器獲取。",
-    ).then((result) => {
+    ).then(function (result) {
       if (result.isConfirmed) {
         // 3. 顯示 Loading
         AppUI.loading("清理中", "正在清除星系快取資料...");
@@ -126,24 +179,33 @@
         // 4. 呼叫後端 clearAllCache
         google.script.run
           .withSuccessHandler(function (res) {
-            // 備份當前預測設定
-            const backup = {
+            // 1. 取得當前輸入狀態備份 (如彩種、日期)
+            var backup = {
               lotto: $("#lottoSelect").val(),
               date: $("#predictDate").val(),
               useTrend: $("#useTrend").is(":checked"),
-              isReloaded: true
+              topN: $("#topNSelect").val(),
+              isReloaded: true,
             };
+
+            // 2. 獲取當前頁面 (改用 DOM 偵測，因為 GAS Iframe 環境下 window.location.search 常為空)
+            var currentPage = "Index";
+            if ($("#predictButton").length) currentPage = "Predict";
+            else if ($("#predDate").length) currentPage = "Prediction1";
+            else if ($("#btnCmbUpdate").length || $("#btnMissUpdate").length)
+              currentPage = "UpdateAll";
+
+            // 3. 清除客戶端本地儲存並重新寫入備份
+            localStorage.clear();
             localStorage.setItem("sys_backup_settings", JSON.stringify(backup));
 
-            // 清除客戶端本地儲存 (如低捕捉率計數器)
-            localStorage.clear();
-            // 顯示成功訊息，並在使用者關閉視窗後重新載入頁面
+            // 4. 顯示成功訊息，並在使用者關閉視窗後重新載入當前頁面
             AppUI.success(
               "清理完成",
               "星系快取已重置，頁面即將重新載入。",
-              3000,
-            ).then(() => {
-              window.open(SCRIPT_URL, "_top");
+              1500,
+            ).then(function () {
+              openPageUrl(currentPage, "_top", true);
             });
           })
           .withFailureHandler(function (err) {
@@ -157,7 +219,7 @@
   // --- 腳本容錯與載入優化 ---
   // 確保 jQuery 載入完成後才執行 setupNav
   (function initNav() {
-    const checkJQuery = setInterval(() => {
+    var checkJQuery = setInterval(function () {
       if (window.jQuery) {
         clearInterval(checkJQuery);
         setupNav();
@@ -165,7 +227,7 @@
     }, 50); // 每 50ms 檢查一次
 
     // 若 3 秒後仍未載入則停止檢查，避免無限迴圈
-    setTimeout(() => {
+    setTimeout(function () {
       if (!window.jQuery)
         console.error("jQuery 載入超時，部分功能可能無法使用。");
       clearInterval(checkJQuery);
@@ -181,15 +243,32 @@
   function checkSystemStatus() {
     google.script.run
       .withSuccessHandler(function (res) {
-        const $badge = $("#cacheStatusBadge");
+        var $badge = $("#cacheStatusBadge");
         if (res.ok) {
+          var timeLabel = "";
+          if (res.remaining !== null) {
+            var mins = Math.floor(res.remaining / 60);
+            var h = Math.floor(mins / 60);
+            var m = mins % 60;
+            timeLabel = " (" + (h > 0 ? h + "h" : "") + m + "m)";
+          }
+
           $badge
             .removeClass("bg-secondary")
             .addClass("bg-success")
             .html(
-              '<i class="fas fa-check-circle me-1"></i>快取: ' + res.version,
+              '<i class="fas fa-check-circle me-1"></i>' +
+                res.version +
+                timeLabel,
             )
-            .attr("title", "系統快取功能正常運作中");
+            .attr(
+              "title",
+              res.remaining !== null
+                ? "對照表快取有效期剩餘約 " +
+                    Math.floor(res.remaining / 60) +
+                    " 分鐘"
+                : "對照表尚未快取，下次預測時將自動建立",
+            );
         } else {
           $badge
             .removeClass("bg-secondary")

@@ -2,154 +2,31 @@
 <html>
   <head>
     <base target="_top" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Galaxy Lotto Observer</title>
     <!-- 使用 jsDelivr 組合 CSS 請求 -->
     <link
       rel="stylesheet"
-      href="https://cdn.jsdelivr.net/combine/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css,npm/sweetalert2@11/dist/sweetalert2.min.css"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
     />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     />
 
-    <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.0/dist/jquery.min.js,npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js,npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+    <!-- 拆分 CDN 避免合併載入異常 -->
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 
     <!-- 自動備援機制 (Fallback) -->
     <?!= include("Lib_jQuery") ?> <?!= include("Lib_Bootstrap") ?> <?!=
-    include("Lib_Swal") ?> <?!= includeStyles(); ?> <?!= include('Scripts'); ?>
-
-    <style>
-      /* Index 專屬樣式 */
-      .main-container {
-        max-width: 1080px;
-      }
-
-      .menu-btn {
-        font-size: 1.2rem;
-      }
-
-      .title-text-shadow {
-        text-shadow: 3px 3px 5px rgb(30, 242, 104);
-      }
-
-      .card-header {
-        margin-bottom: 0;
-        font-size: 32px;
-      }
-
-      .card:hover {
-        transform: translateY(-5px);
-        border-color: #00d2ff;
-        transition:
-          transform 0.2s,
-          border-color 0.2s;
-      }
-
-      .header-text {
-        font-size: 32px;
-        font-weight: bold;
-        margin-bottom: 4px;
-      }
-
-      .label-text {
-        font-size: 24px;
-        margin-bottom: 5px;
-      }
-
-      .value-text {
-        font-weight: bold;
-        font-size: 24px;
-      }
-
-      .ball {
-        width: 70px;
-        height: 70px;
-        background: linear-gradient(135deg, #ff512f, #dd2476);
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        font-size: 45px;
-        color: white;
-        box-shadow: 0 0 5px rgba(221, 36, 118, 0.6);
-        margin: 3px;
-      }
-
-      .ball.special {
-        background: linear-gradient(135deg, #11998e, #38ef7d);
-        box-shadow: 0 0 5px rgba(56, 239, 125, 0.6);
-      }
-
-      /* 呼吸燈效果動畫：用於極罕見連號警示 */
-      @keyframes pulse-red {
-        0% {
-          box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
-          transform: scale(1);
-        }
-        70% {
-          box-shadow: 0 0 0 15px rgba(220, 53, 69, 0);
-          transform: scale(1.01);
-        }
-        100% {
-          box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
-          transform: scale(1);
-        }
-      }
-
-      .anim-pulse {
-        animation: pulse-red 1.5s infinite cubic-bezier(0.66, 0, 0, 1);
-        border: 2px solid #dc3545 !important;
-        font-weight: bold;
-      }
-
-      /* 星光閃爍效果動畫：用於潛力冷門球 */
-      @keyframes twinkle {
-        0%,
-        100% {
-          box-shadow:
-            0 0 5px rgba(255, 255, 0, 0.5),
-            0 0 10px rgba(255, 255, 0, 0.3);
-          transform: scale(1);
-        }
-        50% {
-          box-shadow:
-            0 0 15px rgba(255, 255, 0, 0.8),
-            0 0 25px rgba(255, 255, 0, 0.6);
-          transform: scale(1.05);
-        }
-      }
-      .ball.anim-twinkle {
-        animation: twinkle 2s infinite alternate; /* 調整動畫時間和效果 */
-      }
-
-      /* 過熱風險：顯眼閃爍與陰影效果 */
-      @keyframes overheat-pulse {
-        0% {
-          box-shadow: 0 0 2px rgba(220, 53, 69, 0.4);
-        }
-        50% {
-          box-shadow: 0 0 12px rgba(220, 53, 69, 0.8);
-          transform: scale(1.01);
-        }
-        100% {
-          box-shadow: 0 0 2px rgba(220, 53, 69, 0.4);
-        }
-      }
-      .anim-overheat {
-        animation: overheat-pulse 1s infinite ease-in-out;
-        background: rgba(220, 53, 69, 0.05);
-        border-radius: 4px;
-      }
-
-      /* AI 降權標籤樣式 */
-      .penalty-icon {
-        font-size: 0.7rem;
-        color: #6c757d;
-        cursor: help;
-      }
-    </style>
+    include("Lib_Swal") ?> <?!= includeStyles(); ?>
   </head>
 
   <body>
@@ -159,33 +36,100 @@
       <!-- 前往預測頁面的快捷入口 -->
       <div class="card border-primary shadow-sm mb-4">
         <div class="card-body">
-          <h5 class="text-center fw-bold text-primary mb-3">AI 星球規律分析</h5>
-          <p class="text-center text-secondary small">
+          <h1 class="text-center fw-bold text-primary mb-3">AI 星球規律分析</h1>
+          <p class="text-center text-secondary fs-3">
             利用星系路徑演算法，為您找出最具潛力的幸運號碼。
           </p>
           <button
+            id="goToPredictBtn"
             class="btn btn-primary w-100 label-text text-white py-3"
             onclick="openPageUrl('Predict')"
           >
             <i class="fas fa-magic me-2"></i> 前往 AI 智慧預測
           </button>
+          <button
+            id="goToPrediction1Btn"
+            class="btn btn-info w-100 label-text text-white py-3 mt-2 fw-bold"
+            onclick="openPageUrl('Prediction1')"
+          >
+            <i class="fas fa-brain me-2"></i> 智慧預測系統 V1
+          </button>
         </div>
       </div>
 
-      <h2 class="text-center header-text">最新開獎結果</h2>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="header-text mb-0">最新開獎結果</h2>
+        <div class="d-flex gap-2">
+          <button
+            id="themeToggle"
+            class="btn btn-outline-secondary btn-lg fw-bold"
+            onclick="window.toggleTheme()"
+            title="切換深淺模式"
+          >
+            <i class="fas fa-moon"></i>
+          </button>
+          <button
+            class="btn btn-outline-success btn-lg fw-bold"
+            onclick="window.shareAllToday()"
+          >
+            <i class="fas fa-share-nodes me-1"></i> 一鍵分享今日開獎
+          </button>
+        </div>
+      </div>
 
-      <div id="loading" class="text-center mt-5">
+      <div id="loading" class="text-center mt-5" style="display: block">
         <p class="mt-2 text-secondary">Scanning Nebula...</p>
       </div>
 
-      <div id="app" class="d-flex flex-column gap-3"></div>
+      <div id="app" class="row g-3"></div>
     </div>
+
+    <!-- 將共用腳本移至 body 底部載入，避免阻斷 HTML 渲染 -->
+    <?!= include('Scripts'); ?>
 
     <script>
       /**
        * 使用 IIFE 封裝 jQuery 邏輯，避免 $ 命名衝突
        */
       (function ($) {
+        // --- 主題切換邏輯 ---
+        window.applyTheme = function (theme) {
+          document.documentElement.setAttribute("data-bs-theme", theme);
+          localStorage.setItem("theme", theme);
+          var $icon = $("#themeToggle i");
+          if (theme === "dark") {
+            $icon.removeClass("fa-moon").addClass("fa-sun");
+          } else {
+            $icon.removeClass("fa-sun").addClass("fa-moon");
+          }
+        };
+
+        window.toggleTheme = function () {
+          var current =
+            document.documentElement.getAttribute("data-bs-theme") || "light";
+          var next = current === "dark" ? "light" : "dark";
+          window.applyTheme(next);
+        };
+
+        // 初始化主題 (優先讀取暫存，若無則跟隨系統)
+        (function () {
+          var savedTheme = localStorage.getItem("theme");
+          if (!savedTheme) {
+            savedTheme = window.matchMedia("(prefers-color-scheme: dark)")
+              .matches
+              ? "dark"
+              : "light";
+          }
+          window.applyTheme(savedTheme);
+        })();
+
+        // 獲取 Script URL 供跳轉使用
+        google.script.run
+          .withSuccessHandler(function (url) {
+            window.scriptUrl = url;
+          })
+          .getScriptUrl();
+
         $(document).ready(function () {
           // 使用封裝後的物件
           AppUI.loadingNebula();
@@ -197,9 +141,11 @@
         });
 
         window.renderData = function (data) {
-          const $app = $("#app");
+          var $app = $("#app");
           AppUI.close();
           $("#loading").hide();
+
+          window.latestLotteryData = data; // 暫存資料供全域分享使用
 
           if (!data || Object.keys(data).length === 0) {
             $app.html(
@@ -208,59 +154,352 @@
             return;
           }
 
-          const names = {
+          var names = {
             L539: "今彩 539",
             L649: "大樂透",
             L638: "威力彩",
             LSix: "六合彩",
           };
 
-          const order = ["L539", "L649", "L638", "LSix"];
+          window.shareRegistry = {}; // 初始化分享訊息註冊表，防止特殊字元破壞 HTML
 
-          order.forEach((key) => {
+          var cardConfigs = {
+            L539: {
+              border: "border-success",
+              icon: "fa-leaf",
+              text: "text-success",
+            },
+            L649: {
+              border: "border-primary",
+              icon: "fa-star",
+              text: "text-primary",
+            },
+            L638: { border: "border-info", icon: "fa-bolt", text: "text-info" },
+            LSix: {
+              border: "border-danger",
+              icon: "fa-fire",
+              text: "text-danger",
+            },
+          };
+
+          var order = ["L539", "L649", "L638", "LSix"];
+
+          order.forEach(function (key) {
             if (data[key]) {
-              const record = data[key];
+              var record = data[key];
+              var config = cardConfigs[key] || {
+                border: "",
+                icon: "fa-circle",
+                text: "",
+              };
 
-              let ballsHtml = "";
-              Object.keys(record).forEach((k) => {
+              var ballsHtml = "";
+              var numsArr = [];
+              Object.keys(record).forEach(function (k) {
                 if (k.startsWith("L") && !isNaN(parseInt(k.substring(1)))) {
-                  ballsHtml += `<div class="ball">${record[k]}</div>`;
+                  ballsHtml += '<div class="ball">' + record[k] + "</div>";
+                  numsArr.push(record[k]);
                 }
               });
 
               if (record["S1"]) {
-                ballsHtml += `<div class="ball special">${record["S1"]}</div>`;
+                ballsHtml +=
+                  '<div class="ball special">' + record["S1"] + "</div>";
               }
 
-              const cardHtml = `
-                <div class="card w-100 shadow-sm">
-                  <div class="card-header fw-bold">
-                    ${names[key] || key}
-                  </div>
-                  <div class="card-body">
-                    <div class="row text-center mb-3">
-                      <div class="col-4">
-                        <div class="label-text">期數</div>
-                        <div class="value-text">${record["period"] || ""}</div>
-                      </div>
-                      <div class="col-4">
-                        <div class="label-text">日期</div>
-                        <div class="value-text">${window.formatDate(record["Date"])}</div>
-                      </div>
-                      <div class="col-4">
-                        <div class="label-text">總合</div>
-                        <div class="value-text">${record["Sum"] || "-"}</div>
-                      </div>
-                    </div>
-                    <div class="d-flex flex-wrap justify-content-center border-top pt-3 mt-3">
-                      ${ballsHtml}
-                    </div>
-                  </div>
-                </div>
-            `;
+              // 產生 LINE 分享訊息文字
+              var shareMsg =
+                "【" +
+                (names[key] || key) +
+                "】\n期數：" +
+                (record["period"] || "") +
+                "\n日期：" +
+                window.formatDate(record["Date"]) +
+                "\n號碼：" +
+                numsArr.join(", ");
+              if (record["S1"]) shareMsg += " (特別號: " + record["S1"] + ")";
+              shareMsg += "\n\n來自 Galaxy Lotto Observer";
+
+              var registryId = "msg_" + key;
+              window.shareRegistry[registryId] = shareMsg;
+
+              var lineUrl =
+                "https://line.me/R/msg/text/?" + encodeURIComponent(shareMsg);
+
+              var cardHtml =
+                '<div class="col-12 col-md-6">' +
+                '<div class="card h-100 shadow-sm ' +
+                config.border +
+                '">' +
+                '<div class="card-header fw-bold ' +
+                config.text +
+                '">' +
+                '<i class="fas ' +
+                config.icon +
+                ' me-2"></i>' +
+                (names[key] || key) +
+                "</div>" +
+                '<div class="card-body">' +
+                '<div class="row text-center mb-3">' +
+                '<div class="col-4">' +
+                '<div class="label-text">期數</div>' +
+                '<div class="value-text">' +
+                (record["period"] || "") +
+                "</div>" +
+                "</div>" +
+                '<div class="col-4">' +
+                '<div class="label-text">日期</div>' +
+                '<div class="value-text">' +
+                window.formatDate(record["Date"]) +
+                "</div>" +
+                "</div>" +
+                '<div class="col-4">' +
+                '<div class="label-text">總合</div>' +
+                '<div class="value-text">' +
+                (record["Sum"] || "-") +
+                "</div>" +
+                "</div>" +
+                "</div>" +
+                '<div class="d-flex flex-wrap justify-content-center border-top pt-3 mt-3">' +
+                ballsHtml +
+                "</div>" +
+                '<div id="ai-preview-' +
+                key +
+                '" class="mt-3 p-2 bg-info-subtle rounded border border-info-subtle" style="font-size: 0.8rem;">' +
+                '<div class="fw-bold text-info mb-1"><i class="fas fa-robot me-1"></i>AI 戰略預覽</div>' +
+                '<div class="ai-recommendation text-dark fw-bold mb-1 loading-shimmer" style="width: 85%;"></div>' +
+                '<div class="d-flex gap-2">' +
+                '<span class="ai-focus badge loading-shimmer" style="width: 50px;"></span>' +
+                '<span class="ai-risk badge loading-shimmer" style="width: 50px;"></span>' +
+                "</div>" +
+                "</div>" +
+                '<div class="d-flex justify-content-between align-items-center mt-3 border-top pt-2">' +
+                '<div class="d-flex gap-2 gap-sm-3">' +
+                '<a href="' +
+                lineUrl +
+                '" target="_blank" class="text-decoration-none fs-4 text-success fw-bold">' +
+                '<i class="fab fa-line me-1"></i>LINE 分享' +
+                "</a>" +
+                '<a href="javascript:void(0)" data-msg-id="' +
+                registryId +
+                '" onclick="window.copyToClipboard(window.shareRegistry[this.dataset.msgId])" class="text-decoration-none fs-4 text-secondary fw-bold">' +
+                '<i class="fas fa-copy me-1"></i>複製文字' +
+                "</a>" +
+                '<a href="javascript:void(0)" onclick="window.shareAsImage(\'' +
+                key +
+                '\')" class="text-decoration-none fs-4 text-info fw-bold d-none d-sm-inline">' +
+                '<i class="fas fa-image me-1"></i>分享圖片' +
+                "</a>" +
+                "</div>" +
+                '<a href="javascript:void(0)" onclick="window.viewTrend(\'' +
+                key +
+                '\')" class="text-decoration-none fs-4 ' +
+                config.text +
+                ' fw-bold">' +
+                '趨勢預測 <i class="fas fa-chevron-right ms-1"></i>' +
+                "</a>" +
+                "</div></div></div></div>";
               $app.append(cardHtml);
             }
           });
+
+          // 渲染完成後，非同步獲取各彩種最後一期的 AI 策略摘要
+          order.forEach(function (key) {
+            if (data[key]) window.fetchAISummary(key, data[key]["Date"]);
+          });
+        };
+
+        /**
+         * 一鍵分享今日所有開獎結果
+         */
+        window.shareAllToday = function () {
+          var data = window.latestLotteryData;
+          if (!data) return;
+
+          var msg = "【Galaxy Lotto 今日開獎總結】\n";
+          var names = {
+            L539: "今彩539",
+            L649: "大樂透",
+            L638: "威力彩",
+            LSix: "六合彩",
+          };
+
+          ["L539", "L649", "L638", "LSix"].forEach(function (key) {
+            if (data[key]) {
+              var record = data[key];
+              var nums = [];
+              Object.keys(record).forEach(function (k) {
+                if (k.startsWith("L") && !isNaN(parseInt(k.substring(1))))
+                  nums.push(record[k]);
+              });
+              msg +=
+                "\n$ " +
+                names[key] +
+                ": " +
+                nums.join(", ") +
+                (record.S1 ? " [S:" + record.S1 + "]" : "");
+            }
+          });
+
+          msg += "\n\n更多 AI 分析請造訪 Galaxy Lotto Observer";
+          window.copyToClipboard(msg);
+          var lineUrl =
+            "https://line.me/R/msg/text/?" + encodeURIComponent(msg);
+          window.open(lineUrl, "_blank");
+        };
+
+        /**
+         * 非同步獲取指定彩種的 AI 策略摘要預覽
+         */
+        window.fetchAISummary = function (key, date) {
+          var dateStr = date.toString().split("T")[0];
+          google.script.run
+            .withSuccessHandler(function (res) {
+              var $preview = $("#ai-preview-" + key);
+              if (res && res.status === "complete" && res.aiStrategy) {
+                // 移除微光佔位效果
+                $preview
+                  .find(".loading-shimmer")
+                  .removeClass("loading-shimmer")
+                  .css("width", "");
+                // 擷取第一行建議並過濾 HTML 標籤
+                var shortRec = res.aiStrategy.recommendation
+                  .split("\n")[0]
+                  .replace(/<[^>]+>/g, "");
+                $preview.find(".ai-recommendation").text(shortRec);
+                $preview
+                  .find(".ai-focus")
+                  .addClass("bg-info text-white")
+                  .text(res.aiStrategy.focus);
+                $preview
+                  .find(".ai-risk")
+                  .addClass("bg-secondary text-white")
+                  .text("風險: " + res.aiStrategy.risk);
+              } else {
+                $preview.fadeOut();
+              }
+            })
+            .withFailureHandler(function () {
+              $("#ai-preview-" + key).fadeOut();
+            })
+            .getPrediction(key, dateStr, true);
+        };
+
+        /**
+         * 將單一彩種結果繪製成圖片並下載/分享
+         */
+        window.shareAsImage = function (key) {
+          var data = window.latestLotteryData[key];
+          if (!data) return;
+
+          // 偵測目前系統/瀏覽器是否處於夜間模式
+          var isDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+          var canvas = document.createElement("canvas");
+          canvas.width = 600;
+          canvas.height = 350;
+          var ctx = canvas.getContext("2d");
+
+          // 背景
+          var gradient = ctx.createLinearGradient(0, 0, 600, 350);
+          if (isDark) {
+            gradient.addColorStop(0, "#1a1a2e");
+            gradient.addColorStop(1, "#16213e");
+          } else {
+            gradient.addColorStop(0, "#ffffff");
+            gradient.addColorStop(1, "#f1f3f5");
+          }
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, 600, 350);
+
+          // 標題
+          ctx.fillStyle = isDark ? "#00d2ff" : "#0d6efd";
+          ctx.font = 'bold 36px "Microsoft JhengHei"';
+          var names = {
+            L539: "今彩 539",
+            L649: "大樂透",
+            L638: "威力彩",
+            LSix: "六合彩",
+          };
+          ctx.fillText(names[key], 40, 60);
+
+          // 資訊
+          ctx.fillStyle = isDark ? "#ffffff" : "#495057";
+          ctx.font = '20px "Microsoft JhengHei"';
+          ctx.fillText(
+            "期數: " + data.period + " | 日期: " + window.formatDate(data.Date),
+            40,
+            100,
+          );
+
+          // 繪製球號
+          var x = 60;
+          var y = 180;
+          Object.keys(data).forEach(function (k) {
+            if (k.startsWith("L") && !isNaN(parseInt(k.substring(1)))) {
+              drawBall(ctx, x, y, data[k], "#ff512f");
+              x += 80;
+            }
+          });
+          if (data.S1) drawBall(ctx, x, y, data.S1, "#11998e");
+
+          // 浮水印
+          ctx.fillStyle = isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.2)";
+          ctx.font = "14px Arial";
+          ctx.fillText("Galaxy Lotto Observer AI System", 380, 320);
+
+          var imgData = canvas.toDataURL("image/png");
+          var link = document.createElement("a");
+          link.download = key + "_" + data.period + ".png";
+          link.href = imgData;
+          link.click();
+          AppUI.toast("圖片已產生成並下載", "success");
+        };
+
+        function drawBall(ctx, x, y, num, color) {
+          ctx.beginPath();
+          ctx.arc(x, y, 30, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.5)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = "white";
+          ctx.font = "bold 24px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText(num, x, y + 10);
+        }
+
+        window.viewTrend = function (lotto) {
+          // 將彩種資訊存入暫存，讓預測頁面載入時自動選取
+          var backup = {
+            lotto: lotto,
+            isReloaded: true,
+          };
+          localStorage.setItem("sys_backup_settings", JSON.stringify(backup));
+          openPageUrl("Predict");
+        };
+
+        window.copyToClipboard = function (text) {
+          if (!text) return;
+          // 使用現代剪貼簿 API
+          navigator.clipboard
+            .writeText(text)
+            .then(() => {
+              AppUI.toast("已複製到剪貼簿", "success");
+            })
+            .catch(() => {
+              // 備援機制：針對舊版瀏覽器或特定環境
+              var textArea = document.createElement("textarea");
+              textArea.value = text;
+              document.body.appendChild(textArea);
+              textArea.select();
+              document.execCommand("copy");
+              document.body.removeChild(textArea);
+              AppUI.toast("已複製到剪貼簿", "success");
+            });
         };
 
         window.formatDate = function (dateStr) {
@@ -271,7 +510,9 @@
         window.showError = function (error) {
           Swal.close();
           $("#loading").html(
-            `<div class="alert alert-danger">Error: ${error.message}</div>`,
+            '<div class="alert alert-danger">Error: ' +
+              error.message +
+              "</div>",
           );
         };
       })(jQuery);

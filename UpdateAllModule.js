@@ -1,7 +1,7 @@
 /**
- * 
- * @param {*} sheetname 
- * @returns 
+ *
+ * @param {*} sheetname
+ * @returns
  */
 function combineData(sheetname) {
   const trObj = getTargetsheet("Sheets", sheetname);
@@ -37,13 +37,28 @@ function combineData(sheetname) {
   const sumCol = headers.indexOf("Sum");
   const dateCol = headers.indexOf("Date");
 
-  // loop
-  // 取得 srsheet1 的 L1,L2,L3,L4,L5 (L6: L649,L638,Lsix 要一起排序 )(S1:L649,L638,Lsix不排序) ,轉成 N1,N2,N3,N4,N5,N6,S1
+  // --- 效能優化：預先讀取 AllData 並建立索引 Map ---
+  const allDataSheet = mainspreadsheet.getSheetByName("AllData");
+  const allDataMap = {};
+  if (allDataSheet) {
+    const adValues = allDataSheet.getDataRange().getValues();
+    adValues.forEach((row, idx) => {
+      if (idx === 0 || !row[0]) return;
+      // 使用與 Utility.js 相同的日期格式化邏輯作為 Key
+      const dObj =
+        row[0] instanceof Date
+          ? row[0]
+          : new Date(String(row[0]).replace(/-/g, "/"));
+      const dateKey = Utilities.formatDate(dObj, "Asia/Taipei", "yyyy-MM-dd");
+      allDataMap[dateKey] = row;
+    });
+  }
 
   // --- 批次處理邏輯 (支援續傳) ---
   var progress = getProgress("Update_JOB");
   var currentIndex = 1;
   var rowsToAdd = [];
+  const batchSize = 100; // 稍微增加批次大小以減少 API 呼叫次數
 
   if (progress) {
     currentIndex = progress.currentIndex || 1;
@@ -59,7 +74,15 @@ function combineData(sheetname) {
     var s1 = s1Col > -1 ? row[s1Col] : null;
     var sum = sumCol > -1 ? row[sumCol] : null;
 
-    var datamap = getAllData(d);
+    // --- 效能優化：從記憶體 Map 取得資料，避免重複讀取工作表 ---
+    const currentDObj =
+      d instanceof Date ? d : new Date(String(d).replace(/-/g, "/"));
+    const currentKey = Utilities.formatDate(
+      currentDObj,
+      "Asia/Taipei",
+      "yyyy-MM-dd",
+    );
+    var datamap = allDataMap[currentKey] || [];
 
     // 結合 Date,N1,N2...Nn,S1,Sum 以及 datamap 的資料 ，寫入 trsheet
     var newRow = [d, ...nums];
@@ -72,8 +95,7 @@ function combineData(sheetname) {
 
     rowsToAdd.push(newRow);
 
-    // 每 50 筆資料 update 一次    // 檢查是否快要超時
-    if (isNearTimeout()) {
+    if (rowsToAdd.length >= batchSize || isNearTimeout()) {
       saveProgress("Update_JOB", {
         status: "continue",
         currentIndex: i,
@@ -95,12 +117,15 @@ function combineData(sheetname) {
         return { status: "error", message: "寫入試算表時發生錯誤：" + e };
       }
       rowsToAdd = [];
-      return {
-        status: "continue",
-        message: "已處理 " + i + " / " + srData.length + " 筆資料，正在續傳...",
-        currentIndex: i,
-        total: srData.length,
-      };
+      if (isNearTimeout()) {
+        return {
+          status: "continue",
+          message:
+            "已處理 " + i + " / " + srData.length + " 筆資料，正在續傳...",
+          currentIndex: i,
+          total: srData.length,
+        };
+      }
     }
   }
 
@@ -130,9 +155,9 @@ function combineData(sheetname) {
 }
 
 /**
- * 
- * @param {*} sheetname 
- * @returns 
+ *
+ * @param {*} sheetname
+ * @returns
  */
 function genMissData(sheetname) {
   const trObj = getTargetsheet("Sheets", sheetname);
@@ -224,6 +249,7 @@ function genMissData(sheetname) {
   var progress = getProgress("Miss_JOB");
   var currentIndex = 1;
   var rowsToAdd = [];
+  const batchSize = 500; // 每 500 筆強制寫入一次，避免記憶體壓力
 
   if (progress && progress.sheetname === sheetname) {
     currentIndex = progress.currentIndex || 1;
@@ -242,14 +268,15 @@ function genMissData(sheetname) {
 
     // 計算主號遺漏 (M1...Mn)
     let currentMiss = [];
-    // 邏輯優化：L638 的 S1 屬於第二區，不影響第一區的遺漏計算
-    let poolNums = [...drawnNums];
+
+    // --- 效能優化：使用 Set 提升搜尋效率 ($O(1)$) ---
+    let poolSet = new Set(drawnNums);
     if (hasS1 && sheetname !== "L638" && s1Val !== null) {
-      poolNums.push(s1Val);
+      poolSet.add(s1Val);
     }
 
     for (let j = 1; j <= maxNum; j++) {
-      let isDrawn = poolNums.indexOf(j) > -1;
+      let isDrawn = poolSet.has(j);
       if (lastMissValues.length === 0) {
         currentMiss.push(isDrawn ? 0 : 1);
       } else {
@@ -285,8 +312,8 @@ function genMissData(sheetname) {
 
     rowsToAdd.push(newRow);
 
-    // 檢查超時，執行儲存並返回續傳訊號
-    if (isNearTimeout()) {
+    // --- 效能優化：達到批次量或快要超時時寫入 ---
+    if (rowsToAdd.length >= batchSize || isNearTimeout()) {
       saveProgress("Miss_JOB", {
         status: "continue",
         sheetname: sheetname,
@@ -297,16 +324,24 @@ function genMissData(sheetname) {
       });
 
       if (rowsToAdd.length > 0) {
-        trsheet
-          .getRange(trLastRow + 1, 1, rowsToAdd.length, rowsToAdd[0].length)
-          .setValues(rowsToAdd);
+        const targetRange = trsheet.getRange(
+          trsheet.getLastRow() + 1,
+          1,
+          rowsToAdd.length,
+          rowsToAdd[0].length,
+        );
+        targetRange.setValues(rowsToAdd);
       }
-      return {
-        status: "continue",
-        message: "遺漏表處理中 " + i + " / " + srData.length,
-        currentIndex: i,
-        total: srData.length,
-      };
+      rowsToAdd = [];
+
+      if (isNearTimeout()) {
+        return {
+          status: "continue",
+          message: "遺漏表處理中 " + i + " / " + srData.length,
+          currentIndex: i,
+          total: srData.length,
+        };
+      }
     }
   }
 
@@ -329,4 +364,3 @@ function genMissData(sheetname) {
     btntext: "確定",
   };
 }
-
