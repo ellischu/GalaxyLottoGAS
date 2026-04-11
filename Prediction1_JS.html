@@ -32,6 +32,12 @@
       $("#fontScaleValue").text(val + "x");
       updateUIFontScale(val);
     });
+
+    // 初始化載入歷史統計
+    loadV1HistoryStats();
+
+    // 監聽推薦數與彩種變更，即時更新歷史統計圖表
+    $("#topN, #lottoType").on("change", loadV1HistoryStats);
   });
 
   /**
@@ -55,9 +61,7 @@
     if (isDetailed) {
       setTimeout(function () {
         $("html, body").animate(
-          {
-            scrollTop: $("#aiSuggestionArea").offset().top - 80,
-          },
+          { scrollTop: $("#aiSuggestionArea").offset().top - 80 },
           600,
         );
       }, 300); // 延遲 300ms 等待結果渲染完成
@@ -89,13 +93,35 @@
     AppUI.loading("星系計算中", "正在利用星系路徑演算法分析大數據...");
     $("#historyCard").addClass("d-none");
 
+    // 暫存彩種資訊，供錯誤回報使用
+    window._lastErrorLotto = data.lotto;
+
+    // 實作超時處理邏輯 (放寬至 60秒，避免 GAS 運算較久時斷開)
+    let isRequestActive = true;
+    const timeoutId = setTimeout(function () {
+      if (isRequestActive) {
+        isRequestActive = false;
+        AppUI.close();
+        AppUI.error(
+          "連線超時",
+          "星系預測執行時間過長 (超過 5 分鐘)，請檢查網路或縮減預測範圍。",
+        );
+      }
+    }, 300000); // 延長至 5 分鐘
+
     google.script.run
       .withSuccessHandler(function (res) {
+        if (!isRequestActive) return;
+        isRequestActive = false;
+        clearTimeout(timeoutId);
         AppUI.close();
         renderAISuggestion(res);
         renderResults(res);
       })
       .withFailureHandler(function (err) {
+        if (!isRequestActive) return;
+        isRequestActive = false;
+        clearTimeout(timeoutId);
         AppUI.showCommonError(err);
       })
       .getPrediction01(data.lotto, data.date, data.trend, parseInt(data.topN));
@@ -106,7 +132,7 @@
    */
   function renderAISuggestion(res) {
     var $area = $("#aiSuggestionArea");
-    if (!res.aiStrategy) {
+    if (!res || !res.aiStrategy) {
       $area.empty();
       return;
     }
@@ -132,6 +158,11 @@
     window.lastResult = res;
     var isDetailed = localStorage.getItem("detailedMode") === "true";
 
+    if (!res) {
+      AppUI.error("預測失敗", "伺服器未回傳有效數據 (NULL)");
+      return;
+    }
+
     if (!res.success) {
       AppUI.error("預測失敗", res.error);
       return;
@@ -148,7 +179,8 @@
         <div class="row row-cols-2 row-cols-sm-3 row-cols-md-5 g-3 justify-content-center">
   `;
 
-    res.prediction.forEach((numStr) => {
+    res.prediction.forEach((item) => {
+      const numStr = typeof item === "string" ? item : item.number;
       const num = Number(numStr);
       const label = res.labels[num] || "";
       let badgeClass = "bg-secondary";
@@ -160,7 +192,7 @@
       let isSkip = res.prevDrawNums && res.prevDrawNums.includes(num);
 
       if (isS1Hit) {
-        badgeClass = "bg-s1 animate-flash";
+        badgeClass = "bg-s1 animate-glow-s1";
       } else if (isHit) {
         badgeClass = "bg-success animate-pulse";
       } else if (label === "冷門反彈") {
@@ -173,12 +205,22 @@
         badgeClass = "bg-info";
       }
 
+      // 五行類別標籤 (安全嵌入)
+      const elementBadge = item.elementCategory
+        ? `
+        <span class="badge ${item.elementColor} position-absolute top-0 start-0 translate-middle" 
+              style="z-index:2; font-size:0.7rem; margin-top:-5px; margin-left: 10px;">
+          ${item.elementCategory}
+        </span>`
+        : "";
+
       html += `
       <div class="col text-center">
         <div class="ball-wrapper d-inline-block" style="position: relative;">
+          ${elementBadge}
           ${isRepeat ? '<span class="badge badge-repeat position-absolute top-0 start-50 translate-middle-x" style="z-index:1; font-size:0.7rem; margin-top:-5px;">連莊</span>' : ""}
           ${isSkip ? `<span class="badge badge-skip position-absolute start-50 translate-middle-x" style="z-index:1; font-size:0.7rem; bottom: ${isDetailed ? "30px" : "25px"};">隔期</span>` : ""}
-          <div class="lotto-ball ${isHit ? "hit" : ""}">${numStr}</div>
+          <div class="lotto-ball ${isHit ? "hit" : ""} ${isS1Hit ? "bg-s1 animate-glow-s1" : ""}">${numStr}</div>
           <span class="badge ${badgeClass}">${isS1Hit ? "中特" : isHit ? "命中" : isResonance ? "五行共振" : label}</span>
         </div>
       </div>
@@ -221,10 +263,21 @@
 
     // 詳細分析模式：顯示環境係數表格
     if (isDetailed && res.envDetails && res.envDetails.length > 0) {
+      // 新增：快取命中圖示邏輯
+      const cacheBadge = res.isCached
+        ? '<span class="badge bg-success-subtle text-success border border-success-subtle ms-auto animate-pulse" style="font-size:0.7rem;"><i class="fas fa-bolt me-1"></i>快取命中</span>'
+        : `<div class="ms-auto d-flex align-items-center gap-2">
+             <span class="badge bg-light text-muted border" style="font-size:0.7rem;"><i class="fas fa-microchip me-1"></i>即時計算</span>
+             <button class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.65rem; line-height:1.2;" onclick="manualCacheSave()" title="將統計結果存入持久快取">
+               <i class="fas fa-save me-1"></i>存入快取
+             </button>
+           </div>`;
+
       let detailHtml = `
         <div class="card shadow-sm mt-4">
-          <div class="card-header bg-info text-white fw-bold">
-            <i class="fas fa-microscope me-2"></i>星系環境係數明細 (AI 參考值)
+          <div class="card-header bg-info text-white fw-bold d-flex align-items-center py-2">
+            <span><i class="fas fa-microscope me-2"></i>星系環境係數明細 (AI 參考值)</span>
+            ${cacheBadge}
           </div>
           <div class="card-body p-0">
             <div class="p-2 bg-light border-bottom d-flex align-items-center gap-3 flex-wrap">
@@ -474,6 +527,84 @@
     });
   }
 
+  /**
+   * 顯示 AI 學習權重參數視窗
+   */
+  window.showAIWeights = function () {
+    const lotto = $("#lottoType").val();
+    AppUI.loading("讀取中", "正在串接星系核心權重...");
+
+    google.script.run
+      .withSuccessHandler(function (weights) {
+        AppUI.close();
+        if (!weights) {
+          AppUI.error("讀取失敗", "無法取得該彩種的權重數據。");
+          return;
+        }
+
+        const mapping = {
+          frequency: "基礎頻率權重",
+          repeat: "連莊引力權重",
+          skip: "隔期跳值權重",
+          metaBoostYear: "年度五行增益",
+          metaBoostTriple: "三合局噴發增益",
+          posSevereThres: "位置限制：極端門檻",
+          posNormalThres: "位置限制：一般門檻",
+          posSevereFactor: "位置限制：極端降權係數",
+          posNormalFactor: "位置限制：一般降權係數",
+        };
+
+        let html = `
+          <div class="table-responsive">
+            <table class="table table-sm table-hover table-bordered small mb-0">
+              <thead class="table-dark">
+                <tr><th>參數名稱</th><th class="text-end">數值</th></tr>
+              </thead>
+              <tbody>
+                ${Object.keys(weights)
+                  .map(
+                    (key) => `
+                  <tr>
+                    <td class="fw-bold text-secondary">${mapping[key] || key}</td>
+                    <td class="text-end fw-bold text-primary">${typeof weights[key] === "number" ? weights[key].toFixed(3) : weights[key]}</td>
+                  </tr>
+                `,
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+            <div class="alert alert-info mt-3 p-2 mb-0" style="font-size:0.75rem">
+              <i class="fas fa-info-circle me-1"></i> 以上參數由系統根據歷史命中表現自動微調，旨在最佳化預測軌道之穩定性。
+            </div>
+          </div>`;
+
+        AppUI.alertHtml(
+          `<i class="fas fa-brain me-2"></i>AI 學習權重參數 (${lotto})`,
+          html,
+          "450px",
+        );
+      })
+      .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+      .getPrediction1WeightSettings(lotto);
+  };
+
+  /**
+   * 載入並渲染 V1 歷史命中趨勢圖表
+   */
+  window.loadV1HistoryStats = function() {
+    const lotto = $("#lottoType").val();
+    const topN = $("#topN").val();
+    $("#historyCard").removeClass("d-none");
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (data && data.length > 0) {
+          renderChart(data);
+        }
+      })
+      .getPrediction1HistoryStats(lotto, topN);
+  };
+
   function renderChart(historyData) {
     const ctx = document.getElementById("historyChart").getContext("2d");
     if (historyChart) historyChart.destroy();
@@ -512,5 +643,23 @@
         runPrediction();
       })
       .clearAllCache(false);
+  };
+
+  /**
+   * 手動將當前預測環境存入快取
+   */
+  window.manualCacheSave = function () {
+    AppUI.loading("同步中", "正在將星系統計數據寫入持久化快取...");
+    google.script.run
+      .withSuccessHandler(function (res) {
+        AppUI.success(
+          "存入成功",
+          "該時空的統計數據已完成預載，下次預測將大幅加速。",
+          1500,
+        );
+        runPrediction(); // 重新整理結果以更新圖示
+      })
+      .withFailureHandler(AppUI.showCommonError)
+      .manuallyCacheStats();
   };
 </script>

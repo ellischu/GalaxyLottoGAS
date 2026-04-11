@@ -82,6 +82,46 @@
                 <input
                   class="form-check-input"
                   type="checkbox"
+                  id="historyStatsToggle"
+                  disabled
+                  onchange="toggleHistoryStats(this.checked)"
+                />
+                <label
+                  class="form-check-label label-text fw-bold text-secondary"
+                  for="historyStatsToggle"
+                >
+                  <i class="fas fa-chart-line me-1"></i>顯示歷史準確度 (近 30
+                  期)
+                </label>
+                <!-- 新增：載入中旋轉圖示 -->
+                <i
+                  id="historyLoadingIcon"
+                  class="fas fa-spinner fa-spin ms-2 d-none text-primary"
+                  title="資料載入中"
+                ></i>
+              </div>
+            </div>
+            <div class="col-md-6 mt-2">
+              <div class="form-check form-switch">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="gaugeDisplayToggle"
+                  onchange="toggleGaugeDisplay(this.checked)"
+                />
+                <label
+                  class="form-check-label label-text fw-bold text-info"
+                  for="gaugeDisplayToggle"
+                >
+                  <i class="fas fa-wave-square me-1"></i>顯示星系震盪儀表
+                </label>
+              </div>
+            </div>
+            <div class="col-md-6 mt-2">
+              <div class="form-check form-switch">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
                   id="displayModeToggle"
                   onchange="toggleDisplayMode(this.checked)"
                 />
@@ -112,6 +152,36 @@
 
       <!-- AI 智能建議區 -->
       <div id="aiSuggestionArea" class="mb-4"></div>
+
+      <!-- 星系震盪儀表 (詳細模式使用) -->
+      <div id="gaugeArea" class="mb-4" style="display: none">
+        <div class="card">
+          <div class="card-body text-center p-2">
+            <h6 class="small fw-bold text-secondary">
+              <i class="fas fa-wave-square me-1"></i>星系軌道震盪頻率
+            </h6>
+            <div style="height: 100px">
+              <canvas id="oscillationGauge"></canvas>
+            </div>
+            <div id="gaugeValue" class="small fw-bold mt-n2">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 歷史準確度統計 (近 30 期) -->
+      <div id="historyStatsArea" class="collapse mb-4">
+        <div class="card border-secondary bg-light-subtle">
+          <div class="card-header bg-secondary text-white fw-bold">
+            <i class="fas fa-chart-line me-2"></i>歷史預測準確度統計 (近 30 期)
+          </div>
+          <div class="card-body p-2">
+            <canvas
+              id="longTermAccuracyChart"
+              style="max-height: 120px"
+            ></canvas>
+          </div>
+        </div>
+      </div>
 
       <!-- 預測結果顯示區 -->
       <div id="predictionArea" class="mb-4" style="display: none"></div>

@@ -22,6 +22,11 @@
       $("#displayModeToggle").prop("checked", isDetailed);
       updateDetailedToggleUI(isDetailed);
 
+      // 初始化震盪儀表開關狀態
+      var isGaugeVisible = localStorage.getItem("gaugeDisplay") === "true";
+      $("#gaugeDisplayToggle").prop("checked", isGaugeVisible);
+      $("#gaugeArea").toggle(isGaugeVisible);
+
       // 初始化縮放比例
       var savedScale = localStorage.getItem("uiFontScale") || "1.0";
       $("#fontScaleRange").val(savedScale);
@@ -34,6 +39,12 @@
         $("#fontScaleValue").text(val + "x");
         updateUIFontScale(val);
       });
+
+      // 初始化載入歷史統計
+      loadHistoryStats();
+
+// 監聽推薦數、彩種與預測日期變更，即時更新歷史統計圖表
+      $("#topNSelect, #lottoSelect, #predictDate").on("change", loadHistoryStats);
 
       // 還原上次清理快取前的備份設定
       var backup = JSON.parse(
@@ -79,7 +90,9 @@
       google.script.run
         .withSuccessHandler(function () {
           AppUI.toast("快取已清理，重新執行預測", "success");
-          // 呼叫原本的預測流程
+          // 這裡僅執行 UI 邏輯。
+          // 注意：嚴禁在此處 (Callback) 執行 window.open 或涉及導航的動作，
+          // 否則會觸發 "Unsafe attempt to initiate navigation" 錯誤。
           handlePredict();
         })
         .clearAllCache(false);
@@ -91,6 +104,9 @@
       var useTrend = $("#useTrend").is(":checked");
       var topN = $("#topNSelect").val();
 
+      // 設定彩種資訊，供錯誤回報工具 AppUI.error 抓取
+      window._lastErrorLotto = lotto;
+
       if (!date) {
         AppUI.error("錯誤", "請選擇預測日期");
         return;
@@ -98,8 +114,45 @@
 
       AppUI.loading("計算中", "正在掃描星系規律並分析相關性...");
 
+      // --- 啟動進度輪詢器 ---
+      let progressInterval = setInterval(function () {
+        google.script.run
+          .withSuccessHandler(function (pStr) {
+            if (!pStr) return;
+            try {
+              const p = JSON.parse(pStr);
+              // 動態更新 Loading 視窗的文字
+              const $title = $(".swal2-title");
+              const $content = $("#swal2-html-container");
+              if ($title.length) $title.text("計算中 (" + p.percent + "%)");
+              if ($content.length) $content.text(p.message);
+            } catch (e) {}
+          })
+          .getPredictProgress(lotto);
+      }, 1500); // 每 1.5 秒查詢一次伺服器狀態
+
+      // 實作客戶端逾時處理 (5 分鐘)，避免 GAS 靜默失敗或長時間掛起
+      let isRequestActive = true;
+      const timeoutId = setTimeout(function () {
+        if (isRequestActive) {
+          isRequestActive = false;
+          clearInterval(progressInterval);
+          AppUI.close();
+          AppUI.error(
+            "連線超時",
+            "星系預測執行時間過長 (超過 5 分鐘)，可能是運算量過大或網路異常。",
+            null,
+            true,
+          );
+        }
+      }, 300000);
+
       google.script.run
         .withSuccessHandler(function (res) {
+          if (!isRequestActive) return;
+          isRequestActive = false;
+          clearInterval(progressInterval);
+          clearTimeout(timeoutId);
           AppUI.close();
           if (!res) {
             AppUI.error(
@@ -120,8 +173,96 @@
           renderAISuggestion(res);
           renderPrediction(res);
         })
-        .withFailureHandler(AppUI.showCommonError.bind(AppUI))
-        .getPrediction(lotto, date, useTrend, topN);
+        .withFailureHandler(function (err) {
+          if (!isRequestActive) return;
+          isRequestActive = false;
+          clearInterval(progressInterval);
+          clearTimeout(timeoutId);
+          AppUI.close();
+
+          // 情況 B: GAS 底層錯誤 (如 404, 權限問題, 或腳本編譯錯誤)
+          const errMsg = err.message || String(err);
+          const isTimeout =
+            errMsg.includes("exceeded") || errMsg.includes("deadline");
+
+          AppUI.error(
+            isTimeout ? "伺服器運算超時" : "星系連線中斷",
+            isTimeout
+              ? "運算時間超過 Google 限制。請縮短預測窗口或清理快取。"
+              : "GAS 引擎回傳錯誤：" + errMsg,
+            { stack: err.stack || "No stack trace available" },
+            true,
+          );
+        })
+        .getGalaxyPrediction(lotto, date, useTrend, topN);
+    };
+
+    /**
+     * 載入並渲染近 30 期歷史準確度圖表 (受開關控制)
+     */
+    window.loadHistoryStats = function () {
+      var lotto = $("#lottoSelect").val();
+      var topN = $("#topNSelect").val();
+      var date = $("#predictDate").val(); // 新增：讀取預測日期
+
+      // 1. 初始化狀態：禁用開關、顯示載入圖示、隱藏區域、重置標籤樣式
+      $("#historyStatsToggle").prop("disabled", true).prop("checked", false);
+      $("#historyStatsArea").removeClass("show");
+      $("#historyLoadingIcon").removeClass("d-none");
+      $('label[for="historyStatsToggle"]')
+        .removeClass("text-success")
+        .addClass("text-secondary");
+
+      google.script.run
+        .withSuccessHandler(function (data) {
+          // 2. 請求成功：隱藏載入圖示
+          $("#historyLoadingIcon").addClass("d-none");
+
+          if (data && data.length > 0) {
+            initLongTermAccuracyChart(data);
+            // 資料有效，才啟用開關並更新樣式
+            $("#historyStatsToggle").prop("disabled", false);
+            $('label[for="historyStatsToggle"]')
+              .removeClass("text-secondary")
+              .addClass("text-success");
+          } else {
+            // 資料為空（例如新彩種尚未有回測資料）
+            AppUI.toast("目前暫無此條件下的歷史統計數據", "info");
+          }
+        })
+        .withFailureHandler(function (err) {
+          // 3. 伺服器回傳失敗：隱藏圖示、維持禁用狀態、顯示錯誤提示
+          $("#historyLoadingIcon").addClass("d-none");
+          AppUI.error(
+            "連線異常",
+            "無法載入歷史統計資料，請檢查網路或稍後再試。",
+          );
+          console.error("Load History Stats Failed:", err);
+
+          // 可選：在標籤旁顯示小錯誤提示
+          $('label[for="historyStatsToggle"]').append(
+            '<span class="text-danger small ms-2"> (載入失敗)</span>',
+          );
+        })
+        .get60PeriodHistoryStats(lotto, topN, date); // 新增：傳入日期參數
+    };
+
+    /**
+     * 手動切換歷史統計區域顯示/隱藏
+     */
+    window.toggleHistoryStats = function (isVisible) {
+      const $area = $("#historyStatsArea");
+      if (isVisible) {
+        $area.addClass("show");
+        // 修正：當區域從隱藏變為顯示時，強制 Chart.js 重新調整佈局，防止寬高計算錯誤
+        if (window.myLongTermChart) {
+          setTimeout(function () {
+            window.myLongTermChart.resize();
+          }, 50);
+        }
+      } else {
+        $area.removeClass("show");
+      }
     };
 
     window.toggleDisplayMode = function (isDetailed) {
@@ -134,49 +275,111 @@
     };
 
     /**
+     * 獨立切換震盪儀表顯示狀態
+     */
+    window.toggleGaugeDisplay = function (isVisible) {
+      localStorage.setItem("gaugeDisplay", isVisible);
+      const $area = $("#gaugeArea");
+      $area.toggle(isVisible);
+
+      // 若顯示時已有圖表，強制重新調整大小以修正寬高計算
+      if (isVisible && window.myGaugeChart) {
+        setTimeout(() => {
+          window.myGaugeChart.resize();
+        }, 50);
+      }
+    };
+
+    /**
      * 渲染 AI 智能建議卡片
      */
     window.renderAISuggestion = function (res) {
       var $area = $("#aiSuggestionArea");
-      if (!res.aiStrategy) {
+      if (!res || !res.aiStrategy) {
         $area.empty();
         return;
       }
 
       var strategy = res.aiStrategy;
-      var isRegimeShift =
-        res.learningMode && res.learningMode.includes("規律重組");
-      var regimeBadge = isRegimeShift
-        ? '<span class="badge anim-pulse-purple ms-2" style="font-size:0.7rem;"><i class="fas fa-sync-alt fa-spin me-1"></i>規律重組擴展模式</span>'
-        : "";
-      var html =
-        '<div class="card border-info shadow-sm bg-light-subtle">' +
-        '<div class="card-body">' +
-        '<h6 class="fw-bold text-info mb-2"><i class="fas fa-robot me-2"></i>星系戰略分析' +
-        regimeBadge +
-        "</h6>" +
-        '<p class="mb-2 small fw-bold text-dark">' +
-        strategy.recommendation +
-        "</p>" +
-        '<div class="d-flex justify-content-between align-items-center">' +
-        '<div class="d-flex gap-2">' +
-        '<span class="badge bg-info-subtle text-info border border-info-subtle">' +
-        strategy.focus +
-        "</span>" +
-        '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">風險: ' +
-        strategy.risk +
-        "</span>" +
-        "</div>" +
-        (res.cyclicalComparison
-          ? '<button class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="showCyclicalDetail()"><i class="fas fa-list-ul me-1"></i>查看週期對比</button>'
-          : "") +
-        "</div></div></div>";
-      $area.html(html).fadeIn();
+      var isDetailed = localStorage.getItem("detailedMode") === "true";
+      var html = "";
+
+      if (isDetailed) {
+        // --- 詳細模式模板：深色標題、完整建議、強化指標圖示 ---
+        var isRegimeShift =
+          res.learningMode && res.learningMode.includes("規律重組");
+        var regimeBadge = isRegimeShift
+          ? '<span class="badge anim-pulse-purple ms-2" style="font-size:0.7rem;"><i class="fas fa-sync-alt fa-spin me-1"></i>規律重組擴展</span>'
+          : "";
+
+        html =
+          '<div class="card border-info shadow-sm bg-light-subtle">' +
+          '<div class="card-body">' +
+          '<div class="d-flex justify-content-between align-items-start mb-2">' +
+          '<h6 class="fw-bold text-info mb-0"><i class="fas fa-microscope me-2"></i>星系深度戰略分析' +
+          regimeBadge +
+          "</h6>" +
+          '<span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:0.65rem;">Deep Insight V1</span>' +
+          "</div>" +
+          '<p class="mb-3 text-dark fw-bold" style="font-size: 0.95rem; line-height: 1.4;">' +
+          strategy.recommendation +
+          "</p>" +
+          '<div class="d-flex justify-content-between align-items-center">' +
+          '<div class="d-flex gap-2">' +
+          '<span class="badge bg-info text-white"><i class="fas fa-crosshairs me-1"></i>核心: ' +
+          strategy.focus +
+          "</span>" +
+          '<span class="badge bg-warning text-dark"><i class="fas fa-shield-alt me-1"></i>風險: ' +
+          strategy.risk +
+          "</span>" +
+          "</div>" +
+          (res.cyclicalComparison
+            ? '<button class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="showCyclicalDetail()"><i class="fas fa-project-diagram me-1"></i>週期共振詳情</button>'
+            : "") +
+          "</div></div></div>";
+      } else {
+        // --- 精簡模式模板：橫向一行式摘要，節省空間 ---
+        // 擷取第一句建議 (以句號或感嘆號分割)
+        var shortRec = strategy.recommendation.split(/[。！\n]/)[0];
+        html =
+          '<div class="card border-info shadow-sm bg-light-subtle">' +
+          '<div class="card-body py-2 px-3">' +
+          '<div class="d-flex align-items-center gap-3">' +
+          '<div class="text-info"><i class="fas fa-robot"></i></div>' +
+          '<div class="small fw-bold text-dark text-truncate" style="max-width: 65%;" title="' +
+          shortRec +
+          '">' +
+          shortRec +
+          "</div>" +
+          '<div class="ms-auto d-flex gap-1">' +
+          '<span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:0.7rem;">' +
+          strategy.focus +
+          "</span>" +
+          '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle" style="font-size:0.7rem;">' +
+          strategy.risk +
+          "</span>" +
+          "</div>" +
+          "</div></div></div>";
+      }
+
+      // 使用停止動畫並重新淡入，讓模板切換更有感
+      $area.stop(true, true).hide().html(html).fadeIn(400);
     };
 
     window.renderPrediction = function (res) {
       var $area = $("#predictionArea");
       var isDetailed = localStorage.getItem("detailedMode") === "true";
+
+      // 修正：當重新渲染預測結果區時，必須銷毀舊的動態圖表實例
+      // 因為 $area.html(html) 會替換掉舊的 Canvas 元素，使舊的 Chart.js 實例失效
+      if (window.myConfChart) {
+        window.myConfChart.destroy();
+        window.myConfChart = null;
+      }
+      if (window.myAccChart) {
+        window.myAccChart.destroy();
+        window.myAccChart = null;
+      }
 
       var html =
         '<div class="card border-primary shadow mb-3">' +
@@ -209,10 +412,25 @@
 
       // 顯示命中結果 (如果該日期已有開獎)
       if (res.actualDraw) {
+        // 特別號顯示邏輯
+        let s1Html = res.actualS1
+          ? ` <span class="badge ${res.isS1Hit ? "bg-s1 animate-glow-s1" : "bg-secondary-subtle text-secondary"} border ms-1" style="font-size:0.8rem;">S: ${res.actualS1}</span>`
+          : "";
+
         html += `
-          <div class="alert alert-success py-2 px-3 mb-3 text-center border-2">
-            <div class="small mb-1">當日開獎：<strong>${res.actualDraw.join(", ")}</strong></div>
-            <div class="fw-bold text-success">獲利星等：${res.profitStars} / ${res.maxStars}</div>
+          <div class="alert alert-success py-2 px-3 mb-3 text-center border-2 d-flex flex-column align-items-center ${res.isS1Hit ? "border-success" : ""}">
+            <div class="small mb-1">當日開獎：<strong>${res.actualDraw.join(", ")}</strong>${s1Html}</div>`;
+
+        let starHtml = "";
+        for (let i = 0; i < res.maxStars; i++) {
+          if (i < res.profitStars) {
+            starHtml += '<i class="fas fa-star text-warning me-1"></i>'; // 實心金星
+          } else {
+            starHtml += '<i class="far fa-star text-muted me-1"></i>'; // 空心星
+          }
+        }
+        html += `
+            <div class="fw-bold text-success">獲利星等：${starHtml} (${res.profitStars} / ${res.maxStars})</div>
           </div>`;
       }
 
@@ -221,23 +439,36 @@
       res.results.forEach(function (item) {
         var isHit =
           res.actualDraw && res.actualDraw.includes(Number(item.number));
+        var isS1Hit = res.actualS1 && Number(item.number) === res.actualS1;
+
+        // 五行類別標籤
+        var elementBadge =
+          '<span class="badge badge-element ' +
+          item.elementColor +
+          ' position-absolute top-0 start-0 translate-middle" style="z-index:1; font-size:0.7rem; margin-top:-5px; margin-left: 10px;">' +
+          item.elementCategory +
+          "</span>";
+
         var repeatBadge = item.isRepeat
-          ? '<span class="badge bg-dark position-absolute top-0 start-50 translate-middle-x" style="z-index:1; font-size:0.8rem; margin-top:-5px;">連莊</span>'
+          ? '<span class="badge bg-dark position-absolute top-0 end-0 translate-middle" style="z-index:1; font-size:0.8rem; margin-top:-5px; margin-right: 10px;">連莊</span>'
           : "";
         var skipBadge = item.isSkip
           ? '<span class="badge bg-info text-dark position-absolute start-50 translate-middle-x" style="z-index:1; font-size:0.8rem; bottom: calc(1.8rem * var(--font-scale));">隔期</span>'
           : "";
         var penaltyIcon = item.isHeatPenalized
           ? '<i class="fas fa-balance-scale-right penalty-icon position-absolute" onclick="showHeatPenaltyDetail(' +
-            item.number +
+            item.number + // Changed to item.number for consistency
             ')" title="AI 偵測到過熱，點擊查看詳情"></i>'
           : "";
 
         html +=
           '<div class="text-center m-2" style="position: relative;">' +
-          (isHit
-            ? '<span class="badge badge-hit-glitter position-absolute top-0 start-50 translate-middle-x" style="z-index:2; font-size:0.8rem; margin-top:-15px;"><i class="fas fa-check"></i> 命中</span>'
+          (isHit || isS1Hit
+            ? '<span class="badge badge-hit-glitter position-absolute top-0 start-50 translate-middle-x" style="z-index:2; font-size:0.8rem; margin-top:-15px;"><i class="fas fa-check"></i> ' +
+              (isS1Hit ? "中特" : "命中") +
+              "</span>"
             : "") +
+          elementBadge + // 將 elementBadge 移到這裡，作為獨立的 span
           '<span class="badge ' +
           item.statusColor +
           ' mb-1" style="font-size: 0.8rem;">' +
@@ -250,6 +481,7 @@
           (item.isPotentialCold ? "anim-twinkle" : "") +
           " " +
           (isHit ? "ball-hit-gold" : "") +
+          (isS1Hit ? " bg-s1 animate-glow-s1" : "") +
           '">' +
           item.number +
           "</div>" +
@@ -338,8 +570,11 @@
       $area.html(html).slideDown();
       window.lastPredData = res; // 暫存資料供比對視窗使用
       if (isDetailed && res.confidenceHistory) {
-        initConfidenceChart(res.confidenceHistory);
-        initAccuracyChart(res.confidenceHistory);
+        // 確保 DOM 渲染並完成 SlideDown 動畫後再初始化圖表，避免寬高計算為 0
+        setTimeout(function () {
+          initConfidenceChart(res.confidenceHistory);
+          initAccuracyChart(res.confidenceHistory);
+        }, 200);
       }
       if (res.ampPercentile !== undefined) {
         initOscillationGauge(parseFloat(res.ampPercentile));
@@ -364,8 +599,6 @@
     window.initOscillationGauge = function (percentile) {
       var canvas = document.getElementById("oscillationGauge");
       if (!canvas) return;
-      var ctx = canvas.getContext("2d");
-      if (window.myGaugeChart) window.myGaugeChart.destroy();
 
       // 根據百分比決定顏色
       let color = "#36a2eb"; // 平穩 (Blue)
@@ -375,6 +608,22 @@
         color = "#ff9f40"; // 警戒 (Orange)
       else if (percentile > 40) color = "#4bc0c0"; // 正常 (Green)
 
+      if (window.myGaugeChart) {
+        window.myGaugeChart.data.datasets[0].data = [
+          percentile,
+          100 - percentile,
+        ];
+        window.myGaugeChart.data.datasets[0].backgroundColor = [
+          color,
+          "#e9ecef",
+        ];
+        window.myGaugeChart.update("none"); // 'none' 模式禁用更新動畫提升效能
+        $("#gaugeValue").text(percentile + "%");
+        return;
+      }
+
+      $("#gaugeValue").text(percentile + "%");
+      var ctx = canvas.getContext("2d");
       window.myGaugeChart = new Chart(ctx, {
         type: "doughnut",
         data: {
@@ -392,17 +641,8 @@
           responsive: true,
           maintainAspectRatio: false,
           cutout: "75%",
-          plugins: {
-            tooltip: { enabled: false },
-            legend: { display: false },
-          },
-          layout: {
-            padding: {
-              bottom: 10,
-              left: 5,
-              right: 5,
-            },
-          },
+          plugins: { tooltip: { enabled: false }, legend: { display: false } },
+          layout: { padding: { bottom: 10, left: 5, right: 5 } },
         },
       });
     };
@@ -412,7 +652,38 @@
      */
     window.initConfidenceChart = function (history) {
       var ctx = document.getElementById("confidenceChart").getContext("2d");
-      if (window.myConfChart) window.myConfChart.destroy();
+
+      const labels = history.map((h) => h.label);
+      const datasetsData = [
+        history.map((h) => h.repeat),
+        history.map((h) => h.skipCore),
+        history.map((h) => h.skipExt),
+        history.map((h) => h.consec || 0),
+        history.map((h) => h.rare),
+        history.map((h) => h.tail || 0),
+        history.map((h) => h.sum || 0),
+        history.map((h) =>
+          Math.round(
+            (h.repeat +
+              h.skipCore +
+              h.skipExt +
+              (h.consec || 0) +
+              h.rare +
+              (h.tail || 0) +
+              (h.sum || 0)) /
+              7,
+          ),
+        ),
+      ];
+
+      if (window.myConfChart) {
+        window.myConfChart.data.labels = labels;
+        window.myConfChart.data.datasets.forEach((ds, i) => {
+          ds.data = datasetsData[i];
+        });
+        window.myConfChart.update();
+        return;
+      }
 
       window.myConfChart = new Chart(ctx, {
         type: "line",
@@ -517,14 +788,7 @@
           responsive: true,
           devicePixelRatio: window.devicePixelRatio || 2, // 優化 Retina 渲染
           maintainAspectRatio: false,
-          layout: {
-            padding: {
-              top: 5,
-              bottom: 5,
-              left: 0,
-              right: 10,
-            },
-          },
+          layout: { padding: { top: 5, bottom: 5, left: 0, right: 10 } },
           onClick: function (e, elements) {
             if (elements.length > 0) {
               var idx = elements[0].index;
@@ -569,7 +833,18 @@
      */
     window.initAccuracyChart = (history) => {
       var ctx = document.getElementById("accuracyChart").getContext("2d");
-      if (window.myAccChart) window.myAccChart.destroy();
+
+      const labels = history.map((h) => h.label);
+      const data = history.map((h) => h.hits);
+      const colors = history.map((h) => (h.hits >= 2 ? "#38ef7d" : "#ffc107"));
+
+      if (window.myAccChart) {
+        window.myAccChart.data.labels = labels;
+        window.myAccChart.data.datasets[0].data = data;
+        window.myAccChart.data.datasets[0].backgroundColor = colors;
+        window.myAccChart.update();
+        return;
+      }
 
       window.myAccChart = new Chart(ctx, {
         type: "bar",
@@ -589,14 +864,7 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: {
-            padding: {
-              top: 5,
-              bottom: 5,
-              left: 0,
-              right: 5,
-            },
-          },
+          layout: { padding: { top: 5, bottom: 5, left: 0, right: 5 } },
           onClick: function (e, elements) {
             if (elements.length > 0) {
               var idx = elements[0].index;
@@ -763,5 +1031,86 @@
         "550px",
       );
     };
+
+    /**
+     * 初始化 60 期長期準確度圖表
+     */
+    function initLongTermAccuracyChart(history) {
+      var ctx = document
+        .getElementById("longTermAccuracyChart")
+        .getContext("2d");
+
+      const labels = history.map((h) => h.date);
+      const data = history.map((h) => h.hits);
+
+      if (window.myLongTermChart) {
+        window.myLongTermChart.data.labels = labels;
+        window.myLongTermChart.data.datasets[0].data = data;
+        window.myLongTermChart.update();
+        return;
+      }
+
+      window.myLongTermChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: history.map((h) => h.date),
+          datasets: [
+            {
+              label: "命中數",
+              data: history.map((h) => h.hits),
+              backgroundColor: "rgba(0, 123, 255, 0.6)",
+              borderColor: "rgba(0, 123, 255, 1)",
+              borderWidth: 1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { mode: "index", intersect: false },
+          },
+          onClick: function (e, elements) {
+            if (elements.length > 0) {
+              var idx = elements[0].index;
+              var h = history[idx];
+              if (h.hitNumbers && h.hitNumbers.length > 0) {
+                AppUI.alertHtml(
+                  '<i class="fas fa-trophy text-warning me-2"></i>命中詳情 (' +
+                    h.date +
+                    ")",
+                  '<div class="text-center">該期命中號碼：<br>' +
+                    '<h3 class="text-success mt-2 fw-bold">' +
+                    h.hitNumbers.join(", ") +
+                    "</h3>" +
+                    '<p class="text-muted small mt-2">共命中 ' +
+                    h.hits +
+                    " 顆球</p></div>",
+                  "400px",
+                );
+              } else {
+                AppUI.toast(
+                  "該期命中 " +
+                    h.hits +
+                    " 顆球" +
+                    (h.hits > 0 ? " (無詳細號碼資料)" : ""),
+                  "info",
+                );
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1, font: { size: 10 } },
+            },
+            x: {
+              ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 },
+            },
+          },
+        },
+      });
+    }
   })(jQuery);
 </script>

@@ -123,6 +123,51 @@
       opacity: 0.9;
     }
   }
+  /* 五行共振標籤：翠綠色能源發光 */
+  .bg-resonance {
+    background-color: #198754 !important;
+    color: #fff !important;
+    box-shadow: 0 0 10px rgba(25, 135, 84, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+  .animate-glow-green {
+    animation: glow-green 2s infinite alternate;
+  }
+  @keyframes glow-green {
+    from {
+      box-shadow: 0 0 5px rgba(25, 135, 84, 0.4);
+    }
+    to {
+      box-shadow:
+        0 0 15px rgba(25, 135, 84, 1),
+        0 0 20px rgba(255, 255, 255, 0.5);
+    }
+  }
+  /* 特別號 (S1) 命中標籤：亮綠色背景與深色文字，確保視覺對比 */
+  .bg-s1 {
+    background-color: #38ef7d !important;
+    color: #212529 !important;
+    box-shadow: 0 0 15px rgba(56, 239, 125, 0.8);
+    font-weight: bold;
+    border: 1px solid #fff !important;
+  }
+  /* 中特驚喜發光動畫 */
+  .animate-glow-s1 {
+    animation: glow-s1 1.2s infinite alternate ease-in-out;
+  }
+  @keyframes glow-s1 {
+    from {
+      box-shadow: 0 0 10px rgba(56, 239, 125, 0.6);
+      transform: scale(1);
+    }
+    to {
+      box-shadow:
+        0 0 25px rgba(56, 239, 125, 1),
+        0 0 35px rgba(255, 215, 0, 0.7);
+      filter: brightness(1.2);
+      transform: scale(1.1);
+    }
+  }
   .ball-container {
     width: 60px;
   }

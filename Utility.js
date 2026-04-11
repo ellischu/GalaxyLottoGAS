@@ -11,11 +11,13 @@ function doGet(e) {
 // 從屬性服務取得版本號，若無則預設為 v1.0
 /**
  * 動態取得當前快取版本號，確保清理快取後能立即 bust cache
+ * @param {string} salt 額外的版本鹽值 (例如演算法版本)
  */
-function getCacheVersion() {
-  return (
-    PropertiesService.getScriptProperties().getProperty("APP_VERSION") || "v1.3"
-  );
+function getCacheVersion(salt = "") {
+  const baseVersion =
+    PropertiesService.getScriptProperties().getProperty("APP_VERSION") ||
+    "v1.3";
+  return salt ? baseVersion + "_" + salt : baseVersion;
 }
 
 /**
@@ -84,7 +86,6 @@ function getTarget(sheetName, targetName) {
       break;
     }
   }
-  // console.log("取得試算表網址: " + url);
   return url;
 }
 
@@ -242,6 +243,7 @@ function getIDMapping() {
 /**
  * 取得當前 Web App 的 URL
  * 用於前端按鈕跳轉
+ * 提示：前端跳轉請務必使用 <a target="_top"> 或 window.open(url, '_top')
  */
 function getScriptUrl() {
   return ScriptApp.getService().getUrl();
@@ -428,9 +430,9 @@ function includeNav() {
 /** @type {number} */
 var startTime = new Date().getTime();
 
-/** 檢查是否快要超時 (設定為 20 秒以確保安全) */
+/** 檢查是否快要超時 (設定為 290 秒，即接近 5 分鐘，以確保安全) */
 function isNearTimeout() {
-  return new Date().getTime() - startTime > 20 * 1000;
+  return new Date().getTime() - startTime > 290 * 1000;
 }
 
 /**
@@ -521,6 +523,182 @@ function getErrorLogs() {
 }
 
 /**
+ * 從指定工作表讀取屬性 (鍵值對)
+ * @param {string} sheetName 要讀取的工作表名稱 (e.g., "Property", "prct1_Settings")
+ * @param {string} key 屬性名稱 (Key)
+ * @param {any} defaultValue 預設值 (若找不到或解析失敗則回傳此值)
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} targetSs 目標試算表 (若無則使用主表)
+ * @returns {any} 屬性值
+ */
+function getPropertySheetValue(
+  sheetName,
+  key,
+  defaultValue = null,
+  targetSs = null,
+) {
+  const ss = targetSs || mainspreadsheet;
+  // 若有指定目標試算表，預設工作表名稱改為 prct1_Property
+  const sName = sheetName || (targetSs ? "prct1_Property" : "Property");
+  const cache = CacheService.getScriptCache();
+
+  // 1. 優先嘗試讀取特定 Key 的快取 (支援單一物件最高 100KB)
+  const specificCacheKey = `SHEET_PROP_${ss.getId()}_${sName}_${key}`;
+  const cachedVal = cache.get(specificCacheKey);
+  if (cachedVal !== null) {
+    try {
+      return JSON.parse(cachedVal);
+    } catch (e) {
+      return cachedVal;
+    }
+  }
+
+  const sheet = ss.getSheetByName(sName);
+  if (!sheet) {
+    return defaultValue;
+  }
+
+  // 2. 嘗試從整張表的快取搜尋 (用於減少試算表 IO)
+  const sheetCacheKey = `SHEET_PROP_${ss.getId()}_${sName}`;
+  let sheetData = null;
+  const cachedSheet = cache.get(sheetCacheKey);
+  if (cachedSheet) {
+    try {
+      sheetData = JSON.parse(cachedSheet);
+    } catch (e) {
+      sheetData = null;
+    }
+  }
+
+  if (!sheetData) {
+    sheetData = sheet.getDataRange().getValues();
+    // 只有在小於 90KB 時才存入整張表快取，避免 CacheService 溢位
+    const sheetDataStr = JSON.stringify(sheetData);
+    if (sheetDataStr.length < 90000) {
+      cache.put(sheetCacheKey, sheetDataStr, 300);
+    }
+  }
+
+  if (!sheetData || sheetData.length === 0) return defaultValue;
+
+  for (let i = 0; i < sheetData.length; i++) {
+    if (String(sheetData[i][0]).trim() === key) {
+      const rawValue = sheetData[i][1];
+
+      // 3. 找到資料後，同步回寫特定 Key 快取，方便下次快速讀取
+      const stringified =
+        typeof rawValue === "object"
+          ? JSON.stringify(rawValue)
+          : String(rawValue);
+      if (stringified.length < 100000) {
+        cache.put(specificCacheKey, stringified, 600);
+      }
+
+      try {
+        return typeof rawValue === "string" ? JSON.parse(rawValue) : rawValue;
+      } catch (e) {
+        return rawValue;
+      }
+    }
+  }
+  return defaultValue;
+}
+
+/**
+ * 將屬性寫入指定工作表 (鍵值對)
+ * @param {string} sheetName 要寫入的工作表名稱 (e.g., "Property", "prct1_Settings")
+ * @param {string} key 屬性名稱 (Key)
+ * @param {any} value 屬性值 (會自動轉為 JSON 字串)
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} targetSs 目標試算表 (若無則使用主表)
+ */
+function setPropertySheetValue(sheetName, key, value, targetSs = null) {
+  const ss = targetSs || mainspreadsheet;
+  const sName = sheetName || (targetSs ? "prct1_Property" : "Property");
+  let sheet = ss.getSheetByName(sName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sName);
+    sheet.appendRow(["Key", "Value", "LastUpdated"]); // 初始化標題行
+    sheet.setFrozenRows(1);
+  }
+
+  const stringValue =
+    typeof value === "object" ? JSON.stringify(value) : String(value);
+
+  // 檢查試算表儲存格限制 (50,000 字元)
+  if (stringValue.length > 50000) {
+    throw new Error(
+      `Data too large for Sheet cell: ${stringValue.length} characters.`,
+    );
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const now = new Date();
+
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === key) {
+      sheet.getRange(i + 1, 2, 1, 2).setValues([[stringValue, now]]);
+      // 清除快取，確保下次讀取的是最新值
+      CacheService.getScriptCache().remove(
+        `SHEET_PROP_${ss.getId()}_${sName}_${key}`,
+      );
+      CacheService.getScriptCache().remove(`SHEET_PROP_${ss.getId()}_${sName}`);
+      return;
+    }
+  }
+  // 如果找不到 key，則新增一行
+  sheet.appendRow([key, stringValue, now]);
+  CacheService.getScriptCache().remove(
+    `SHEET_PROP_${ss.getId()}_${sName}_${key}`,
+  );
+  CacheService.getScriptCache().remove(`SHEET_PROP_${ss.getId()}_${sName}`);
+}
+
+/**
+ * 移除指定工作表中的屬性
+ * @param {string} sheetName 工作表名稱
+ * @param {string} key 屬性名稱
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} targetSs 目標試算表
+ */
+function deletePropertySheetValue(sheetName, key, targetSs = null) {
+  const ss = targetSs || mainspreadsheet;
+  const sName = sheetName || (targetSs ? "prct1_Property" : "Property");
+  const sheet = ss.getSheetByName(sName);
+  if (!sheet) return;
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === key) {
+      sheet.deleteRow(i + 1); // 刪除該行
+      CacheService.getScriptCache().remove(`SHEET_PROP_${ss.getId()}_${sName}`);
+      CacheService.getScriptCache().remove(
+        `SHEET_PROP_${ss.getId()}_${sName}_${key}`,
+      );
+      return;
+    }
+  }
+}
+
+/**
+ * 設定預測進度快取
+ * @param {string} lotto 彩種代碼
+ * @param {number} percent 百分比 (0-100)
+ * @param {string} message 進度描述
+ */
+function setPredictProgress(lotto, percent, message) {
+  const cache = CacheService.getScriptCache();
+  const data = JSON.stringify({ percent, message, ts: Date.now() });
+  // 快取有效期設定為 2 分鐘，足以支撐單次運算
+  cache.put("PROG_" + lotto, data, 120);
+}
+
+/**
+ * 取得預測進度快取 (供前端輪詢)
+ * @param {string} lotto 彩種代碼
+ */
+function getPredictProgress(lotto) {
+  return CacheService.getScriptCache().get("PROG_" + lotto);
+}
+
+/**
  * 轉換 AllData 工作表並輸出至 AllDataC
  * 1. 利用 getFieldName(id) 轉換標題
  * 2. 利用 getIDName(id) 轉換值，但 Date 及 strp13(命重) 的值不轉換
@@ -600,7 +778,6 @@ function transformAllDataToC() {
         }
       }
     }
-
     // 寫入最後剩餘的資料
     if (rowsToAdd.length > 0) {
       const lastRow = targetSheet.getLastRow();
@@ -657,4 +834,86 @@ function transformAllDataToC() {
     message: "轉換完成，共處理 " + (data.length - 1) + " 筆資料。",
     btntext: "確定",
   };
+}
+
+/**
+ * 手動清除伺服器屬性，只保留指定的關鍵屬性。
+ * 這有助於清理不再使用的舊屬性，保持 PropertiesService 的整潔。
+ */
+function clearServerPropertiesManually() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const allProperties = scriptProperties.getProperties();
+
+  const propertiesToKeep = [
+    "APP_VERSION",
+    "ERR_PREDICT_COUNT",
+    "ERR_PREDICT_LAST",
+  ];
+
+  for (const key in allProperties) {
+    if (allProperties.hasOwnProperty(key) && !propertiesToKeep.includes(key)) {
+      scriptProperties.deleteProperty(key);
+      Logger.log(`已刪除屬性: ${key}`);
+    }
+  }
+  Logger.log(
+    "伺服器屬性清理完成。只保留了 APP_VERSION, ERR_PREDICT_COUNT, ERR_PREDICT_LAST。",
+  );
+}
+
+/**
+ * 全域錯誤追蹤系統
+ * @param {string} module 模組名稱
+ * @param {Error} error 錯誤物件
+ * @param {Object} context 執行上下文 (可選)
+ */
+function logSystemError(module, error, context = {}) {
+  try {
+    let sheet = mainspreadsheet.getSheetByName("ErrorLog");
+    if (!sheet) {
+      sheet = mainspreadsheet.insertSheet("ErrorLog");
+      sheet.appendRow(["時間", "模組", "錯誤訊息", "堆疊軌跡", "上下文數據"]);
+      sheet.setFrozenRows(1);
+    }
+
+    sheet.appendRow([
+      new Date(),
+      module,
+      error.message,
+      error.stack,
+      JSON.stringify(context),
+    ]);
+  } catch (e) {
+    Logger.log("日誌系統寫入失敗: " + e.toString());
+  }
+}
+
+/**
+ * 自動清理 ErrorLog 舊數據 (預設保留 30 天)
+ * @param {number} daysToKeep 保留天數
+ */
+function autoCleanupErrorLog(daysToKeep = 30) {
+  const sheet = mainspreadsheet.getSheetByName("ErrorLog");
+  if (!sheet) return;
+  
+  const rows = sheet.getLastRow();
+  if (rows <= 1) return;
+  
+  const data = sheet.getRange(2, 1, rows - 1, 1).getValues();
+  const now = new Date().getTime();
+  const maxAge = daysToKeep * 24 * 60 * 60 * 1000;
+  
+  let deleteCount = 0;
+  // 從後往前刪除，避免索引偏移
+  for (let i = data.length - 1; i >= 0; i--) {
+    const logDate = new Date(data[i][0]).getTime();
+    if (now - logDate > maxAge) {
+      sheet.deleteRow(i + 2);
+      deleteCount++;
+    }
+  }
+  
+  if (deleteCount > 0) {
+    Logger.log(`[Cleanup] 已清理 ${deleteCount} 筆過期日誌。`);
+  }
 }

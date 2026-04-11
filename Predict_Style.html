@@ -1,0 +1,378 @@
+<style>
+  :root {
+    --font-scale: 1; /* 全局字體縮放變數 */
+  }
+
+  body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    color: #343a40;
+    line-height: 1.6;
+  }
+
+  .main-container {
+    padding-top: 20px;
+    padding-bottom: 40px;
+  }
+
+  .card {
+    border-radius: 0.75rem;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  .card-header {
+    border-radius: 0.75rem 0.75rem 0 0 !important;
+    background-color: #007bff;
+    color: white;
+    padding: 0.75rem 1.25rem;
+    font-size: calc(1rem * var(--font-scale));
+  }
+
+  .card-body {
+    padding: 1.5rem;
+  }
+
+  .header-text {
+    font-size: calc(1.5rem * var(--font-scale));
+    font-weight: 600;
+    color: #007bff;
+    margin-bottom: 1.5rem;
+  }
+
+  .label-text {
+    font-size: calc(0.95rem * var(--font-scale));
+    font-weight: 500;
+    color: #495057;
+  }
+
+  .form-control,
+  .form-select,
+  .btn {
+    font-size: calc(0.9rem * var(--font-scale));
+    border-radius: 0.5rem;
+  }
+
+  .form-check-label {
+    font-size: calc(0.9rem * var(--font-scale));
+    cursor: pointer;
+    transition: color 0.3s ease;
+  }
+
+  .form-check-label:hover {
+    color: #0056b3;
+  }
+
+  .detailed-label-active {
+    color: #007bff !important;
+    font-weight: bold;
+  }
+
+  /* 球體樣式 */
+  .ball {
+    width: calc(45px * var(--font-scale));
+    height: calc(45px * var(--font-scale));
+    line-height: calc(45px * var(--font-scale));
+    border-radius: 50%;
+    background-color: #6c757d;
+    color: white;
+    font-size: calc(1.2rem * var(--font-scale));
+    font-weight: bold;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease-in-out;
+    position: relative;
+    z-index: 0;
+  }
+
+  .ball-hit-gold {
+    background: linear-gradient(45deg, #ffc107, #ffeb3b);
+    box-shadow: 0 0 15px rgba(255, 193, 7, 0.7);
+    border: 2px solid #e0a800;
+    transform: scale(1.1);
+  }
+
+  /* 五行屬性標籤樣式 */
+  .badge-metal { background: linear-gradient(135deg, #ffd700, #b8860b); color: #000; box-shadow: 0 0 8px rgba(255, 215, 0, 0.5); } /* 金 */
+  .badge-wood { background: linear-gradient(135deg, #28a745, #155724); color: #fff; box-shadow: 0 0 8px rgba(40, 167, 69, 0.5); }  /* 木 */
+  .badge-water { background: linear-gradient(135deg, #00d2ff, #007bff); color: #fff; box-shadow: 0 0 8px rgba(0, 210, 255, 0.5); } /* 水 */
+  .badge-fire { background: linear-gradient(135deg, #ff416c, #ff4b2b); color: #fff; box-shadow: 0 0 8px rgba(255, 65, 108, 0.5); }  /* 火 */
+  .badge-earth { background: linear-gradient(135deg, #8d6e63, #4e342e); color: #fff; box-shadow: 0 0 8px rgba(141, 110, 99, 0.5); } /* 土 */
+
+  .badge-element {
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  /* 特別號 (S1) 命中樣式 */
+  .bg-s1 {
+    background-color: #38ef7d !important;
+    color: #212529 !important;
+    box-shadow: 0 0 15px rgba(56, 239, 125, 0.8);
+    font-weight: bold;
+  }
+
+  @keyframes glow-s1 {
+    from {
+      box-shadow: 0 0 10px rgba(56, 239, 125, 0.6);
+      transform: scale(1);
+    }
+    to {
+      box-shadow: 0 0 25px rgba(56, 239, 125, 1), 0 0 35px rgba(255, 215, 0, 0.7);
+      filter: brightness(1.2);
+      transform: scale(1.05);
+    }
+  }
+
+  .animate-glow-s1 {
+    animation: glow-s1 1.2s infinite alternate ease-in-out;
+  }
+
+  /* 動畫效果 */
+  @keyframes twinkle {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .anim-twinkle {
+    animation: twinkle 1.5s infinite ease-in-out;
+  }
+
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .anim-pulse {
+    animation: pulse 1s infinite ease-in-out;
+  }
+
+  @keyframes pulse-purple {
+    0% {
+      box-shadow: 0 0 0 0 rgba(128, 0, 128, 0.7);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(128, 0, 128, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(128, 0, 128, 0);
+    }
+  }
+
+  .anim-pulse-purple {
+    animation: pulse-purple 2s infinite;
+  }
+
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    10%,
+    30%,
+    50%,
+    70%,
+    90% {
+      transform: translateX(-5px);
+    }
+    20%,
+    40%,
+    60%,
+    80% {
+      transform: translateX(5px);
+    }
+  }
+
+  .anim-shake {
+    animation: shake 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+
+  .badge-hit-glitter {
+    background: linear-gradient(45deg, #ffd700, #ffa500);
+    color: #8b4513;
+    font-weight: bold;
+    padding: 0.4em 0.6em;
+    border-radius: 0.3rem;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+  }
+
+  .penalty-icon {
+    position: absolute;
+    bottom: calc(0.5rem * var(--font-scale));
+    right: calc(0.5rem * var(--font-scale));
+    color: #dc3545;
+    font-size: calc(0.9rem * var(--font-scale));
+    cursor: help;
+    z-index: 1;
+  }
+
+  /* Chart.js 相關樣式 */
+  .chart-legend-container {
+    font-size: calc(0.8rem * var(--font-scale));
+  }
+
+  .chart-legend-container .form-check-label {
+    padding-left: 1.5em;
+    position: relative;
+    transition: opacity 0.3s ease;
+  }
+
+  .chart-legend-container .form-check-label::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1em;
+    height: 0.2em;
+    border-bottom: 2px solid;
+    border-top: 2px solid;
+  }
+
+  /* 係數比對視窗 */
+  .table-responsive {
+    max-height: 60vh; /* 限制高度，避免內容過多 */
+    overflow-y: auto;
+  }
+
+  /* 統計圖表容器優化 */
+  canvas {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));
+  }
+
+  .table-responsive th,
+  .table-responsive td {
+    white-space: nowrap; /* 防止內容換行 */
+  }
+
+  /* AI 策略建議中的特殊文字樣式 */
+  .lucky-combo {
+    color: #28a745; /* 綠色 */
+    font-weight: bold;
+  }
+
+  .unlucky-combo {
+    color: #dc3545; /* 紅色 */
+    font-weight: bold;
+  }
+
+  /* 週期對比表格樣式 */
+  .comp-match {
+    background-color: #d4edda; /* 淺綠色 */
+  }
+
+  .comp-mismatch {
+    background-color: #f8d7da; /* 淺紅色 */
+  }
+
+  /* SweetAlert2 自定義樣式 */
+  .swal2-popup {
+    font-size: calc(1rem * var(--font-scale));
+  }
+
+  .swal2-title {
+    font-size: calc(1.2rem * var(--font-scale));
+  }
+
+  .swal2-html-container {
+    font-size: calc(0.9rem * var(--font-scale));
+  }
+
+  .swal2-progresssteps {
+    margin-bottom: 1rem;
+  }
+
+  .progress {
+    height: 8px;
+    border-radius: 4px;
+    background-color: #e9ecef;
+  }
+
+  .progress-bar {
+    background-color: #007bff;
+    transition: width 0.6s ease;
+  }
+
+  /* 響應式調整 */
+  @media (max-width: 768px) {
+    .ball {
+      width: calc(40px * var(--font-scale));
+      height: calc(40px * var(--font-scale));
+      line-height: calc(40px * var(--font-scale));
+      font-size: calc(1rem * var(--font-scale));
+    }
+    .header-text {
+      font-size: calc(1.2rem * var(--font-scale));
+    }
+    .label-text {
+      font-size: calc(0.85rem * var(--font-scale));
+    }
+    .form-control,
+    .form-select,
+    .btn {
+      font-size: calc(0.8rem * var(--font-scale));
+    }
+
+    /* --- 省電 / 精簡模式 (手機端自動優化) --- */
+    /* 在小螢幕裝置上移除高能耗的陰影與動畫，改用扁平化設計以確保流暢度 */
+    .ball,
+    .card,
+    .btn,
+    .badge,
+    .form-control {
+      box-shadow: none !important;
+      transition: none !important;
+    }
+
+    .ball-hit-gold,
+    .badge-hit-glitter {
+      background: #ffc107 !important; /* 使用純色取代漸層 */
+      border: 1px solid #e0a800 !important;
+    }
+
+    /* 停用所有裝飾性動畫 */
+    .anim-twinkle,
+    .anim-pulse,
+    .anim-pulse-purple,
+    .anim-shake,
+    .progress-bar-animated {
+      animation: none !important;
+    }
+  }
+
+  /* 手動「省電模式」類別 - 供程式控製或低電量時切換 */
+  body.lite-mode * {
+    animation: none !important;
+    transition: none !important;
+    box-shadow: none !important;
+    background-image: none !important;
+    text-shadow: none !important;
+  }
+  body.lite-mode .ball-hit-gold {
+    background-color: #ffc107 !important;
+  }
+  body.lite-mode .badge-hit-glitter {
+    background-color: #ffd700 !important;
+  }
+</style>

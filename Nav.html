@@ -179,27 +179,32 @@
         // 4. 呼叫後端 clearAllCache
         google.script.run
           .withSuccessHandler(function (res) {
+            // 先備份當前主題設定，避免被清空
+            var currentTheme = localStorage.getItem("theme");
+
             // 1. 取得當前輸入狀態備份 (如彩種、日期)
             var backup = {
-              lotto: $("#lottoSelect").val(),
-              date: $("#predictDate").val(),
+              lotto: $("#lottoSelect").val() || $("#lottoType").val(),
+              date: $("#predictDate").val() || $("#predDate").val(),
               useTrend: $("#useTrend").is(":checked"),
-              topN: $("#topNSelect").val(),
+              topN: $("#topNSelect").val() || $("#topN").val(),
               isReloaded: true,
             };
 
-            // 2. 獲取當前頁面 (改用 DOM 偵測，因為 GAS Iframe 環境下 window.location.search 常為空)
+            // 2. 獲取當前頁面 (支援 V1 預測頁面偵測)
             var currentPage = "Index";
             if ($("#predictButton").length) currentPage = "Predict";
-            else if ($("#predDate").length) currentPage = "Prediction1";
+            else if ($("#predDate").length || $("#lottoType").length)
+              currentPage = "Prediction1";
             else if ($("#btnCmbUpdate").length || $("#btnMissUpdate").length)
               currentPage = "UpdateAll";
 
             // 3. 清除客戶端本地儲存並重新寫入備份
             localStorage.clear();
             localStorage.setItem("sys_backup_settings", JSON.stringify(backup));
+            if (currentTheme) localStorage.setItem("theme", currentTheme);
 
-            // 4. 顯示成功訊息，並在使用者關閉視窗後重新載入當前頁面
+            // 4. 顯示成功訊息並重載頁面
             AppUI.success(
               "清理完成",
               "星系快取已重置，頁面即將重新載入。",

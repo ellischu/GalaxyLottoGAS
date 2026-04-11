@@ -107,12 +107,28 @@
             </div>
           </div>
 
-          <button
-            class="btn btn-primary w-100 mt-3 label-text text-white"
-            onclick="runPrediction()"
-          >
-            <i class="fas fa-search me-2"></i> 開始智慧預測
-          </button>
+          <div class="d-flex gap-2 mt-3">
+            <button
+              class="btn btn-primary flex-grow-1 label-text text-white"
+              onclick="runPrediction()"
+            >
+              <i class="fas fa-search me-2"></i> 開始智慧預測
+            </button>
+            <button
+              class="btn btn-outline-info label-text px-3"
+              onclick="showAIWeights()"
+              title="查看 AI 學習權重"
+            >
+              <i class="fas fa-brain"></i>
+            </button>
+            <button
+              class="btn btn-outline-danger label-text px-3"
+              onclick="clearCacheAndRetry()"
+              title="清除全域快取並手動重新計算"
+            >
+              <i class="fas fa-broom"></i>
+            </button>
+          </div>
         </div>
       </div>
 
