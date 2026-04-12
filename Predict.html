@@ -134,13 +134,31 @@
               </div>
             </div>
             <div class="col-12">
-              <div class="d-grid">
+              <div class="d-flex gap-2">
                 <button
-                  class="btn btn-primary label-text text-white"
+                  class="btn btn-primary flex-grow-1 label-text text-white"
                   type="button"
                   id="predictButton"
                 >
                   <i class="fas fa-search me-2"></i> 開始星系預測
+                </button>
+                <button
+                  class="btn btn-outline-info"
+                  type="button"
+                  id="clearWeightsCacheBtn"
+                  title="刷新 AI 權重快取"
+                  onclick="handleClearAIVersionCache()"
+                >
+                  <i class="fas fa-bolt"></i>
+                </button>
+                <button
+                  class="btn btn-outline-danger"
+                  type="button"
+                  id="purgeOldCacheBtn"
+                  title="清理舊版歷史紀錄"
+                  onclick="handlePurgeOldVersions()"
+                >
+                  <i class="fas fa-broom"></i>
                 </button>
               </div>
             </div>
@@ -190,6 +208,3 @@
     <?!= include('Predict_JS'); ?> <?!= includeFooter(); ?>
   </body>
 </html>
-<!--
-[PROMPT_SUGGESTION]在 Predict.html 中增加一個「歷史預測準確度統計」的區塊，顯示近 60 期的命中率圖表。[/PROMPT_SUGGESTION]
--->

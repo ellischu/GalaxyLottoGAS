@@ -30,10 +30,10 @@
    * L4欄位：Title:落4，Type:integer
    * L5欄位：Title:落5，Type:integer
    * L6欄位：Title:落6，Type:integer
-   * S1欄位：Title:特1，Type:integer
+   * S1欄位：Title:特1，Type:integer (1~8顆 )
    * Sum欄位：Title:總合，Type:integer
    * series 欄位:Title:序號，Type:integer
-* LSix 工作表：記錄由地球在特定日期，固定時間，觀察LSix象限的39顆星球出現的結果。
+* LSix 工作表：記錄由地球在特定日期，固定時間，觀察LSix象限的49顆星球出現的結果。
    * period 欄位：Title:期數，Type:string (不可重複)
    * Date 欄位：Title :日期，Type:Date
    * L1欄位：Title:落1，Type:integer

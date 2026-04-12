@@ -45,6 +45,9 @@ function dailyupdate() {
   // --- 核心優化：執行快取預載，減少預測時的等待時間 ---
   preloadPrediction1Cache();
 
+  // --- 維護任務：自動存檔 90 天前的已學習紀錄 ---
+  maintenance_ArchiveOldRecords();
+
   // --- 維護任務：自動清理 30 天前的舊日誌 ---
   autoCleanupErrorLog(30);
 

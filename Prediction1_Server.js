@@ -737,11 +737,14 @@ function corePredict(
     ];
     const categorySize = Math.ceil(sortedNumbers.length / categories.length);
     const predictionObjects = sortedNumbers.map((num, index) => {
-      const catIdx = Math.min(Math.floor(index / categorySize), categories.length - 1);
+      const catIdx = Math.min(
+        Math.floor(index / categorySize),
+        categories.length - 1,
+      );
       return {
         number: num,
         elementCategory: categories[catIdx].name,
-        elementColor: categories[catIdx].color
+        elementColor: categories[catIdx].color,
       };
     });
 
@@ -1009,10 +1012,15 @@ function getRecentHistoryHits(
     const settingsData = settingsSheet.getDataRange().getValues();
     for (let j = 1; j < settingsData.length; j++) {
       const row = settingsData[j];
-      if (row[0] === "HIT_HISTORY" && row[1] === lotto && String(row[3]) === String(topN)) {
-        const dKey = row[2] instanceof Date 
-          ? Utilities.formatDate(row[2], "GMT+8", "yyyy-MM-dd") 
-          : String(row[2]);
+      if (
+        row[0] === "HIT_HISTORY" &&
+        row[1] === lotto &&
+        String(row[3]) === String(topN)
+      ) {
+        const dKey =
+          row[2] instanceof Date
+            ? Utilities.formatDate(row[2], "GMT+8", "yyyy-MM-dd")
+            : String(row[2]);
         hitCache[dKey] = row[4];
       }
     }
@@ -1039,7 +1047,9 @@ function getRecentHistoryHits(
 
     try {
       const dStr = Utilities.formatDate(d, "GMT+8", "yyyy-MM-dd");
-      
+
+      // 修正：這裡絕不能出現 const missSheet，否則會觸發「無法重新宣告」錯誤
+
       // 2. 檢查快取是否存在（包含 0 命中的紀錄）
       if (hitCache[dStr] !== undefined) {
         results.push({
@@ -1050,7 +1060,22 @@ function getRecentHistoryHits(
       }
 
       if (train.length >= 5) {
-        const pred = corePredict(lotto, train, missSheet, d);
+        // 執行預測：corePredict 本身應能處理 missSheet 為 null 的情況
+        // 注意：為了極速回測，這裡應傳入預載數據（若 corePredict 支援）
+        const pred = corePredict(
+          lotto,
+          train,
+          missSheet, // 若為 null 則 corePredict 內部會自動跳過遺漏分析
+          d,
+          1.0,
+          "",
+          false,
+          null,
+          topN,
+          false,
+          ss,
+        );
+
         const actualNums = record
           .slice(1, 8)
           .map(Number)
@@ -1064,13 +1089,13 @@ function getRecentHistoryHits(
         });
         // 準備存入快取
         newRecords.push([
-          "HIT_HISTORY", 
-          lotto, 
-          dStr, 
-          topN, 
-          hits, 
+          "HIT_HISTORY",
+          lotto,
+          dStr,
+          topN,
+          hits,
           JSON.stringify([]), // 命中號碼佔位符，補齊為 7 欄位
-          new Date()
+          new Date(),
         ]);
       }
     } catch (loopErr) {
@@ -1096,11 +1121,21 @@ function getPrediction1HistoryStats(lotto, topN) {
     const ss = trObj.spreadsheet;
     const allSheet = ss.getSheetByName("All");
     const missSheet = ss.getSheetByName("Miss");
-    const allDataRaw = allSheet.getDataRange().getValues().filter(row => row[0] instanceof Date);
-    
+    const allDataRaw = allSheet
+      .getDataRange()
+      .getValues()
+      .filter((row) => row[0] instanceof Date);
+
     // 預設以今日為基準回測最近 30 期
     const targetDate = new Date();
-    return getRecentHistoryHits(allDataRaw, 30, lotto, topN, missSheet, targetDate);
+    return getRecentHistoryHits(
+      allDataRaw,
+      30,
+      lotto,
+      topN,
+      missSheet,
+      targetDate,
+    );
   } catch (e) {
     Logger.log("getPrediction1HistoryStats Error: " + e.message);
     return [];

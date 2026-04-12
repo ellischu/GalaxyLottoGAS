@@ -101,6 +101,17 @@
    * 全域 UI 控制物件
    */
   window.AppUI = {
+    _activeInterval: null, // 用於追蹤進度輪詢計時器
+
+    /** 停止所有背景輪詢 */
+    stopPolling: function () {
+      if (this._activeInterval) {
+        clearInterval(this._activeInterval);
+        this._activeInterval = null;
+        console.log("[AppUI] 背景輪詢已自動停止");
+      }
+    },
+
     /** 通用 Loading 效果 */
     loading: function (title, text, options) {
       title = title || "處理中";
@@ -133,7 +144,7 @@
           background: "#1a1a2e",
           color: "#00d2ff",
           loaderHtml:
-            '<div class="spinner-grow text-info" style="width: 3rem; height: 3rem;" role="status"></div>',
+            '<div class="spinner-border text-info" style="width: 3rem; height: 3rem; border-width: 0.25rem;" role="status"></div>',
         },
       );
     },
@@ -189,6 +200,21 @@
 
     // 錯誤提示
     error: function (title, text, debugInfo, showRetry) {
+      this.stopPolling(); // 發生錯誤時立即停止輪詢
+
+      // --- 核心新增：自動將錯誤詳情發送到後端 ErrorLog 工作表 ---
+      try {
+        google.script.run.logSystemError("Frontend_AppUI", {
+          message: "[" + title + "] " + (text || "無詳細內容"),
+          stack: (debugInfo && debugInfo.stack) ? debugInfo.stack : "N/A"
+        }, {
+          lotto: window._lastErrorLotto || "N/A",
+          timestamp: new Date().toISOString()
+        });
+      } catch (logErr) {
+        console.warn("後端日誌同步失敗:", logErr);
+      }
+
       window._lastErrorTitle = title;
       window._lastErrorText = text;
       var options = {
@@ -232,7 +258,9 @@
         "標題：" +
         (window._lastErrorTitle || "N/A") +
         "\n" +
-        "彩種：" + (window._lastErrorLotto || "N/A") + "\n" +
+        "彩種：" +
+        (window._lastErrorLotto || "N/A") +
+        "\n" +
         "內容：" +
         (window._lastErrorText || "N/A") +
         "\n";
@@ -303,11 +331,13 @@
 
     /** 關閉當前所有 SweetAlert2 視窗 */
     close: function () {
+      this.stopPolling(); // 關閉視窗時同步停止輪詢
       Swal.close();
     },
 
     /** 統一的系統錯誤處理入口 */
     showCommonError: function (error) {
+      this.stopPolling();
       console.error("AppUI System Error:", error);
       // 確保 errorMsg 永遠是字串，避免 Swal 渲染異常
       const errorMsg = error && error.message ? error.message : String(error);

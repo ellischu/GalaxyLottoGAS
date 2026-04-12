@@ -124,11 +124,13 @@ function getAllData(date) {
   // 優化日期比對：確保輸入與歷史數據皆以相同的時區格式進行字串比對
   var normalizeDateStr = function (v) {
     if (!v) return "";
-    // 處理 Date 物件或包含 T 的日期字串
+    // 修正：增加對無效日期物件的檢查
     const d = v instanceof Date ? v : new Date(String(v).replace(/-/g, "/"));
+    if (isNaN(d.getTime())) return "";
     return Utilities.formatDate(d, "Asia/Taipei", "yyyy-MM-dd");
   };
   var targetTimeStr = normalizeDateStr(date);
+  if (!targetTimeStr) return [];
 
   for (var i = 1; i < data.length; i++) {
     var rowTimeStr = normalizeDateStr(data[i][0]);
@@ -868,7 +870,11 @@ function clearServerPropertiesManually() {
  * @param {Object} context 執行上下文 (可選)
  */
 function logSystemError(module, error, context = {}) {
+  const lock = LockService.getScriptLock();
   try {
+    // 獲取鎖定，最多等待 10 秒，避免併發建立工作表或寫入衝突
+    lock.waitLock(10000);
+
     let sheet = mainspreadsheet.getSheetByName("ErrorLog");
     if (!sheet) {
       sheet = mainspreadsheet.insertSheet("ErrorLog");
@@ -876,15 +882,24 @@ function logSystemError(module, error, context = {}) {
       sheet.setFrozenRows(1);
     }
 
+    const errMsg = error && error.message ? error.message : String(error);
+    const errStack = error && error.stack ? error.stack : "N/A";
+
     sheet.appendRow([
       new Date(),
       module,
-      error.message,
-      error.stack,
+      errMsg,
+      errStack,
       JSON.stringify(context),
     ]);
+
+    // 強制執行寫入，確保日誌確實存檔
+    SpreadsheetApp.flush();
   } catch (e) {
     Logger.log("日誌系統寫入失敗: " + e.toString());
+  } finally {
+    // 無論成功或失敗都釋放鎖定
+    lock.releaseLock();
   }
 }
 

@@ -22,11 +22,6 @@
       $("#displayModeToggle").prop("checked", isDetailed);
       updateDetailedToggleUI(isDetailed);
 
-      // 初始化震盪儀表開關狀態
-      var isGaugeVisible = localStorage.getItem("gaugeDisplay") === "true";
-      $("#gaugeDisplayToggle").prop("checked", isGaugeVisible);
-      $("#gaugeArea").toggle(isGaugeVisible);
-
       // 初始化縮放比例
       var savedScale = localStorage.getItem("uiFontScale") || "1.0";
       $("#fontScaleRange").val(savedScale);
@@ -43,8 +38,11 @@
       // 初始化載入歷史統計
       loadHistoryStats();
 
-// 監聽推薦數、彩種與預測日期變更，即時更新歷史統計圖表
-      $("#topNSelect, #lottoSelect, #predictDate").on("change", loadHistoryStats);
+      // 監聽推薦數、彩種、遺漏模式與日期變更，即時更新歷史統計圖表
+      $("#topNSelect, #lottoSelect, #useTrend, #predictDate").on(
+        "change",
+        loadHistoryStats,
+      );
 
       // 還原上次清理快取前的備份設定
       var backup = JSON.parse(
@@ -60,7 +58,59 @@
         AppUI.toast("系統快取已重置", "success");
         localStorage.removeItem("sys_backup_settings");
       }
+
+      // --- 核心優化：監聽主題切換並更新圖表顏色 ---
+      const themeObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+          if (mutation.attributeName === 'data-bs-theme') {
+            const newTheme = document.documentElement.getAttribute('data-bs-theme');
+            updateChartsTheme(newTheme);
+          }
+        });
+      });
+      themeObserver.observe(document.documentElement, { attributes: true });
     });
+
+    /**
+     * 根據主題更新圖表顏色配置
+     */
+    function updateChartsTheme(theme) {
+      const isDark = theme === 'dark';
+      const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
+      const textColor = isDark ? '#adb5bd' : '#6c757d';
+
+      // 更新星雲飽和度：深色模式下提升飽和度 (160%) 以增強科幻感，淺色模式維持 100%
+      document.documentElement.style.setProperty("--nebula-sat", isDark ? "160%" : "100%");
+
+      // 核心優化：同步星環霓虹色調與光暈
+      document.documentElement.style.setProperty(
+        "--ring-color", 
+        isDark ? "rgba(0, 210, 255, 0.8)" : "rgba(0, 123, 255, 0.3)"
+      );
+      document.documentElement.style.setProperty(
+        "--ring-glow", 
+        isDark ? "0 0 12px rgba(0, 210, 255, 0.6)" : "none"
+      );
+
+      const charts = [window.myConfChart, window.myLongTermChart];
+      charts.forEach(chart => {
+        if (chart && chart.options.scales) {
+          Object.values(chart.options.scales).forEach(scale => {
+            if (scale.grid) scale.grid.color = gridColor;
+            if (scale.ticks) scale.ticks.color = textColor;
+          });
+          chart.update('none'); // 使用 'none' 模式進行靜默更新，避免觸發進場動畫
+        }
+      });
+    }
+
+    function getThemeAxisConfig() {
+      const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+      return {
+        gridColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+        textColor: isDark ? '#adb5bd' : '#6c757d'
+      };
+    }
 
     /**
      * 更新詳細模式開關的視覺樣式
@@ -98,11 +148,59 @@
         .clearAllCache(false);
     };
 
+    /**
+     * 處理清理舊版紀錄的 UI 邏輯
+     */
+    window.handlePurgeOldVersions = function () {
+      AppUI.confirm(
+        "確定要清理舊版紀錄？",
+        "這將移除所有非當前演算法版本的歷史命中快取，並清除重複資料以確保統計圖表準確。",
+      ).then(function (result) {
+        if (result.isConfirmed) {
+          AppUI.loading("清理中", "正在執行星系維護任務...");
+          google.script.run
+            .withSuccessHandler(function () {
+              AppUI.success("清理完成", "舊版冗餘紀錄已成功移除。");
+              // 清理後重新載入統計圖表以顯示最新狀態
+              if (window.loadHistoryStats) window.loadHistoryStats();
+            })
+            .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+            .maintenance_PurgeOldHistoryVersions();
+        }
+      });
+    };
+
+    /**
+     * 處理刷新權重快取的 UI 邏輯
+     */
+    window.handleClearAIVersionCache = function () {
+      var lotto = $("#lottoSelect").val();
+      AppUI.confirm(
+        "確定刷新權重快取？",
+        "這將清除該彩種在 PropertiesService 中的權重暫存，下一次預測將強制重新讀取試算表設定。",
+      ).then(function (result) {
+        if (result.isConfirmed) {
+          AppUI.loading("重置中", "正在清除權重快取...");
+          google.script.run
+            .withSuccessHandler(function () {
+              AppUI.success("重置完成", "權重快取已清除。");
+            })
+            .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+            .clearAIWeightCache(lotto);
+        }
+      });
+    };
+
     window.handlePredict = function () {
       var lotto = $("#lottoSelect").val();
       var date = $("#predictDate").val();
       var useTrend = $("#useTrend").is(":checked");
       var topN = $("#topNSelect").val();
+
+      if (!lotto || !date) {
+        AppUI.toast("請確認彩種與日期是否正確", "warning");
+        return;
+      }
 
       // 設定彩種資訊，供錯誤回報工具 AppUI.error 抓取
       window._lastErrorLotto = lotto;
@@ -114,8 +212,10 @@
 
       AppUI.loading("計算中", "正在掃描星系規律並分析相關性...");
 
-      // --- 啟動進度輪詢器 ---
+      // --- 啟動進度輪詢器：降低頻率至 2.5s 避免阻塞 Message Channel ---
+      let isRequestActive = true;
       let progressInterval = setInterval(function () {
+        if (!isRequestActive) return;
         google.script.run
           .withSuccessHandler(function (pStr) {
             if (!pStr) return;
@@ -126,13 +226,14 @@
               const $content = $("#swal2-html-container");
               if ($title.length) $title.text("計算中 (" + p.percent + "%)");
               if ($content.length) $content.text(p.message);
-            } catch (e) {}
+            } catch (e) {
+              console.warn("進度解析失敗", e);
+            }
           })
           .getPredictProgress(lotto);
-      }, 1500); // 每 1.5 秒查詢一次伺服器狀態
+      }, 2500);
 
       // 實作客戶端逾時處理 (5 分鐘)，避免 GAS 靜默失敗或長時間掛起
-      let isRequestActive = true;
       const timeoutId = setTimeout(function () {
         if (isRequestActive) {
           isRequestActive = false;
@@ -194,7 +295,7 @@
             true,
           );
         })
-        .getGalaxyPrediction(lotto, date, useTrend, topN);
+        .getPrediction(lotto, date, useTrend, topN);
     };
 
     /**
@@ -203,12 +304,15 @@
     window.loadHistoryStats = function () {
       var lotto = $("#lottoSelect").val();
       var topN = $("#topNSelect").val();
-      var date = $("#predictDate").val(); // 新增：讀取預測日期
+      var date = $("#predictDate").val();
+      var useTrend = $("#useTrend").is(":checked");
 
-      // 1. 初始化狀態：禁用開關、顯示載入圖示、隱藏區域、重置標籤樣式
+      if (!lotto || !date) return; // 避免無效的初始化請求
+
+      // 重置開關狀態：資料未準備好前禁用並關閉
       $("#historyStatsToggle").prop("disabled", true).prop("checked", false);
       $("#historyStatsArea").removeClass("show");
-      $("#historyLoadingIcon").removeClass("d-none");
+      $("#historyLoadingIcon").removeClass("d-none"); // 顯示旋轉圖示
       $('label[for="historyStatsToggle"]')
         .removeClass("text-success")
         .addClass("text-secondary");
@@ -220,48 +324,52 @@
 
           if (data && data.length > 0) {
             initLongTermAccuracyChart(data);
-            // 資料有效，才啟用開關並更新樣式
+            // 資料準備就緒，啟用開關並變更標籤顏色
             $("#historyStatsToggle").prop("disabled", false);
             $('label[for="historyStatsToggle"]')
               .removeClass("text-secondary")
               .addClass("text-success");
-          } else {
-            // 資料為空（例如新彩種尚未有回測資料）
-            AppUI.toast("目前暫無此條件下的歷史統計數據", "info");
           }
         })
         .withFailureHandler(function (err) {
-          // 3. 伺服器回傳失敗：隱藏圖示、維持禁用狀態、顯示錯誤提示
+          // 3. 請求失敗：隱藏圖示並記錄錯誤
           $("#historyLoadingIcon").addClass("d-none");
-          AppUI.error(
-            "連線異常",
-            "無法載入歷史統計資料，請檢查網路或稍後再試。",
-          );
-          console.error("Load History Stats Failed:", err);
-
-          // 可選：在標籤旁顯示小錯誤提示
-          $('label[for="historyStatsToggle"]').append(
-            '<span class="text-danger small ms-2"> (載入失敗)</span>',
-          );
+          console.error("載入歷史統計失敗:", err);
         })
-        .get60PeriodHistoryStats(lotto, topN, date); // 新增：傳入日期參數
+        .get60PeriodHistoryStats(lotto, topN, date, useTrend);
     };
 
     /**
      * 手動切換歷史統計區域顯示/隱藏
      */
     window.toggleHistoryStats = function (isVisible) {
-      const $area = $("#historyStatsArea");
       if (isVisible) {
-        $area.addClass("show");
-        // 修正：當區域從隱藏變為顯示時，強制 Chart.js 重新調整佈局，防止寬高計算錯誤
-        if (window.myLongTermChart) {
-          setTimeout(function () {
-            window.myLongTermChart.resize();
-          }, 50);
+        $("#historyStatsArea").addClass("show");
+      } else {
+        $("#historyStatsArea").removeClass("show");
+      }
+    };
+
+    /**
+     * 手動切換星系震盪儀表顯示/隱藏
+     */
+    window.toggleGaugeDisplay = function (isVisible) {
+      if (isVisible) {
+        $("#gaugeArea").slideDown(400, function() {
+          // 核心優化：動畫完成後，若已有上次預測的震盪數據，立即重繪圖表
+          if (window.lastPredData && window.lastPredData.ampPercentile !== undefined) {
+            initOscillationGauge(parseFloat(window.lastPredData.ampPercentile));
+          }
+        });
+
+        // 核心優化：若開啟儀表但目前沒有預測結果，自動觸發預測以填充數據
+        var hasNoData =
+          !window.lastPredData || $("#predictionArea").is(":empty");
+        if (hasNoData) {
+          handlePredict();
         }
       } else {
-        $area.removeClass("show");
+        $("#gaugeArea").slideUp();
       }
     };
 
@@ -271,22 +379,15 @@
       AppUI.toast(isDetailed ? "切換至詳細分析" : "切換至精簡模式", "info");
       if (window.lastPredData) {
         renderPrediction(window.lastPredData);
-      }
-    };
-
-    /**
-     * 獨立切換震盪儀表顯示狀態
-     */
-    window.toggleGaugeDisplay = function (isVisible) {
-      localStorage.setItem("gaugeDisplay", isVisible);
-      const $area = $("#gaugeArea");
-      $area.toggle(isVisible);
-
-      // 若顯示時已有圖表，強制重新調整大小以修正寬高計算
-      if (isVisible && window.myGaugeChart) {
-        setTimeout(() => {
-          window.myGaugeChart.resize();
-        }, 50);
+        
+        // 核心優化：切換至詳細模式時觸發星雲擴張動畫
+        if (isDetailed) {
+          setTimeout(function() {
+            $(".ball").addClass("nebula-expand");
+            // 動畫結束後移除類別以便下次觸發
+            setTimeout(() => $(".ball").removeClass("nebula-expand"), 800);
+          }, 100);
+        }
       }
     };
 
@@ -295,99 +396,58 @@
      */
     window.renderAISuggestion = function (res) {
       var $area = $("#aiSuggestionArea");
-      if (!res || !res.aiStrategy) {
+      if (!res.aiStrategy) {
         $area.empty();
         return;
       }
 
       var strategy = res.aiStrategy;
-      var isDetailed = localStorage.getItem("detailedMode") === "true";
-      var html = "";
-
-      if (isDetailed) {
-        // --- 詳細模式模板：深色標題、完整建議、強化指標圖示 ---
-        var isRegimeShift =
-          res.learningMode && res.learningMode.includes("規律重組");
-        var regimeBadge = isRegimeShift
-          ? '<span class="badge anim-pulse-purple ms-2" style="font-size:0.7rem;"><i class="fas fa-sync-alt fa-spin me-1"></i>規律重組擴展</span>'
-          : "";
-
-        html =
-          '<div class="card border-info shadow-sm bg-light-subtle">' +
-          '<div class="card-body">' +
-          '<div class="d-flex justify-content-between align-items-start mb-2">' +
-          '<h6 class="fw-bold text-info mb-0"><i class="fas fa-microscope me-2"></i>星系深度戰略分析' +
-          regimeBadge +
-          "</h6>" +
-          '<span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:0.65rem;">Deep Insight V1</span>' +
-          "</div>" +
-          '<p class="mb-3 text-dark fw-bold" style="font-size: 0.95rem; line-height: 1.4;">' +
-          strategy.recommendation +
-          "</p>" +
-          '<div class="d-flex justify-content-between align-items-center">' +
-          '<div class="d-flex gap-2">' +
-          '<span class="badge bg-info text-white"><i class="fas fa-crosshairs me-1"></i>核心: ' +
-          strategy.focus +
-          "</span>" +
-          '<span class="badge bg-warning text-dark"><i class="fas fa-shield-alt me-1"></i>風險: ' +
-          strategy.risk +
-          "</span>" +
-          "</div>" +
-          (res.cyclicalComparison
-            ? '<button class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="showCyclicalDetail()"><i class="fas fa-project-diagram me-1"></i>週期共振詳情</button>'
-            : "") +
-          "</div></div></div>";
-      } else {
-        // --- 精簡模式模板：橫向一行式摘要，節省空間 ---
-        // 擷取第一句建議 (以句號或感嘆號分割)
-        var shortRec = strategy.recommendation.split(/[。！\n]/)[0];
-        html =
-          '<div class="card border-info shadow-sm bg-light-subtle">' +
-          '<div class="card-body py-2 px-3">' +
-          '<div class="d-flex align-items-center gap-3">' +
-          '<div class="text-info"><i class="fas fa-robot"></i></div>' +
-          '<div class="small fw-bold text-dark text-truncate" style="max-width: 65%;" title="' +
-          shortRec +
-          '">' +
-          shortRec +
-          "</div>" +
-          '<div class="ms-auto d-flex gap-1">' +
-          '<span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:0.7rem;">' +
-          strategy.focus +
-          "</span>" +
-          '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle" style="font-size:0.7rem;">' +
-          strategy.risk +
-          "</span>" +
-          "</div>" +
-          "</div></div></div>";
-      }
-
-      // 使用停止動畫並重新淡入，讓模板切換更有感
-      $area.stop(true, true).hide().html(html).fadeIn(400);
+      var isRegimeShift =
+        res.learningMode && res.learningMode.includes("規律重組");
+      var regimeBadge = isRegimeShift
+        ? '<span class="badge anim-pulse-purple ms-2" style="font-size:0.7rem;"><i class="fas fa-sync-alt fa-spin me-1"></i>規律重組擴展模式</span>'
+        : "";
+      var html =
+        '<div class="card border-info shadow-sm bg-light-subtle">' +
+        '<div class="card-body">' +
+        '<h6 class="fw-bold text-info mb-2"><i class="fas fa-robot me-2"></i>星系戰略分析' +
+        regimeBadge +
+        "</h6>" +
+        '<p class="mb-2 small fw-bold text-dark">' +
+        strategy.recommendation +
+        "</p>" +
+        '<div class="d-flex justify-content-between align-items-center">' +
+        '<div class="d-flex gap-2">' +
+        '<span class="badge bg-info-subtle text-info border border-info-subtle">' +
+        strategy.focus +
+        "</span>" +
+        '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">風險: ' +
+        strategy.risk +
+        "</span>" +
+        "</div>" +
+        (res.cyclicalComparison
+          ? '<button class="btn btn-outline-primary btn-sm fw-bold px-3" onclick="showCyclicalDetail()"><i class="fas fa-list-ul me-1"></i>查看週期對比</button>'
+          : "") +
+        "</div></div></div>";
+      $area.html(html).fadeIn();
     };
 
     window.renderPrediction = function (res) {
       var $area = $("#predictionArea");
       var isDetailed = localStorage.getItem("detailedMode") === "true";
 
-      // 修正：當重新渲染預測結果區時，必須銷毀舊的動態圖表實例
-      // 因為 $area.html(html) 會替換掉舊的 Canvas 元素，使舊的 Chart.js 實例失效
-      if (window.myConfChart) {
-        window.myConfChart.destroy();
-        window.myConfChart = null;
-      }
-      if (window.myAccChart) {
-        window.myAccChart.destroy();
-        window.myAccChart = null;
-      }
-
       var html =
         '<div class="card border-primary shadow mb-3">' +
         '<div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">' +
         '<span class="fw-bold"><i class="fas fa-magic me-2"></i>AI 星球預測結果</span>' +
+        "<div>" +
+        (res.useTrend
+          ? '<span class="badge badge-miss-mode bg-warning text-dark me-2" title="已套用遺漏表加權分析"><i class="fas fa-temperature-high me-1"></i>遺漏模式</span>'
+          : "") +
         '<span class="badge bg-light text-primary">' +
         res.date +
         "</span>" +
+        "</div>" +
         "</div>" +
         '<div class="card-body">';
 
@@ -437,9 +497,9 @@
       // 渲染球體
       html += '<div class="d-flex flex-wrap justify-content-center">';
       res.results.forEach(function (item) {
-        var isHit =
-          res.actualDraw && res.actualDraw.includes(Number(item.number));
-        var isS1Hit = res.actualS1 && Number(item.number) === res.actualS1;
+        // 修正：伺服器回傳的是補零字串，直接比對字串即可
+        var isHit = res.actualDraw && res.actualDraw.includes(item.number);
+        var isS1Hit = res.actualS1 && item.number === res.actualS1;
 
         // 五行類別標籤
         var elementBadge =
@@ -456,9 +516,9 @@
           ? '<span class="badge bg-info text-dark position-absolute start-50 translate-middle-x" style="z-index:1; font-size:0.8rem; bottom: calc(1.8rem * var(--font-scale));">隔期</span>'
           : "";
         var penaltyIcon = item.isHeatPenalized
-          ? '<i class="fas fa-balance-scale-right penalty-icon position-absolute" onclick="showHeatPenaltyDetail(' +
-            item.number + // Changed to item.number for consistency
-            ')" title="AI 偵測到過熱，點擊查看詳情"></i>'
+          ? '<i class="fas fa-balance-scale-right penalty-icon position-absolute" onclick="showHeatPenaltyDetail(\'' +
+            item.number +
+            '\')" title="AI 偵測到過熱，點擊查看詳情"></i>'
           : "";
 
         html +=
@@ -530,13 +590,12 @@
                 <input class="form-check-input" type="checkbox" id="chkAvg" checked onclick="updateChartVisibility(7, this.checked)">
                 <label class="form-check-label" for="chkAvg" style="border-color: #6c757d;">平均</label>
               </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="chkHeat" checked onclick="updateChartVisibility(8, this.checked)">
+                <label class="form-check-label" for="chkHeat" style="border-color: #e74c3c;">星系過熱</label>
+              </div>
             </div>
             <canvas id="confidenceChart" style="max-height: 180px;"></canvas>
-          </div>
-
-          <div class="mt-4 pt-3 border-top">
-            <h6 class="text-center mb-3 fw-bold text-secondary small"><i class="fas fa-bullseye me-2"></i>歷史預測準確度統計 (命中球數)</h6>
-            <canvas id="accuracyChart" style="max-height: 150px;"></canvas>
           </div>`;
       }
 
@@ -570,11 +629,7 @@
       $area.html(html).slideDown();
       window.lastPredData = res; // 暫存資料供比對視窗使用
       if (isDetailed && res.confidenceHistory) {
-        // 確保 DOM 渲染並完成 SlideDown 動畫後再初始化圖表，避免寬高計算為 0
-        setTimeout(function () {
-          initConfidenceChart(res.confidenceHistory);
-          initAccuracyChart(res.confidenceHistory);
-        }, 200);
+        initConfidenceChart(res.confidenceHistory);
       }
       if (res.ampPercentile !== undefined) {
         initOscillationGauge(parseFloat(res.ampPercentile));
@@ -599,6 +654,8 @@
     window.initOscillationGauge = function (percentile) {
       var canvas = document.getElementById("oscillationGauge");
       if (!canvas) return;
+      var ctx = canvas.getContext("2d");
+      if (window.myGaugeChart) window.myGaugeChart.destroy();
 
       // 根據百分比決定顏色
       let color = "#36a2eb"; // 平穩 (Blue)
@@ -608,22 +665,9 @@
         color = "#ff9f40"; // 警戒 (Orange)
       else if (percentile > 40) color = "#4bc0c0"; // 正常 (Green)
 
-      if (window.myGaugeChart) {
-        window.myGaugeChart.data.datasets[0].data = [
-          percentile,
-          100 - percentile,
-        ];
-        window.myGaugeChart.data.datasets[0].backgroundColor = [
-          color,
-          "#e9ecef",
-        ];
-        window.myGaugeChart.update("none"); // 'none' 模式禁用更新動畫提升效能
-        $("#gaugeValue").text(percentile + "%");
-        return;
-      }
-
+      // 修正：同步更新儀表下方的文字數值顯示
       $("#gaugeValue").text(percentile + "%");
-      var ctx = canvas.getContext("2d");
+
       window.myGaugeChart = new Chart(ctx, {
         type: "doughnut",
         data: {
@@ -640,6 +684,10 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: {
+            duration: 1800, // 延長動畫時間，讓彈跳過程更為平滑且明顯
+            easing: "easeOutBounce", // 核心：啟用物理回彈效果
+          },
           cutout: "75%",
           plugins: { tooltip: { enabled: false }, legend: { display: false } },
           layout: { padding: { bottom: 10, left: 5, right: 5 } },
@@ -652,38 +700,8 @@
      */
     window.initConfidenceChart = function (history) {
       var ctx = document.getElementById("confidenceChart").getContext("2d");
-
-      const labels = history.map((h) => h.label);
-      const datasetsData = [
-        history.map((h) => h.repeat),
-        history.map((h) => h.skipCore),
-        history.map((h) => h.skipExt),
-        history.map((h) => h.consec || 0),
-        history.map((h) => h.rare),
-        history.map((h) => h.tail || 0),
-        history.map((h) => h.sum || 0),
-        history.map((h) =>
-          Math.round(
-            (h.repeat +
-              h.skipCore +
-              h.skipExt +
-              (h.consec || 0) +
-              h.rare +
-              (h.tail || 0) +
-              (h.sum || 0)) /
-              7,
-          ),
-        ),
-      ];
-
-      if (window.myConfChart) {
-        window.myConfChart.data.labels = labels;
-        window.myConfChart.data.datasets.forEach((ds, i) => {
-          ds.data = datasetsData[i];
-        });
-        window.myConfChart.update();
-        return;
-      }
+      if (window.myConfChart) window.myConfChart.destroy();
+      const themeColors = getThemeAxisConfig();
 
       window.myConfChart = new Chart(ctx, {
         type: "line",
@@ -782,12 +800,39 @@
               tension: 0.3,
               fill: false,
             },
+            {
+              label: "過熱預警",
+              data: history.map((h) => (h.heatPenalty || 0) * 10), // 放大 10 倍以便在 0-100 軸上觀察
+              borderColor: "#e74c3c",
+              backgroundColor: "#e74c3c22",
+              pointStyle: "triangle",
+              pointRadius: 6,
+              borderWidth: 2,
+              tension: 0.1,
+              fill: false,
+            },
           ],
         },
         options: {
           responsive: true,
           devicePixelRatio: window.devicePixelRatio || 2, // 優化 Retina 渲染
           maintainAspectRatio: false,
+          animations: {
+            // 核心優化：資料點進場漂浮動畫
+            y: {
+              easing: 'easeOutQuart',
+              duration: 2000,
+              from: function(ctx) {
+                return ctx.chart.scales.y.getPixelForValue(0); // 從 0 線向上升起
+              }
+            },
+            radius: {
+              duration: 1200,
+              from: 0,
+              to: 4,
+              easing: 'easeOutBack' // 帶點回彈感的縮放
+            }
+          },
           layout: { padding: { top: 5, bottom: 5, left: 0, right: 10 } },
           onClick: function (e, elements) {
             if (elements.length > 0) {
@@ -815,77 +860,19 @@
             y: {
               min: 0,
               max: 100,
+              grid: { color: themeColors.gridColor },
               ticks: {
+                color: themeColors.textColor,
                 font: { size: 16 },
                 callback: function (v) {
                   return v + "%";
                 },
               },
             },
-            x: { ticks: { font: { size: 16 } } },
-          },
-        },
-      });
-    };
-
-    /**
-     * 初始化準確度(命中率)柱狀圖
-     */
-    window.initAccuracyChart = (history) => {
-      var ctx = document.getElementById("accuracyChart").getContext("2d");
-
-      const labels = history.map((h) => h.label);
-      const data = history.map((h) => h.hits);
-      const colors = history.map((h) => (h.hits >= 2 ? "#38ef7d" : "#ffc107"));
-
-      if (window.myAccChart) {
-        window.myAccChart.data.labels = labels;
-        window.myAccChart.data.datasets[0].data = data;
-        window.myAccChart.data.datasets[0].backgroundColor = colors;
-        window.myAccChart.update();
-        return;
-      }
-
-      window.myAccChart = new Chart(ctx, {
-        type: "bar",
-        data: {
-          labels: history.map((h) => h.label),
-          datasets: [
-            {
-              label: "命中球數",
-              data: history.map((h) => h.hits),
-              backgroundColor: history.map((h) =>
-                h.hits >= 2 ? "#38ef7d" : "#ffc107",
-              ),
-              borderRadius: 4,
+            x: { 
+              grid: { color: themeColors.gridColor },
+              ticks: { color: themeColors.textColor, font: { size: 16 } } 
             },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          layout: { padding: { top: 5, bottom: 5, left: 0, right: 5 } },
-          onClick: function (e, elements) {
-            if (elements.length > 0) {
-              var idx = elements[0].index;
-              var h = history[idx];
-              if (h.hitNumbers && h.hitNumbers.length > 0) {
-                AppUI.alertHtml(
-                  `<i class="fas fa-trophy text-warning me-2"></i>命中詳情 (${h.label})`,
-                  `<div class="text-center">該期命中號碼：<br><h3 class="text-success mt-2 fw-bold">${h.hitNumbers.join(", ")}</h3><p class="text-muted small mt-2">共命中 ${h.hits} 顆球</p></div>`,
-                );
-              } else {
-                AppUI.toast("該期未命中任何預測號碼", "info");
-              }
-            }
-          },
-          plugins: { legend: { display: false } },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: { stepSize: 1, font: { size: 16 } },
-            },
-            x: { ticks: { font: { size: 16 } } },
           },
         },
       });
@@ -943,7 +930,7 @@
         let zScoreDisplay = "0.00";
         let pctDiff = "0%";
         let bgStyle = "";
-        let rowClass = "";
+        let trStyleClass = ""; // 修正：確保變數在此作用域內已初始化
         let animClass = "";
 
         if (isNaN(v1) || isNaN(v2)) {
@@ -962,11 +949,14 @@
             const zScore = (Math.abs(v1 - v2) * weight) / res.stdDev;
             zScoreDisplay = zScore.toFixed(2);
 
-            // 根據 Z-Score 強度給予顏色暗示 (Z > 3 通常視為極端異常)
-            if (zScore >= 3.0)
+            // 核心優化：根據 Z-Score 高亮整行，提升異常數據辨識度
+            if (zScore >= 3.0) {
+              trStyleClass = "table-danger"; // 極端異常高亮
               zScoreDisplay = `<span class="text-danger fw-bold">${zScoreDisplay} <i class="fas fa-bolt"></i></span>`;
-            else if (zScore >= 2.0)
+            } else if (zScore >= 2.0) {
+              trStyleClass = "table-warning"; // 顯著異常高亮
               zScoreDisplay = `<span class="text-warning fw-bold">${zScoreDisplay}</span>`;
+            }
           }
 
           if (res.isDeviated && Math.abs(pct) >= 100) {
@@ -974,22 +964,50 @@
           }
         }
 
-        if (perturbationFactors.includes(title)) {
-          rowClass = "table-warning"; // 使用 Bootstrap 的警告色來高亮整行
+        if (!trStyleClass && perturbationFactors.includes(title)) {
+          trStyleClass = "table-warning";
         }
 
-        table += `<tr class="${rowClass}">
-          <td>${titleHtml}</td>
-          <td>${displayV1}</td>
-          <td>${displayV2}</td>
-          <td class="${v1 - v2 === 0 ? "text-success fw-bold" : ""}">${diffVal}</td>
-          <td class="text-center">${zScoreDisplay}</td>
-          <td style="${bgStyle}"><span class="${animClass}">${pctDiff}</span></td>
-        </tr>`;
+        table +=
+          '<tr class="' +
+          trStyleClass +
+          '">' +
+          "<td>" +
+          titleHtml +
+          "</td>" +
+          "<td>" +
+          displayV1 +
+          "</td>" +
+          "<td>" +
+          displayV2 +
+          "</td>" +
+          '<td class="' +
+          (v1 - v2 === 0 ? "text-success fw-bold" : "") +
+          '">' +
+          diffVal +
+          "</td>" +
+          '<td class="text-center">' +
+          zScoreDisplay +
+          "</td>" +
+          '<td style="' +
+          bgStyle +
+          '"><span class="' +
+          animClass +
+          '">' +
+          pctDiff +
+          "</span></td>" +
+          "</tr>";
       });
       table += `</tbody></table></div>`;
 
       AppUI.alertLarge(`星系比對: ${match.date}`, table);
+
+      // 核心優化：開啟比對視窗時，同步觸發主界面星球的擴張動畫，增強分析連動感
+      setTimeout(function() {
+        $(".ball").addClass("nebula-expand");
+        // 動畫結束後移除，以便下次點擊或其他動作觸發
+        setTimeout(() => $(".ball").removeClass("nebula-expand"), 800);
+      }, 300);
     };
 
     /**
@@ -1039,16 +1057,8 @@
       var ctx = document
         .getElementById("longTermAccuracyChart")
         .getContext("2d");
-
-      const labels = history.map((h) => h.date);
-      const data = history.map((h) => h.hits);
-
-      if (window.myLongTermChart) {
-        window.myLongTermChart.data.labels = labels;
-        window.myLongTermChart.data.datasets[0].data = data;
-        window.myLongTermChart.update();
-        return;
-      }
+      if (window.myLongTermChart) window.myLongTermChart.destroy();
+      const themeColors = getThemeAxisConfig();
 
       window.myLongTermChart = new Chart(ctx, {
         type: "bar",
@@ -1058,8 +1068,15 @@
             {
               label: "命中數",
               data: history.map((h) => h.hits),
-              backgroundColor: "rgba(0, 123, 255, 0.6)",
-              borderColor: "rgba(0, 123, 255, 1)",
+              // 核心優化：區分模式顏色。橘色: 含遺漏分析, 藍色: 純頻率分析
+              backgroundColor: history.map((h) =>
+                h.useTrend
+                  ? "rgba(255, 159, 64, 0.7)"
+                  : "rgba(54, 162, 235, 0.7)",
+              ),
+              borderColor: history.map((h) =>
+                h.useTrend ? "rgba(255, 159, 64, 1)" : "rgba(54, 162, 235, 1)",
+              ),
               borderWidth: 1,
             },
           ],
@@ -1068,8 +1085,40 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false },
-            tooltip: { mode: "index", intersect: false },
+            legend: {
+              display: true,
+              position: "top",
+              labels: {
+                boxWidth: 12,
+                font: { size: 11 },
+                generateLabels: function (chart) {
+                  return [
+                    {
+                      text: "含遺漏分析",
+                      fillStyle: "rgba(255, 159, 64, 0.7)",
+                      strokeStyle: "rgba(255, 159, 64, 1)",
+                    },
+                    {
+                      text: "純頻率分析",
+                      fillStyle: "rgba(54, 162, 235, 0.7)",
+                      strokeStyle: "rgba(54, 162, 235, 1)",
+                    },
+                  ];
+                },
+              },
+            },
+            tooltip: {
+              mode: "index",
+              intersect: false,
+              callbacks: {
+                afterLabel: function (context) {
+                  var item = history[context.dataIndex];
+                  return (
+                    "分析模式: " + (item.useTrend ? "含遺漏分析" : "純頻率分析")
+                  );
+                },
+              },
+            },
           },
           onClick: function (e, elements) {
             if (elements.length > 0) {
@@ -1103,14 +1152,34 @@
           scales: {
             y: {
               beginAtZero: true,
-              ticks: { stepSize: 1, font: { size: 10 } },
+              grid: { color: themeColors.gridColor },
+              ticks: { color: themeColors.textColor, stepSize: 1, font: { size: 10 } },
             },
             x: {
-              ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 },
+              grid: { display: false }, // 柱狀圖通常隱藏垂直格線較美觀
+              ticks: { color: themeColors.textColor, font: { size: 9 }, maxRotation: 45, minRotation: 45 },
             },
           },
         },
       });
     }
+
+    /**
+     * 顯示星球過熱懲罰詳情
+     */
+    window.showHeatPenaltyDetail = function (num) {
+      AppUI.alertHtml(
+        '<i class="fas fa-fire-alt text-danger me-2"></i>星系過熱預警',
+        '<div class="text-start">' +
+          '<p>星球代號：<strong class="text-primary">' +
+          num +
+          "</strong></p>" +
+          "<p>偵測結果：AI 偵測到該星球在近期軌道中出現頻率極高，機率值已觸發<strong>「過熱臨界點」</strong>。</p>" +
+          "<p>系統處理：為了維持星系分佈平衡，模型已自動施加<strong>「重力穩定權重」</strong>進行降權，以防止預測結果過度傾斜於極熱號碼。</p>" +
+          '<p class="text-muted small">* 戰略建議：過熱號碼雖然能量強，但隨之而來的「冷卻期」風險也較高，建議搭配潛力號碼進行佈局。</p>' +
+          "</div>",
+        "450px",
+      );
+    };
   })(jQuery);
 </script>

@@ -1,6 +1,9 @@
 <style>
   :root {
     --font-scale: 1; /* 全局字體縮放變數 */
+    --nebula-sat: 100%; /* 星雲飽和度變數，隨主題動態調整 */
+    --ring-color: rgba(0, 123, 255, 0.3); /* 星環基準色 */
+    --ring-glow: none; /* 星環光暈效果 */
   }
 
   body {
@@ -74,7 +77,6 @@
     height: calc(45px * var(--font-scale));
     line-height: calc(45px * var(--font-scale));
     border-radius: 50%;
-    background-color: #6c757d;
     color: white;
     font-size: calc(1.2rem * var(--font-scale));
     font-weight: bold;
@@ -88,19 +90,111 @@
     z-index: 0;
   }
 
+  /* 核心優化：將星雲背景移至偽元素，以實現獨立的 3D 旋轉自轉效果 */
+  .ball::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.15) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(100, 149, 237, 0.1) 0%, transparent 40%),
+      radial-gradient(circle at 20% 70%, rgba(128, 0, 128, 0.08) 0%, transparent 50%),
+      #4a4e54;
+    background-size: 160% 160%;
+    background-position: center;
+    animation: planet-surface-drift 15s infinite linear alternate;
+    filter: saturate(var(--nebula-sat));
+    z-index: -1;
+    transition: background 0.3s ease;
+  }
+
+  /* 星雲表面微位移關鍵影格 */
+  @keyframes planet-surface-drift {
+    /* 增加微小的 rotate 讓星球背景產生 3D 自轉感，而不影響球體文字 */
+    from { 
+      background-position: 30% 30%; 
+      transform: rotate(-5deg);
+    }
+    to { 
+      background-position: 70% 70%; 
+      transform: rotate(5deg);
+    }
+  }
+
+  /* 星系星球環繞效果 (Planet Rings) */
+  .ball::after {
+    content: "";
+    position: absolute;
+    width: 140%; /* 環比球體寬 */
+    height: 40%; /* 扁平橢圓 */
+    border: 1.5px solid var(--ring-color);
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    box-shadow: var(--ring-glow);
+    transform: translate(-50%, -50%) rotateX(75deg) rotateZ(0deg);
+    animation: orbit-spin 8s linear infinite;
+    pointer-events: none; /* 確保不影響點擊 */
+    z-index: 1;
+  }
+
+  .ball-hit-gold::after {
+    border-color: rgba(255, 215, 0, 0.8);
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.5), var(--ring-glow);
+    width: 150%;
+    animation-duration: 4s; /* 命中的號碼旋轉更快，暗示能量強 */
+  }
+
+  @keyframes orbit-spin {
+    from {
+      transform: translate(-50%, -50%) rotateX(75deg) rotateZ(0deg);
+    }
+    to {
+      transform: translate(-50%, -50%) rotateX(75deg) rotateZ(360deg);
+    }
+  }
+
   .ball-hit-gold {
-    background: linear-gradient(45deg, #ffc107, #ffeb3b);
     box-shadow: 0 0 15px rgba(255, 193, 7, 0.7);
     border: 2px solid #e0a800;
     transform: scale(1.1);
   }
 
+  .ball-hit-gold::before {
+    background:
+      radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.5) 0%, transparent 60%),
+      radial-gradient(circle at 70% 70%, rgba(255, 165, 0, 0.3) 0%, transparent 50%),
+      linear-gradient(45deg, #ffc107, #ffeb3b);
+    background-size: 160% 160%;
+  }
+
   /* 五行屬性標籤樣式 */
-  .badge-metal { background: linear-gradient(135deg, #ffd700, #b8860b); color: #000; box-shadow: 0 0 8px rgba(255, 215, 0, 0.5); } /* 金 */
-  .badge-wood { background: linear-gradient(135deg, #28a745, #155724); color: #fff; box-shadow: 0 0 8px rgba(40, 167, 69, 0.5); }  /* 木 */
-  .badge-water { background: linear-gradient(135deg, #00d2ff, #007bff); color: #fff; box-shadow: 0 0 8px rgba(0, 210, 255, 0.5); } /* 水 */
-  .badge-fire { background: linear-gradient(135deg, #ff416c, #ff4b2b); color: #fff; box-shadow: 0 0 8px rgba(255, 65, 108, 0.5); }  /* 火 */
-  .badge-earth { background: linear-gradient(135deg, #8d6e63, #4e342e); color: #fff; box-shadow: 0 0 8px rgba(141, 110, 99, 0.5); } /* 土 */
+  .badge-metal {
+    background: linear-gradient(135deg, #ffd700, #b8860b);
+    color: #000;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+  } /* 金 */
+  .badge-wood {
+    background: linear-gradient(135deg, #28a745, #155724);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(40, 167, 69, 0.5);
+  } /* 木 */
+  .badge-water {
+    background: linear-gradient(135deg, #00d2ff, #007bff);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(0, 210, 255, 0.5);
+  } /* 水 */
+  .badge-fire {
+    background: linear-gradient(135deg, #ff416c, #ff4b2b);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(255, 65, 108, 0.5);
+  } /* 火 */
+  .badge-earth {
+    background: linear-gradient(135deg, #8d6e63, #4e342e);
+    color: #fff;
+    box-shadow: 0 0 8px rgba(141, 110, 99, 0.5);
+  } /* 土 */
 
   .badge-element {
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -124,7 +218,9 @@
       transform: scale(1);
     }
     to {
-      box-shadow: 0 0 25px rgba(56, 239, 125, 1), 0 0 35px rgba(255, 215, 0, 0.7);
+      box-shadow:
+        0 0 25px rgba(56, 239, 125, 1),
+        0 0 35px rgba(255, 215, 0, 0.7);
       filter: brightness(1.2);
       transform: scale(1.05);
     }
@@ -147,6 +243,47 @@
 
   .anim-twinkle {
     animation: twinkle 1.5s infinite ease-in-out;
+  }
+
+  /* 星雲擴張脈衝動畫 */
+  .nebula-expand {
+    animation: nebula-expansion-effect 0.8s ease-out !important;
+  }
+
+  @keyframes nebula-expansion-effect {
+    0% { 
+      transform: scale(1); 
+      filter: brightness(1) saturate(var(--nebula-sat)); 
+    }
+    40% { 
+      transform: scale(1.2); 
+      filter: brightness(1.8) saturate(250%);
+      box-shadow: 0 0 30px rgba(0, 210, 255, 0.6);
+    }
+    100% { 
+      transform: scale(1); 
+      filter: brightness(1) saturate(var(--nebula-sat)); 
+    }
+  }
+
+  /* 「遺漏模式」標籤：緩慢呼吸燈發光特效 */
+  .badge-miss-mode {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255, 193, 7, 0.5) !important;
+    box-shadow: 0 0 5px rgba(255, 193, 7, 0.3);
+    animation: miss-mode-breathing 3s infinite ease-in-out;
+  }
+
+  @keyframes miss-mode-breathing {
+    0%, 100% { 
+      box-shadow: 0 0 5px rgba(255, 193, 7, 0.3);
+      filter: brightness(1);
+    }
+    50% { 
+      box-shadow: 0 0 15px rgba(255, 193, 7, 0.8);
+      filter: brightness(1.2);
+    }
   }
 
   @keyframes pulse {
@@ -258,7 +395,7 @@
 
   /* 統計圖表容器優化 */
   canvas {
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
   }
 
   .table-responsive th,
