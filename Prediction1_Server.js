@@ -8,6 +8,7 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
   try {
     const targetDate = new Date(dateStr.replace(/-/g, "/"));
     targetDate.setHours(0, 0, 0, 0);
+    const targetTime = targetDate.getTime();
     const trObj = getTargetsheet("Sheets", lotto);
     const ss = trObj.spreadsheet;
 
@@ -22,11 +23,11 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
     const adDataAll = adSheet.getDataRange().getValues();
 
     // 尋找目標日期與前一期的索引以計算變動率
-    const targetTime = targetDate.getTime();
+    const targetDateStrFormatted = Utilities.formatDate(targetDate, "GMT+8", "yyyy-MM-dd");
     let targetIdx = -1;
     for (let i = adDataAll.length - 1; i >= 1; i--) {
       const rowDate = adDataAll[i][0];
-      if (rowDate instanceof Date && rowDate.getTime() === targetTime) {
+      if (rowDate instanceof Date && Utilities.formatDate(rowDate, "GMT+8", "yyyy-MM-dd") === targetDateStrFormatted) {
         targetIdx = i;
         break;
       }
@@ -42,7 +43,9 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
       .filter((row) => row[0] instanceof Date);
 
     const todayActualInAll = allDataRaw.find(
-      (row) => row[0].getTime() === targetTime,
+      (row) => {
+        return row[0] instanceof Date && Utilities.formatDate(row[0], "GMT+8", "yyyy-MM-dd") === targetDateStrFormatted;
+      }
     );
 
     // 修正：AllData (adRow) 結構與 All 不同，不可直接用於 actualNums 比對
@@ -243,7 +246,7 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
         lotto !== "L539" && isTodayDrawn && todayActualInAll.length > 7
           ? Number(todayActualInAll[7])
           : null;
-      const isS1Hit = actualS1 && resultNumbers.map(Number).includes(actualS1);
+      const isS1Hit = actualS1 && resultNumbers.some(n => Number(n.number) === actualS1);
       const hitDetail = checkHits(resultNumbers, todayActualInAll, lotto);
 
       // 5. 同步記錄 分析參數 與 相關係數 至 prct1_Settings
@@ -314,6 +317,7 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
         topNChoice,
         useTrend ? missSheet : null,
         targetDate,
+        useTrend
       );
 
       return {
@@ -982,8 +986,11 @@ function checkHits(predicted, actual, lotto) {
     .filter((n) => n > 0);
   const s1 = s1Idx !== -1 ? Number(actual[s1Idx]) : null;
 
-  const mainHits = predicted.filter((n) => mainNums.includes(Number(n))).length;
-  const s1Hit = s1 && predicted.map(Number).includes(s1);
+  const mainHits = predicted.filter((item) => {
+    const num = typeof item === 'object' ? Number(item.number) : Number(item);
+    return mainNums.includes(num);
+  }).length;
+  const s1Hit = s1 && predicted.some(item => (typeof item === 'object' ? Number(item.number) : Number(item)) === s1);
 
   const totalToHit = lotto === "L539" ? 5 : 6;
   let summary = `命中 ${mainHits}/${totalToHit}`;
@@ -1000,30 +1007,39 @@ function getRecentHistoryHits(
   topN,
   missSheet,
   targetDate,
+  useTrend
 ) {
   const results = [];
   const newRecords = [];
   const trObj = getTargetsheet("Sheets", lotto);
-  const settingsSheet = trObj.spreadsheet.getSheetByName("prct1_Settings");
+  const historySheet = trObj.spreadsheet.getSheetByName("prct1_History") || trObj.spreadsheet.insertSheet("prct1_History");
+
+  const cacheTypeLabel = "HIT_HISTORY_" + getCacheVersion(PRCT1_ALGO_VERSION);
 
   // 1. 預先讀取現有紀錄，防止重複計算與寫入
   const hitCache = {};
-  if (settingsSheet) {
-    const settingsData = settingsSheet.getDataRange().getValues();
-    for (let j = 1; j < settingsData.length; j++) {
-      const row = settingsData[j];
+  if (historySheet.getLastRow() > 0) {
+    const historyData = historySheet.getDataRange().getValues();
+    if (historyData.length === 1 && historyData[0][0] !== "型態") historySheet.clear(); // 清理舊標題
+    
+    for (let j = 1; j < historyData.length; j++) {
+      const row = historyData[j];
       if (
-        row[0] === "HIT_HISTORY" &&
+        row[0] === cacheTypeLabel &&
         row[1] === lotto &&
-        String(row[3]) === String(topN)
+        String(row[3]) === String(topN) &&
+        String(row[4]) === String(useTrend)
       ) {
         const dKey =
           row[2] instanceof Date
             ? Utilities.formatDate(row[2], "GMT+8", "yyyy-MM-dd")
             : String(row[2]);
-        hitCache[dKey] = row[4];
+        hitCache[dKey] = row[5];
       }
     }
+  } else {
+    historySheet.appendRow(["型態", "彩種", "日期", "推薦數", "遺漏模式", "命中數", "命中號碼", "更新時間"]);
+    historySheet.setFrozenRows(1);
   }
 
   // 效能優化：改用索引查找，避免在迴圈內反覆 filter 日期物件
@@ -1073,28 +1089,31 @@ function getRecentHistoryHits(
           null,
           topN,
           false,
-          ss,
+          trObj.spreadsheet,
         );
 
         const actualNums = record
           .slice(1, 8)
           .map(Number)
           .filter((n) => n > 0);
-        const hits = pred.numbers
+        const hitBalls = pred.numbers
           .slice(0, topN)
-          .filter((n) => actualNums.includes(Number(n))).length;
+          .filter((n) => actualNums.includes(Number(n.number)))
+          .map((n) => n.number); // 提取球號字串，如 "01"
+        const hits = hitBalls.length;
         results.push({
           date: Utilities.formatDate(d, "GMT+8", "MM-dd"),
           hits: hits,
         });
         // 準備存入快取
         newRecords.push([
-          "HIT_HISTORY",
+          cacheTypeLabel,
           lotto,
           dStr,
           topN,
+          useTrend,
           hits,
-          JSON.stringify([]), // 命中號碼佔位符，補齊為 7 欄位
+          JSON.stringify(hitBalls), // 儲存實際命中號碼陣列，如 ["01","20"]
           new Date(),
         ]);
       }
@@ -1104,9 +1123,9 @@ function getRecentHistoryHits(
   }
 
   // 批次更新快取工作表
-  if (newRecords.length > 0 && settingsSheet) {
-    settingsSheet
-      .getRange(settingsSheet.getLastRow() + 1, 1, newRecords.length, 7)
+  if (newRecords.length > 0) {
+    historySheet
+      .getRange(historySheet.getLastRow() + 1, 1, newRecords.length, 8)
       .setValues(newRecords);
   }
   return results;
@@ -1115,12 +1134,12 @@ function getRecentHistoryHits(
 /**
  * 供前端呼叫的 V1 歷史命中統計進入點
  */
-function getPrediction1HistoryStats(lotto, topN) {
+function getPrediction1HistoryStats(lotto, topN, useTrend) {
   try {
     const trObj = getTargetsheet("Sheets", lotto);
     const ss = trObj.spreadsheet;
     const allSheet = ss.getSheetByName("All");
-    const missSheet = ss.getSheetByName("Miss");
+    const missSheet = useTrend ? ss.getSheetByName("Miss") : null;
     const allDataRaw = allSheet
       .getDataRange()
       .getValues()
@@ -1135,6 +1154,7 @@ function getPrediction1HistoryStats(lotto, topN) {
       topN,
       missSheet,
       targetDate,
+      useTrend
     );
   } catch (e) {
     Logger.log("getPrediction1HistoryStats Error: " + e.message);
@@ -1363,4 +1383,40 @@ function getLearnedBaseWeights(lotto, ss) {
     return typeof cached === "string" ? JSON.parse(cached) : cached;
   }
   return defaultWeights;
+}
+
+/**
+ * V1 系統專屬快取清理：僅清理 prct1_Property 與 V1 演算法相關的 Properties
+ */
+function clearV1Cache(lotto) {
+  try {
+    const props = PropertiesService.getUserProperties();
+    const keys = props.getKeys();
+    // V1 演算法前綴通常以 'A' 開頭 (來自 PRCT1_ALGO_VERSION)
+    const v1Prefix = "A" + PRCT1_ALGO_VERSION.substring(0, 1);
+    
+    let count = 0;
+    keys.forEach(k => {
+      if (k.startsWith(v1Prefix) || k.includes("_STATS_" + lotto)) {
+        props.deleteProperty(k);
+        count++;
+      }
+    });
+
+    // 清理試算表持久快取
+    const trObj = getTargetsheet("Sheets", lotto);
+    const propSheet = trObj.spreadsheet.getSheetByName("prct1_Property");
+    if (propSheet) {
+      // 保留標題列，清除內容
+      const lastRow = propSheet.getLastRow();
+      if (lastRow > 1) propSheet.getRange(2, 1, lastRow - 1, 2).clearContent();
+    }
+
+    // 增加：隔離版本遞增
+    incrementSystemVersion("V1");
+
+    return { status: "success", message: `已清理 ${count} 項 V1 專屬快取數據。` };
+  } catch (e) {
+    return { status: "error", message: "V1 快取清理失敗: " + e.message };
+  }
 }

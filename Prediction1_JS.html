@@ -20,32 +20,40 @@
     $("#displayModeToggle").prop("checked", isDetailed);
     updateDetailedToggleUI(isDetailed);
 
-    // 初始化縮放比例滑桿
-    var savedScale = localStorage.getItem("uiFontScale") || "1.0";
-    $("#fontScaleRange").val(savedScale);
-    $("#fontScaleValue").text(savedScale + "x");
-    updateUIFontScale(savedScale);
-
-    // 監聽滑桿即時調整大小
-    $("#fontScaleRange").on("input", function () {
-      var val = $(this).val();
-      $("#fontScaleValue").text(val + "x");
-      updateUIFontScale(val);
-    });
+    // 初始化主題
+    initTheme();
 
     // 初始化載入歷史統計
     loadV1HistoryStats();
 
     // 監聽推薦數與彩種變更，即時更新歷史統計圖表
-    $("#topN, #lottoType").on("change", loadV1HistoryStats);
+    $("#topN, #lottoType, #useTrend").on("change", loadV1HistoryStats);
   });
 
-  /**
-   * 更新全域 CSS 變數以縮放字體與球體
-   */
-  function updateUIFontScale(scale) {
-    document.documentElement.style.setProperty("--font-scale", scale);
-    localStorage.setItem("uiFontScale", scale);
+  // --- 主題切換邏輯 ---
+  window.applyTheme = function (theme) {
+    document.documentElement.setAttribute("data-bs-theme", theme);
+    localStorage.setItem("theme", theme);
+    const $icon = $(".tech-panel button i.fa-moon, .tech-panel button i.fa-sun");
+    if (theme === "dark") {
+      $icon.removeClass("fa-moon").addClass("fa-sun");
+    } else {
+      $icon.removeClass("fa-sun").addClass("fa-moon");
+    }
+  };
+
+  window.toggleTheme = function () {
+    var current = document.documentElement.getAttribute("data-bs-theme") || "light";
+    var next = current === "dark" ? "light" : "dark";
+    window.applyTheme(next);
+  };
+
+  function initTheme() {
+    var savedTheme = localStorage.getItem("theme");
+    if (!savedTheme) {
+      savedTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    window.applyTheme(savedTheme);
   }
 
   window.toggleDisplayMode = function (isDetailed) {
@@ -142,7 +150,7 @@
       <div class="card border-info shadow-sm bg-light-subtle">
         <div class="card-body">
           <h6 class="fw-bold text-info mb-2"><i class="fas fa-robot me-2"></i>星系戰略分析</h6>
-          <p class="mb-2 small fw-bold text-dark">${strategy.recommendation}</p>
+          <p class="mb-2 small fw-bold">${strategy.recommendation}</p>
           <div class="d-flex justify-content-between align-items-center">
             <div class="d-flex gap-2">
               <span class="badge bg-info-subtle text-info border border-info-subtle">${strategy.focus}</span>
@@ -182,7 +190,7 @@
     res.prediction.forEach((item) => {
       const numStr = typeof item === "string" ? item : item.number;
       const num = Number(numStr);
-      const label = res.labels[num] || "";
+      const label = res.labels[numStr] || "";
       let badgeClass = "bg-secondary";
       let isHit = res.actualNums && res.actualNums.includes(num);
       let isS1Hit = res.actualS1 && num === res.actualS1;
@@ -454,7 +462,7 @@
                       (m, i) => `
               <div class="text-center">
                 <div class="text-muted" style="font-size:0.7rem">N${i + 1}柱</div>
-                <div class="fw-bold text-dark">${m}</div>
+                <div class="fw-bold">${m}</div>
               </div>
             `,
                     )
@@ -594,6 +602,7 @@
   window.loadV1HistoryStats = function() {
     const lotto = $("#lottoType").val();
     const topN = $("#topN").val();
+    const useTrend = $("#useTrend").is(":checked");
     $("#historyCard").removeClass("d-none");
 
     google.script.run
@@ -602,7 +611,7 @@
           renderChart(data);
         }
       })
-      .getPrediction1HistoryStats(lotto, topN);
+      .getPrediction1HistoryStats(lotto, topN, useTrend);
   };
 
   function renderChart(historyData) {
@@ -636,13 +645,17 @@
    * 清理全域快取並自動重新執行預測
    */
   window.clearCacheAndRetry = function () {
-    AppUI.loading("修復中", "正在清理系統快取並重置環境...");
+    const lotto = $("#lottoType").val();
+    AppUI.loading("修復中", "正在清理 V1 專屬快取並重置環境...");
     google.script.run
-      .withSuccessHandler(function () {
-        AppUI.toast("快取已清理，重新執行預測", "success");
+      .withSuccessHandler(function (res) {
+        AppUI.toast(res.message || "V1 快取已清理，重新執行預測", "success");
         runPrediction();
       })
-      .clearAllCache(false);
+      .withFailureHandler(function(err) {
+        AppUI.error("清理失敗", err.message);
+      })
+      .clearV1Cache(lotto);
   };
 
   /**

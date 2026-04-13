@@ -136,16 +136,20 @@
      * 清理全域快取並自動重新執行預測
      */
     window.clearCacheAndRetry = function () {
-      AppUI.loading("修復中", "正在清理系統快取並重置環境...");
+      const lotto = $("#lottoSelect").val();
+      AppUI.loading("修復中", "正在清理星系專屬快取並重置環境...");
       google.script.run
-        .withSuccessHandler(function () {
-          AppUI.toast("快取已清理，重新執行預測", "success");
+        .withSuccessHandler(function (res) {
+          AppUI.toast(res.message || "星系快取已清理，重新執行預測", "success");
           // 這裡僅執行 UI 邏輯。
           // 注意：嚴禁在此處 (Callback) 執行 window.open 或涉及導航的動作，
           // 否則會觸發 "Unsafe attempt to initiate navigation" 錯誤。
           handlePredict();
         })
-        .clearAllCache(false);
+        .withFailureHandler(function(err) {
+          AppUI.error("清理失敗", err.message);
+        })
+        .clearPredictGalaxyCache(lotto);
     };
 
     /**
@@ -413,7 +417,7 @@
         '<h6 class="fw-bold text-info mb-2"><i class="fas fa-robot me-2"></i>星系戰略分析' +
         regimeBadge +
         "</h6>" +
-        '<p class="mb-2 small fw-bold text-dark">' +
+        '<p class="mb-2 small fw-bold">' +
         strategy.recommendation +
         "</p>" +
         '<div class="d-flex justify-content-between align-items-center">' +

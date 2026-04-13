@@ -11,12 +11,21 @@ function doGet(e) {
 // 從屬性服務取得版本號，若無則預設為 v1.0
 /**
  * 動態取得當前快取版本號，確保清理快取後能立即 bust cache
- * @param {string} salt 額外的版本鹽值 (例如演算法版本)
+ * @param {string} salt 額外的版本鹽值 (A 開頭為 V1, P 開頭為星系, MAP 為對照表)
  */
 function getCacheVersion(salt = "") {
-  const baseVersion =
-    PropertiesService.getScriptProperties().getProperty("APP_VERSION") ||
-    "v1.3";
+  const props = PropertiesService.getScriptProperties();
+  let verKey = "APP_VERSION";
+  
+  if (salt.startsWith("A")) verKey = "V1_VERSION";
+  else if (salt.startsWith("P")) verKey = "GALAXY_VERSION";
+  else if (salt.includes("MAP")) verKey = "MAP_VERSION";
+
+  let baseVersion = props.getProperty(verKey);
+  if (!baseVersion) {
+    baseVersion = (verKey === "APP_VERSION") ? "v1.3" : "1.0";
+    props.setProperty(verKey, baseVersion);
+  }
   return salt ? baseVersion + "_" + salt : baseVersion;
 }
 
@@ -355,10 +364,11 @@ function refreshMappingCache() {
 }
 
 /**
- * 手動清理快取的工具函式
+ * 全域快取清理：遞增 APP_VERSION 以失效所有未加鹽(Unsalted)的快取
  * @param {boolean} isMajor 是否為大版本更新 (預設 false)
  */
 function clearAllCache(isMajor = false) {
+  const lock = LockService.getScriptLock();
   const props = PropertiesService.getScriptProperties();
   const currentVersion = props.getProperty("APP_VERSION") || "v1.3";
   const versionMatch = currentVersion.match(/(\d+)\.(\d+)/);
@@ -376,40 +386,93 @@ function clearAllCache(isMajor = false) {
     newVersion = `v${major}.${minor}`;
   }
 
-  props.setProperty("APP_VERSION", newVersion);
-  return {
-    status: "success",
-    newVersion: newVersion,
-    systemProps: props.getProperties(), // 回傳所有系統變數清單
-  };
+  try {
+    lock.waitLock(5000);
+    props.setProperty("APP_VERSION", newVersion);
+    return {
+      status: "success",
+      newVersion: newVersion,
+      message: "全域版本已更新，所有通用快取已失效。"
+    };
+  } catch (e) {
+    return { status: "error", message: "版本更新失敗: " + e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
- * 檢查快取服務狀態
- * @returns {Object} 狀態物件
+ * 手動強制設定全域 APP_VERSION
+ * @param {string} versionStr 版本字串，如 "v2.0"
+ */
+function forceSetGlobalVersion(versionStr) {
+  if (!versionStr.startsWith("v")) versionStr = "v" + versionStr;
+  PropertiesService.getScriptProperties().setProperty("APP_VERSION", versionStr);
+  return "全域版本已強制設定為: " + versionStr;
+}
+
+/**
+ * 檢查各系統快取服務狀態 (V1, Galaxy, Mapping)
  */
 function getCacheStatus() {
   try {
     const cache = CacheService.getScriptCache();
-    if (!cache) return { ok: false, message: "無法取得快取服務" };
-    const version = getCacheVersion();
+    const props = PropertiesService.getScriptProperties();
+    
+    const checkSystem = (prefix, salt) => {
+      const ver = getCacheVersion(salt);
+      const ts = cache.get(ver + "_TS");
+      let remaining = null;
+      if (ts) {
+        const elapsed = Math.floor((Date.now() - Number(ts)) / 1000);
+        remaining = Math.max(0, 21600 - elapsed);
+      }
+      return { version: ver.split('_')[0], ok: true, remaining: remaining };
+    };
 
-    // 取得時間戳計算剩餘效期 (以 FieldName 為主準則)
-    const ts = cache.get(version + "_MAP_FIELDNAME_TS");
-    let remaining = null;
-    if (ts) {
-      const elapsed = Math.floor((Date.now() - Number(ts)) / 1000);
-      remaining = Math.max(0, 21600 - elapsed);
-    }
-
-    // 進行簡單的讀寫測試
-    const testKey = "STATUS_CHECK_" + new Date().getTime();
-    cache.put(testKey, "OK", 60);
-    const val = cache.get(testKey);
-
-    return { ok: val === "OK", version: version, remaining: remaining };
+    return {
+      v1: checkSystem("V1", "A"),
+      galaxy: checkSystem("GALAXY", "P"),
+      map: checkSystem("MAP", "MAP"),
+      global: props.getProperty("APP_VERSION") || "v1.3"
+    };
   } catch (e) {
     return { ok: false, message: e.toString() };
+  }
+}
+
+/**
+ * 系統獨立版本遞增
+ */
+function incrementSystemVersion(system) {
+  const props = PropertiesService.getScriptProperties();
+  const verKey = system + "_VERSION";
+  let ver = props.getProperty(verKey) || "1.0";
+  let parts = ver.split('.').map(Number);
+  parts[parts.length - 1]++;
+  const newVer = parts.join('.');
+  props.setProperty(verKey, newVer);
+  return newVer;
+}
+
+/**
+ * 全部重置：清理所有系統快取並重置版本與瀏覽器資料
+ */
+function resetAllSystems() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    // 1. 重置所有版本號
+    props.setProperty("V1_VERSION", "1.0");
+    props.setProperty("GALAXY_VERSION", "1.0");
+    props.setProperty("MAP_VERSION", "1.0");
+    props.setProperty("APP_VERSION", "v1.0");
+
+    // 2. 清理 PropertiesService
+    PropertiesService.getUserProperties().deleteAllProperties();
+    
+    return { status: "success", message: "全系統快取已徹底重置。" };
+  } catch (e) {
+    return { status: "error", message: e.message };
   }
 }
 

@@ -1,6 +1,6 @@
 <style>
   body {
-    background-color: #f8f9fa;
+    /* 移除硬編碼背景色，讓 Styles.html 的響應式背景（淺色/深色）能正確生效 */
     font-family: "Microsoft JhengHei", sans-serif;
   }
   .lotto-ball {
@@ -17,6 +17,13 @@
     box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
     margin-bottom: 5px;
     transition: transform 0.3s;
+  }
+  /* 深色模式下球體增加微弱外發光，提升立體感 */
+  [data-bs-theme="dark"] .lotto-ball {
+    box-shadow:
+      0 0 15px rgba(255, 255, 255, 0.2),
+      0 0 30px rgba(255, 255, 255, 0.05),
+      2px 2px 8px rgba(0, 0, 0, 0.5);
   }
   .lotto-ball.hit {
     background: radial-gradient(circle at 30% 30%, #ffd700, #ff8c00);
@@ -95,6 +102,85 @@
       box-shadow: 0 0 5px #6610f2;
     }
   }
+
+  /* 科技感控制面板樣式 */
+  .tech-panel {
+    background: rgba(var(--bs-primary-rgb), 0.03);
+    border: 1px solid rgba(var(--bs-primary-rgb), 0.15);
+    border-radius: 12px;
+    padding: 1.2rem;
+    backdrop-filter: blur(5px);
+    box-shadow: inset 0 0 15px rgba(var(--bs-primary-rgb), 0.05);
+  }
+
+  /* 放大開關圖示與對齊優化 */
+  .tech-panel .form-switch {
+    padding-left: 3.2rem;
+    min-height: 1.5rem;
+  }
+  .tech-panel .form-check-input {
+    width: 2.8rem !important;
+    height: 1.4rem !important;
+    margin-left: -3.2rem !important;
+    cursor: pointer;
+  }
+  .tech-panel .form-check-label {
+    cursor: pointer;
+    padding-top: 2px;
+  }
+
+  [data-bs-theme="dark"] .tech-panel {
+    background: rgba(0, 210, 255, 0.03);
+    border-color: rgba(0, 210, 255, 0.2);
+    box-shadow: inset 0 0 20px rgba(0, 210, 255, 0.05);
+  }
+
+  /* 深色模式下主題按鈕變為黃色/金色 */
+  [data-bs-theme="dark"] #themeToggleBtn {
+    color: #ffc107 !important;
+    border-color: #ffc107 !important;
+  }
+  [data-bs-theme="dark"] #themeToggleBtn:hover {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    box-shadow: 0 0 12px rgba(255, 193, 7, 0.4);
+  }
+
+  /* 五行屬性標籤樣式 (解決金星等標籤不可見問題) */
+  .badge-metal {
+    background: linear-gradient(135deg, #ffd700, #b8860b) !important;
+    color: #000 !important;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+    text-shadow: none !important;
+  } /* 金 - 金星：使用深色文字確保金底清晰 */
+  .badge-wood {
+    background: linear-gradient(135deg, #28a745, #155724) !important;
+    color: #fff !important;
+    box-shadow: 0 0 8px rgba(40, 167, 69, 0.5);
+  } /* 木 - 木星 */
+  .badge-water {
+    background: linear-gradient(135deg, #00d2ff, #007bff) !important;
+    color: #fff !important;
+    box-shadow: 0 0 8px rgba(0, 210, 255, 0.5);
+  } /* 水 - 水星 */
+  .badge-fire {
+    background: linear-gradient(135deg, #ff416c, #ff4b2b) !important;
+    color: #fff !important;
+    box-shadow: 0 0 8px rgba(255, 65, 108, 0.5);
+  } /* 火 - 火星 */
+  .badge-earth {
+    background: linear-gradient(135deg, #8d6e63, #4e342e) !important;
+    color: #fff !important;
+    box-shadow: 0 0 8px rgba(141, 110, 99, 0.5);
+  } /* 土 - 土星 */
+
+  .badge-element {
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
   /* 連莊標籤：深色金屬感配淡白光 */
   .badge-repeat {
     background-color: #212529 !important;

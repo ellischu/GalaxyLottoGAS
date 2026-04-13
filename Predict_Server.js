@@ -949,6 +949,44 @@ function autoAdjustAstrologyWeights(lotto, ss, useTrend) {
 }
 
 /**
+ * 星系系統專屬快取清理：僅清理 predic1_Property 與星系演算法相關的 Properties
+ */
+function clearPredictGalaxyCache(lotto) {
+  try {
+    const props = PropertiesService.getUserProperties();
+    const keys = props.getKeys();
+    // 星系演算法前綴通常為 'WEIGHTS_' 或以 'P' 開頭 (來自 PREDICT_ALGO_VERSION)
+    const galaxyPrefix = "P" + PREDICT_ALGO_VERSION.substring(0, 1);
+    
+    let count = 0;
+    keys.forEach(k => {
+      if (k.startsWith(galaxyPrefix) || k.startsWith("WEIGHTS_" + lotto)) {
+        props.deleteProperty(k);
+        count++;
+      }
+    });
+
+    // 清理試算表持久快取
+    const trObj = getTargetsheet("Sheets", lotto);
+    const propSheet = trObj.spreadsheet.getSheetByName("predic1_Property");
+    if (propSheet) {
+      const lastRow = propSheet.getLastRow();
+      if (lastRow > 1) propSheet.getRange(2, 1, lastRow - 1, 2).clearContent();
+    }
+
+    // 同時刷新全域對照表快取
+    if (typeof refreshMappingCache === "function") refreshMappingCache();
+
+    // 增加：隔離版本遞增
+    incrementSystemVersion("GALAXY");
+
+    return { status: "success", message: `已清理 ${count} 項星系專屬快取數據。` };
+  } catch (e) {
+    return { status: "error", message: "星系快取清理失敗: " + e.message };
+  }
+}
+
+/**
  * runGalaxyCoreEngine - 內部預測核心 (不依賴 Prediction1_Server.js)
  */
 function runGalaxyCoreEngine(
