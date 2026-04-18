@@ -25,6 +25,12 @@
       0 0 30px rgba(255, 255, 255, 0.05),
       2px 2px 8px rgba(0, 0, 0, 0.5);
   }
+  /* 宮位分析表格高亮：增加青色外發光效果 */
+  .table-success-subtle {
+    box-shadow: 0 0 12px rgba(0, 210, 255, 0.25);
+    background-color: rgba(0, 210, 255, 0.05) !important;
+    transition: background-color 0.3s;
+  }
   .lotto-ball.hit {
     background: radial-gradient(circle at 30% 30%, #ffd700, #ff8c00);
     border: 2px solid #fff;
@@ -54,9 +60,96 @@
     flex-shrink: 0; /* 防止開關被文字擠壓變形 */
     border: 1px solid rgba(0, 0, 0, 0.25) !important; /* 增加邊框確保在淺色背景下可見 */
     background-color: #fff;
+    border-radius: 2rem !important; /* 確保開關組件具備圓角特性 */
   }
   .form-check-input:checked {
     background-color: #0d6efd;
+  }
+
+  /* 命中球號登場動畫：縮放與閃爍過場 */
+  .ball-hit-appear {
+    animation: ball-hit-pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+    z-index: 5;
+  }
+
+  @keyframes ball-hit-pop {
+    0% {
+      transform: scale(0.3);
+      opacity: 0;
+      filter: brightness(3);
+    }
+    50% {
+      transform: scale(1.3);
+      opacity: 1;
+      filter: brightness(1.5);
+      box-shadow: 0 0 30px rgba(255, 215, 0, 0.8);
+    }
+    70% {
+      transform: scale(1.05);
+      filter: brightness(1.2);
+    }
+    100% {
+      transform: scale(1.1);
+      opacity: 1;
+      filter: brightness(1);
+    }
+  }
+
+  /* 命中球號呼吸效果：在登場動畫後持續執行 */
+  .ball-hit-breathing {
+    animation: ball-hit-breathing 3.5s infinite ease-in-out;
+    z-index: 4;
+  }
+
+  @keyframes ball-hit-breathing {
+    0%,
+    100% {
+      box-shadow:
+        0 0 15px rgba(255, 215, 0, 0.6),
+        0 0 25px rgba(255, 193, 7, 0.3);
+      transform: scale(1.1) rotate(0deg); /* 保持縮放與初始角度 */
+    }
+    50% {
+      box-shadow:
+        0 0 35px rgba(255, 215, 0, 0.9),
+        0 0 50px rgba(255, 193, 7, 0.5);
+      transform: scale(1.18) rotate(3deg); /* 增加輕微旋轉與更強的發光 */
+    }
+  }
+
+  /* 換組動畫：消失 */
+  @keyframes ball-exit-space {
+    0% {
+      transform: scale(1);
+      opacity: 1;
+      filter: blur(0);
+    }
+    100% {
+      transform: scale(0.3);
+      opacity: 0;
+      filter: blur(10px) brightness(2);
+    }
+  }
+  .ball-exit-space {
+    animation: ball-exit-space 0.4s ease-in forwards;
+  }
+
+  /* 換組動畫：出現 */
+  @keyframes ball-enter-space {
+    0% {
+      transform: scale(0);
+      opacity: 0;
+      filter: brightness(0);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+      filter: brightness(1);
+    }
+  }
+  .ball-enter-space {
+    animation: ball-enter-space 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)
+      forwards;
   }
 
   /* --- 深色模式科幻開關配色 --- */
@@ -103,6 +196,25 @@
     }
   }
 
+  /* 過熱標籤動畫：高頻震動閃爍 */
+  .animate-overheat {
+    animation: overheat-blink 0.8s infinite alternate ease-in-out;
+    box-shadow: 0 0 10px rgba(220, 53, 69, 0.5);
+  }
+  @keyframes overheat-blink {
+    0% {
+      opacity: 1;
+      filter: brightness(1);
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0.8;
+      filter: brightness(1.3);
+      transform: scale(1.05);
+      box-shadow: 0 0 15px rgba(220, 53, 69, 0.8);
+    }
+  }
+
   /* 科技感控制面板樣式 */
   .tech-panel {
     background: rgba(var(--bs-primary-rgb), 0.03);
@@ -123,6 +235,7 @@
     height: 1.4rem !important;
     margin-left: -3.2rem !important;
     cursor: pointer;
+    border-radius: 2rem !important; /* 強制科技面板內的開關呈現膠囊狀圓角 */
   }
   .tech-panel .form-check-label {
     cursor: pointer;
@@ -143,6 +256,65 @@
   [data-bs-theme="dark"] #themeToggleBtn:hover {
     background-color: rgba(255, 193, 7, 0.1) !important;
     box-shadow: 0 0 12px rgba(255, 193, 7, 0.4);
+  }
+
+  /* 智慧預測按鈕美化與科幻擴散效果 */
+  .btn-prediction-v1 {
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+    border: none !important;
+    background: linear-gradient(45deg, #0d6efd, #00d2ff) !important;
+    box-shadow: 0 4px 15px rgba(13, 110, 253, 0.3) !important;
+    transition: all 0.3s ease !important;
+  }
+  .btn-prediction-v1:hover {
+    box-shadow: 0 0 20px rgba(0, 210, 255, 0.6) !important;
+    filter: brightness(1.1);
+  }
+  .btn-scan-active::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: scan-ripple-out 0.8s ease-out;
+    pointer-events: none;
+  }
+  @keyframes scan-ripple-out {
+    0% {
+      width: 0;
+      height: 0;
+      opacity: 1;
+    }
+    100% {
+      width: 1000px;
+      height: 1000px;
+      opacity: 0;
+    }
+  }
+
+  /* 歷史期數下拉選單美化 */
+  #historyPeriod {
+    transition: all 0.3s ease;
+    border-radius: 6px;
+  }
+  [data-bs-theme="dark"] #historyPeriod {
+    background-color: rgba(0, 210, 255, 0.05) !important;
+    border-color: rgba(0, 210, 255, 0.4) !important;
+    color: #00d2ff !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2300d2ff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+    text-shadow: 0 0 5px rgba(0, 210, 255, 0.2);
+  }
+  [data-bs-theme="dark"] #historyPeriod:hover,
+  [data-bs-theme="dark"] #historyPeriod:focus {
+    border-color: #00d2ff !important;
+    box-shadow: 0 0 10px rgba(0, 210, 255, 0.4) !important;
+    outline: none;
   }
 
   /* 五行屬性標籤樣式 (解決金星等標籤不可見問題) */
@@ -210,25 +382,6 @@
     }
   }
   /* 五行共振標籤：翠綠色能源發光 */
-  .bg-resonance {
-    background-color: #198754 !important;
-    color: #fff !important;
-    box-shadow: 0 0 10px rgba(25, 135, 84, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-  }
-  .animate-glow-green {
-    animation: glow-green 2s infinite alternate;
-  }
-  @keyframes glow-green {
-    from {
-      box-shadow: 0 0 5px rgba(25, 135, 84, 0.4);
-    }
-    to {
-      box-shadow:
-        0 0 15px rgba(25, 135, 84, 1),
-        0 0 20px rgba(255, 255, 255, 0.5);
-    }
-  }
   /* 特別號 (S1) 命中標籤：亮綠色背景與深色文字，確保視覺對比 */
   .bg-s1 {
     background-color: #38ef7d !important;

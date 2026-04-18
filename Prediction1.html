@@ -55,18 +55,37 @@
 
           <div class="d-grid mt-4">
             <button
-              class="btn btn-primary label-text text-white py-3 shadow-sm"
+              id="predictBtnV1"
+              class="btn btn-primary label-text text-white py-3 shadow-sm btn-prediction-v1"
               onclick="runPrediction()"
             >
               <i class="fas fa-satellite-dish me-2"></i> 啟動智慧預測掃描
             </button>
           </div>
 
+          <!-- 進度條容器 -->
+          <div id="progressContainer" class="d-none mt-3">
+            <div class="progress" style="height: 12px">
+              <div
+                id="predictionProgressBar"
+                class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                role="progressbar"
+                style="width: 0%"
+              ></div>
+            </div>
+            <div
+              id="progressMessage"
+              class="text-center small mt-1 text-muted fw-bold"
+            >
+              準備掃描...
+            </div>
+          </div>
+
           <!-- 科技感控制面板 -->
           <div class="tech-panel mt-3">
             <div class="row g-3">
-              <div class="col-6">
-                <div class="form-check form-switch">
+              <div class="col-4">
+                <div class="form-switch form-check">
                   <input
                     class="form-check-input"
                     type="checkbox"
@@ -78,8 +97,8 @@
                   >
                 </div>
               </div>
-              <div class="col-6">
-                <div class="form-check form-switch">
+              <div class="col-4">
+                <div class="form-switch form-check">
                   <input
                     class="form-check-input"
                     type="checkbox"
@@ -93,6 +112,43 @@
                   >
                 </div>
               </div>
+              <div class="col-4">
+                <div class="form-switch form-check">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="historyToggle"
+                    onchange="toggleHistoryStats(this.checked)"
+                    disabled
+                  />
+                  <label
+                    class="form-check-label small fw-bold text-success"
+                    for="historyToggle"
+                  >
+                    <i class="fas fa-chart-line me-1"></i>歷史趨勢 (回測)
+                    <i
+                      id="historyLoadingIcon"
+                      class="fas fa-spinner fa-spin ms-1 text-primary d-none"
+                    ></i>
+                  </label>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="form-switch form-check">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="weightPanelToggle"
+                    onchange="toggleWeightPanel(this.checked)"
+                  />
+                  <label
+                    class="form-check-label small fw-bold text-info"
+                    for="weightPanelToggle"
+                    >權重部署</label
+                  >
+                </div>
+              </div>
+
               <div class="col-12 border-top pt-2 mt-2">
                 <div class="d-flex justify-content-between gap-2">
                   <button
@@ -107,14 +163,14 @@
                     onclick="showAIWeights()"
                     title="查看學習權重"
                   >
-                    <i class="fas fa-brain me-1"></i> 權重
+                    <i class="fas fa-brain me-1"></i> 查看權重
                   </button>
                   <button
                     class="btn btn-sm btn-outline-danger flex-grow-1 fw-bold"
                     onclick="clearCacheAndRetry()"
                     title="清理快取"
                   >
-                    <i class="fas fa-broom me-1"></i> 清理
+                    <i class="fas fa-broom me-1"></i> 清理快取
                   </button>
                 </div>
               </div>
@@ -123,14 +179,45 @@
         </div>
       </div>
 
+      <!-- 權重戰略面板 (新增) -->
+      <div id="weightStrategyPanel" class="mb-4 d-none">
+        <div
+          class="card border-primary shadow-sm"
+          style="border-radius: 12px; overflow: hidden"
+        >
+          <div class="card-header bg-primary text-white small fw-bold py-2">
+            <i class="fas fa-chess-board me-2"></i>當前星系權重戰略部署
+          </div>
+          <div
+            id="weightPanelBody"
+            class="card-body py-2 bg-light-subtle"
+          ></div>
+        </div>
+      </div>
+
       <!-- AI 智能建議區 (比照 Predict.html) -->
       <div id="aiSuggestionArea" class="mb-4"></div>
 
       <div id="resultArea" class="mb-4"></div>
 
+      <!-- 快取資訊顯示區 (新增) -->
+      <div id="cacheInfoContainer"></div>
+
       <div class="card shadow-sm mt-4 mb-5 d-none" id="historyCard">
-        <div class="card-header bg-dark text-white">
-          <i class="fas fa-chart-area me-2"></i>歷史 10 期命中趨勢 (回測)
+        <div
+          class="card-header bg-dark text-white d-flex justify-content-between align-items-center"
+        >
+          <span><i class="fas fa-chart-area me-2"></i>歷史命中趨勢 (回測)</span>
+          <select
+            id="historyPeriod"
+            class="form-select form-select-sm w-auto bg-dark text-white border-secondary"
+            style="font-size: 0.8rem"
+          >
+            <option value="10">近 10 期</option>
+            <option value="20">近 20 期</option>
+            <option value="30" selected>近 30 期</option>
+            <option value="50">近 50 期</option>
+          </select>
         </div>
         <div class="card-body">
           <canvas id="historyChart" style="width: 100%; height: 300px"></canvas>

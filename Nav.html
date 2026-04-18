@@ -1,5 +1,7 @@
 <nav class="navbar navbar-custom sticky-top">
-  <div class="container-fluid">
+  <div
+    class="container-fluid d-flex align-items-center justify-content-between"
+  >
     <button
       class="btn btn-light"
       type="button"
@@ -9,15 +11,38 @@
     >
       <i class="fas fa-bars"></i>
     </button>
-    <span class="navbar-brand mb-0 h1 text-white mx-auto"
-      >Galaxy Lotto 管理系統</span
+
+    <span
+      class="navbar-brand mb-0 h1 text-white mx-auto text-truncate px-2"
+      style="font-size: 1.1rem"
     >
+      Galaxy Lotto 管理系統
+    </span>
+
     <!-- 系統狀態指示燈 (多系統獨立顯示) -->
     <div
-      class="position-absolute end-0 me-2"
-      style="top: 50%; transform: translateY(-50%); z-index: 1030"
+      id="cacheStatusGroup"
+      class="d-flex gap-1 align-items-center"
+      style="z-index: 1030"
     >
-      <div id="cacheStatusGroup" class="d-flex gap-1 align-items-center">
+      <!-- 手機端總括指示燈 (僅在螢幕 < 375px 顯示) -->
+      <button
+        id="statusSummaryBtn"
+        class="btn btn-sm p-0 d-none"
+        onclick="toggleStatusDetails()"
+        style="color: inherit"
+      >
+        <i class="fas fa-satellite text-info" style="font-size: 14px"></i>
+      </button>
+
+      <!-- 詳細狀態標籤容器 -->
+      <div id="statusDetailWrapper" class="d-flex gap-1 align-items-center">
+        <span
+          id="appStatus"
+          class="badge rounded-pill bg-secondary status-mini"
+          title="系統核心版本"
+          >AP</span
+        >
         <span
           id="v1Status"
           class="badge rounded-pill bg-secondary status-mini"
@@ -36,24 +61,50 @@
           title="對照表"
           >MP</span
         >
-        <button
-          class="btn btn-link p-0 text-white-50 ms-1 border-0"
-          onclick="handleManualStatusRefresh()"
-          title="手動刷新狀態"
-          style="line-height: 1"
-        >
-          <i
-            id="statusRefreshIcon"
-            class="fas fa-redo-alt"
-            style="font-size: 10px"
-          ></i>
-        </button>
       </div>
+
+      <button
+        class="btn btn-link p-0 text-white-50 ms-1 border-0"
+        onclick="handleManualStatusRefresh()"
+        title="手動刷新狀態"
+        style="line-height: 1"
+      >
+        <i
+          id="statusRefreshIcon"
+          class="fas fa-redo-alt"
+          style="font-size: 10px"
+        ></i>
+      </button>
     </div>
   </div>
 </nav>
 
 <style>
+  /* 安全區域 (Safe Area) 自動適應 - 針對長型手機如 1080x2340 優化 */
+  .navbar-custom {
+    /* 增加頂部 Padding 以避開瀏海與系統狀態列 */
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    /* 確保導覽列總高度隨安全區域動態增長，維持視覺比例 */
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
+    transition: all 0.3s ease;
+  }
+
+  .navbar-custom .container-fluid {
+    /* 調整左右內邊距，確保在橫屏或大圓角螢幕下按鈕不靠邊 */
+    padding-left: calc(12px + env(safe-area-inset-left, 0px)) !important;
+    padding-right: calc(12px + env(safe-area-inset-right, 0px)) !important;
+  }
+
+  /* 深色模式下的霓虹發光標題 */
+  [data-bs-theme="dark"] .navbar-brand {
+    color: #00d2ff !important;
+    text-shadow:
+      0 0 5px rgba(0, 210, 255, 0.6),
+      0 0 10px rgba(0, 210, 255, 0.4),
+      0 0 20px rgba(0, 210, 255, 0.2);
+    transition: text-shadow 0.3s ease;
+  }
+
   .status-mini {
     font-size: 10px !important;
     padding: 4px 6px !important;
@@ -83,9 +134,18 @@
 
   /* 優化指示燈呼吸效果：微弱的發光與亮度循環，提供平滑的背景更新感 */
   @keyframes nav-breathing {
-    0% { box-shadow: 0 0 2px rgba(255, 255, 255, 0.2); filter: brightness(1); }
-    50% { box-shadow: 0 0 12px rgba(255, 255, 255, 0.6); filter: brightness(1.2); }
-    100% { box-shadow: 0 0 2px rgba(255, 255, 255, 0.2); filter: brightness(1); }
+    0% {
+      box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
+      filter: brightness(1);
+    }
+    50% {
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+      filter: brightness(1.2);
+    }
+    100% {
+      box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
+      filter: brightness(1);
+    }
   }
 
   /* 覆蓋全域 anim-pulse 樣式，為導航列指示燈提供更優雅的呼吸感 */
@@ -98,6 +158,53 @@
   .mode-switch-label {
     font-size: 0.85rem;
     transition: color 0.3s;
+  }
+
+  /* 手機端寬度小於 375px 的隱藏邏輯 */
+  @media (max-width: 374px) {
+    #statusSummaryBtn {
+      display: block !important;
+    }
+    #statusDetailWrapper {
+      display: none !important;
+      position: absolute;
+      top: 48px;
+      right: 10px;
+      background: rgba(13, 110, 253, 0.9);
+      padding: 8px 12px;
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      flex-direction: column;
+      align-items: flex-end !important;
+      gap: 6px !important;
+    }
+    #cacheStatusGroup.is-expanded #statusDetailWrapper {
+      display: flex !important;
+    }
+  }
+
+  /* 衛星雷達掃描動畫 */
+  @keyframes radar-spin-pulse {
+    0% { transform: rotate(0deg) scale(1); opacity: 1; }
+    50% { transform: rotate(180deg) scale(1.3); opacity: 0.8; filter: brightness(1.5); }
+    100% { transform: rotate(360deg) scale(1); opacity: 1; }
+  }
+  .radar-active {
+    animation: radar-spin-pulse 2s infinite linear;
+    display: inline-block;
+    color: #00d2ff !important;
+  }
+
+  /* 強制快取模式下的導航列藍色光暈 */
+  .navbar-cache-glow {
+    box-shadow: 0 4px 15px rgba(0, 210, 255, 0.4) !important;
+    border-bottom: 2px solid rgba(0, 210, 255, 0.6) !important;
+    transition: all 0.5s ease;
+  }
+  [data-bs-theme="dark"] .navbar-cache-glow {
+    box-shadow: 0 4px 25px rgba(0, 210, 255, 0.6) !important;
   }
 </style>
 
@@ -121,16 +228,31 @@
     <ul class="navbar-nav justify-content-end flex-grow-1 pe-3">
       <!-- 連線模式選擇 -->
       <li class="nav-item px-2 py-2 mb-2 bg-light-subtle rounded border">
-        <label class="form-label small fw-bold mb-1 text-secondary d-flex align-items-center">
+        <label
+          class="form-label small fw-bold mb-1 text-secondary d-flex align-items-center"
+        >
           <i class="fas fa-network-wired me-1"></i>連線模式
-          <span id="latencyIndicator" class="ms-auto badge bg-secondary" style="font-size: 0.6rem;">-- ms</span>
+          <span
+            id="latencyIndicator"
+            class="ms-auto badge bg-secondary"
+            style="font-size: 0.6rem"
+            >-- ms</span
+          >
         </label>
-        <select class="form-select form-select-sm fw-bold" id="connectionModeSelect" onchange="changeConnectionMode(this.value)">
+        <select
+          class="form-select form-select-sm fw-bold"
+          id="connectionModeSelect"
+          onchange="changeConnectionMode(this.value)"
+        >
           <option value="auto">🤖 自動動態切換</option>
           <option value="realtime">⚡ 強制即時模式</option>
           <option value="cache">📦 強制快取模式</option>
         </select>
-        <div id="connectionModeDesc" class="mt-1 small fw-bold text-info" style="font-size: 0.7rem;">
+        <div
+          id="connectionModeDesc"
+          class="mt-1 small fw-bold text-info"
+          style="font-size: 0.7rem"
+        >
           <i class="fas fa-info-circle me-1"></i>正在初始化偵測...
         </div>
       </li>
@@ -150,7 +272,7 @@
       <li class="nav-item">
         <a
           class="nav-link"
-          style="color: #6610f2;"
+          style="color: #6610f2"
           id="navPredict"
           href="javascript:void(0)"
           onclick="openPageUrl('Predict')"
@@ -218,11 +340,22 @@
 
       <li class="nav-item">
         <a
+          class="nav-link text-danger"
+          id="navClearV1History"
+          href="javascript:void(0)"
+          onclick="handleClearPrediction1History()"
+        >
+          <i class="fas fa-history me-2"></i>清理 V1 歷史資料
+        </a>
+      </li>
+
+      <li class="nav-item">
+        <a
           class="nav-link fw-bold text-warning"
           href="javascript:void(0)"
           onclick="handleAllReset()"
         >
-          <i class="fas fa-radiation me-2"></i>全部重置 (修復專用)
+          <i class="fas fa-tools me-2"></i>系統核心重置 (修復專用)
         </a>
       </li>
     </ul>
@@ -230,6 +363,18 @@
 </div>
 
 <script>
+  /**
+   * 切換手機端狀態明細顯示
+   */
+  function toggleStatusDetails() {
+    const group = document.getElementById("cacheStatusGroup");
+    group.classList.toggle("is-expanded");
+    // 點擊後 5 秒自動收合，避免擋住內容
+    if (group.classList.contains("is-expanded")) {
+      setTimeout(() => group.classList.remove("is-expanded"), 5000);
+    }
+  }
+
   /**
    * 處理刷新對照表快取的 UI 邏輯
    */
@@ -299,6 +444,39 @@
   }
 
   /**
+   * 處理清理 Prediction1 History 的 UI 邏輯
+   */
+  function handleClearPrediction1History() {
+    var offcanvasElement = document.querySelector("#offcanvasNavbar");
+    if (offcanvasElement) {
+      var bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+      if (bsOffcanvas) bsOffcanvas.hide();
+    }
+
+    AppUI.confirm(
+      "確定要清理 V1 歷史回測資料？",
+      "這將會清除 prct1_History 中的所有回測紀錄，下次查看趨勢圖時將重新運算。",
+    ).then(function (result) {
+      if (result.isConfirmed) {
+        var lotto = $("#lottoType").val() || $("#lottoSelect").val() || "L539";
+        AppUI.loading("清理中", "正在清除歷史回測資料...");
+
+        google.script.run
+          .withSuccessHandler(function (res) {
+            performPostClearActions(
+              "Prediction1",
+              "V1 歷史資料已清空，頁面即將重新載入。",
+            );
+          })
+          .withFailureHandler(function (err) {
+            AppUI.showCommonError(err);
+          })
+          .clearPrediction1History(lotto);
+      }
+    });
+  }
+
+  /**
    * 處理清理星系快取的 UI 邏輯
    */
   function handleClearGalaxyCache() {
@@ -345,27 +523,50 @@
       if (bsOffcanvas) bsOffcanvas.hide();
     }
 
-    AppUI.confirm(
-      "⚠️ 警告：執行全系統重置？",
-      "這將清理 V1、星系、對照表的所有雲端快取，並強制登出與重置瀏覽器本地儲存。僅在系統發生嚴重資料錯誤時使用。",
-    ).then(function (result) {
-      if (result.isConfirmed) {
-        AppUI.loading("重置中", "正在進行毀滅性快取清理...");
-        google.script.run
-          .withSuccessHandler(function (res) {
-            localStorage.clear();
-            AppUI.success(
-              "重置完成",
-              "全系統已初始化，頁面即將重新載入。",
-              2000,
-            ).then(function () {
-              openPageUrl("Index", "_top", true);
-            });
-          })
-          .withFailureHandler(AppUI.showCommonError)
-          .resetAllSystems();
-      }
-    });
+    AppUI.loading("讀取中", "正在獲取版本資訊...");
+
+    google.script.run
+      .withSuccessHandler(function (preview) {
+        AppUI.close();
+
+        const previewHtml = `
+          <div class="mb-3 text-center">
+            <div class="small text-muted mb-2">遞增類型：<span class="badge bg-info">Minor (次版本更新)</span></div>
+            <span class="badge bg-secondary">${preview.current}</span>
+            <i class="fas fa-long-arrow-alt-right mx-2 text-primary"></i>
+            <span class="badge bg-primary">${preview.next}</span>
+          </div>
+          <p class="small text-muted">這將清理 UI 模板與系統日誌快取（APP_VERSION），但會保留 AI 學習權重、回測紀錄與欄位對照表。用於修復介面顯示異常。</p>
+        `;
+
+        Swal.fire({
+          title: "確定執行系統核心重置？",
+          html: previewHtml,
+          icon: "question",
+          showCancelButton: true,
+          confirmButtonText: "執行重置",
+          cancelButtonText: "取消",
+        }).then(function (result) {
+          if (result.isConfirmed) {
+            AppUI.loading("重置中", "正在進行毀滅性快取清理...");
+            google.script.run
+              .withSuccessHandler(function (res) {
+                localStorage.clear();
+                AppUI.success(
+                  "重置完成",
+                  "系統已更新至 " + preview.next,
+                  2000,
+                ).then(function () {
+                  openPageUrl("Index", "_top", true);
+                });
+              })
+              .withFailureHandler(AppUI.showCommonError)
+              .resetAllSystems();
+          }
+        });
+      })
+      .withFailureHandler(AppUI.showCommonError)
+      .getResetPreview();
   }
 
   /**
@@ -453,12 +654,12 @@
       }
     };
 
-    window.addEventListener('offline', () => checkAndDowngrade("已斷線"));
-    window.addEventListener('online', () => detectAndApplyMode());
+    window.addEventListener("offline", () => checkAndDowngrade("已斷線"));
+    window.addEventListener("online", () => detectAndApplyMode());
 
     // 2. 監聽網路品質變動 (Network Information API)
     if (navigator.connection) {
-      navigator.connection.addEventListener('change', detectAndApplyMode);
+      navigator.connection.addEventListener("change", detectAndApplyMode);
     }
   }
 
@@ -468,7 +669,10 @@
   function changeConnectionMode(mode) {
     localStorage.setItem("connection_mode", mode);
     detectAndApplyMode();
-    AppUI.toast("連線模式已切換為：" + $("#connectionModeSelect option:selected").text(), "info");
+    AppUI.toast(
+      "連線模式已切換為：" + $("#connectionModeSelect option:selected").text(),
+      "info",
+    );
   }
 
   /**
@@ -476,7 +680,7 @@
    */
   function detectAndApplyMode() {
     const mode = localStorage.getItem("connection_mode") || "auto";
-    
+
     if (mode === "realtime") {
       updateConnectionModeUI("realtime", "手動強制即時");
     } else if (mode === "cache") {
@@ -485,11 +689,18 @@
       // 自動模式：執行延遲測試
       const start = Date.now();
       google.script.run
-        .withSuccessHandler(function() {
+        .withSuccessHandler(function () {
           const latency = Date.now() - start;
-          $("#latencyIndicator").text(latency + " ms")
+          $("#latencyIndicator")
+            .text(latency + " ms")
             .removeClass("bg-secondary bg-success bg-warning bg-danger")
-            .addClass(latency < 400 ? "bg-success" : (latency < 800 ? "bg-warning" : "bg-danger"));
+            .addClass(
+              latency < 400
+                ? "bg-success"
+                : latency < 800
+                  ? "bg-warning"
+                  : "bg-danger",
+            );
 
           let effectiveMode = "realtime";
           let reason = "連線良好";
@@ -501,10 +712,10 @@
             effectiveMode = "cache";
             reason = "延遲過高 (" + latency + "ms)";
           }
-          
+
           if (navigator.connection) {
             const type = navigator.connection.effectiveType;
-            if (['slow-2g', '2g', '3g'].includes(type)) {
+            if (["slow-2g", "2g", "3g"].includes(type)) {
               effectiveMode = "cache";
               reason = "頻寬受限 (" + type + ")";
             }
@@ -519,7 +730,7 @@
           // 同步將有效模式寫入 localStorage 供 Predict 頁面讀取 (不覆蓋設定)
           localStorage.setItem("effective_connection_mode", effectiveMode);
         })
-        .withFailureHandler(function() {
+        .withFailureHandler(function () {
           updateConnectionModeUI("cache", "伺服器通訊失敗");
         })
         .getCacheStatus(); // 使用輕量 API 進行測試
@@ -531,14 +742,28 @@
    */
   function updateConnectionModeUI(effectiveMode, reason) {
     const $desc = $("#connectionModeDesc");
+    const $navbar = $(".navbar");
     const isRealtime = effectiveMode === "realtime";
-    
-    if (isRealtime) {
-      $desc.html('<i class="fas fa-bolt me-1 text-warning anim-pulse"></i>' + reason)
-           .removeClass("text-info text-danger").addClass("text-warning");
+
+    // 切換導航列光暈效果 (強制快取模式指示)
+    if (effectiveMode === "cache") {
+      $navbar.addClass("navbar-cache-glow");
     } else {
-      $desc.html('<i class="fas fa-database me-1 text-info"></i>' + reason)
-           .removeClass("text-warning text-danger").addClass("text-info");
+      $navbar.removeClass("navbar-cache-glow");
+    }
+
+    if (isRealtime) {
+      $desc
+        .html(
+          '<i class="fas fa-bolt me-1 text-warning anim-pulse"></i>' + reason,
+        )
+        .removeClass("text-info text-danger")
+        .addClass("text-warning");
+    } else {
+      $desc
+        .html('<i class="fas fa-database me-1 text-info"></i>' + reason)
+        .removeClass("text-warning text-danger")
+        .addClass("text-info");
     }
   }
 
@@ -557,9 +782,12 @@
   function checkSystemStatus(isManual) {
     // 背景更新開始時，讓所有指示燈進入微弱呼吸狀態
     $("#cacheStatusGroup .badge").addClass("anim-pulse");
+    // 衛星圖示啟動雷達動畫
+    $("#statusSummaryBtn i").addClass("radar-active");
 
     google.script.run
       .withSuccessHandler(function (res) {
+        $("#statusSummaryBtn i").removeClass("radar-active");
         if (isManual) {
           $("#statusRefreshIcon").removeClass("fa-spin");
           AppUI.toast("系統狀態已更新", "success");
@@ -605,9 +833,18 @@
         if (res.v1) updateBadge("v1Status", res.v1, "V1");
         if (res.galaxy) updateBadge("galaxyStatus", res.galaxy, "GX");
         if (res.map) updateBadge("mapStatus", res.map, "MP");
+
+        // 更新全域系統核心版本 (AP) 顯示
+        if (res.global) {
+          $("#appStatus")
+            .removeClass("bg-secondary anim-pulse")
+            .addClass("bg-dark")
+            .html("AP " + res.global);
+        }
       })
       .withFailureHandler(function (err) {
         $("#cacheStatusGroup .badge").removeClass("anim-pulse");
+        $("#statusSummaryBtn i").removeClass("radar-active");
         if (isManual) $("#statusRefreshIcon").removeClass("fa-spin");
         console.warn("系統狀態檢查失敗，30 秒後重試...", err);
 

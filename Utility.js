@@ -23,7 +23,7 @@ function getCacheVersion(salt = "") {
 
   let baseVersion = props.getProperty(verKey);
   if (!baseVersion) {
-    baseVersion = (verKey === "APP_VERSION") ? "v1.3" : "1.0";
+    baseVersion = (verKey === "APP_VERSION") ? "v1.3.0" : "1.0.0";
     props.setProperty(verKey, baseVersion);
   }
   return salt ? baseVersion + "_" + salt : baseVersion;
@@ -370,25 +370,19 @@ function refreshMappingCache() {
 function clearAllCache(isMajor = false) {
   const lock = LockService.getScriptLock();
   const props = PropertiesService.getScriptProperties();
-  const currentVersion = props.getProperty("APP_VERSION") || "v1.3";
-  const versionMatch = currentVersion.match(/(\d+)\.(\d+)/);
-  let newVersion = "v1.4";
-
-  if (versionMatch) {
-    let major = parseInt(versionMatch[1]);
-    let minor = parseInt(versionMatch[2]);
-    if (isMajor) {
-      major++;
-      minor = 0;
-    } else {
-      minor++;
-    }
-    newVersion = `v${major}.${minor}`;
-  }
+  const currentVersion = props.getProperty("APP_VERSION") || "v1.3.0";
+  
+  // 使用更強健的語義化版本遞增邏輯
+  const newVersion = incrementSemVer(currentVersion, isMajor ? 'major' : 'minor');
 
   try {
     lock.waitLock(5000);
     props.setProperty("APP_VERSION", newVersion);
+    
+    // 清理 CacheService 中的所有舊快取 (強制 Bust Cache)
+    const cache = CacheService.getScriptCache();
+    cache.remove("APP_VERSION"); // 移除版本號快取，強制下次重新從屬性讀取
+    
     return {
       status: "success",
       newVersion: newVersion,
@@ -447,10 +441,8 @@ function getCacheStatus() {
 function incrementSystemVersion(system) {
   const props = PropertiesService.getScriptProperties();
   const verKey = system + "_VERSION";
-  let ver = props.getProperty(verKey) || "1.0";
-  let parts = ver.split('.').map(Number);
-  parts[parts.length - 1]++;
-  const newVer = parts.join('.');
+  let ver = props.getProperty(verKey) || "1.0.0";
+  const newVer = incrementSemVer(ver, 'patch');
   props.setProperty(verKey, newVer);
   return newVer;
 }
@@ -460,20 +452,83 @@ function incrementSystemVersion(system) {
  */
 function resetAllSystems() {
   try {
-    const props = PropertiesService.getScriptProperties();
-    // 1. 重置所有版本號
-    props.setProperty("V1_VERSION", "1.0");
-    props.setProperty("GALAXY_VERSION", "1.0");
-    props.setProperty("MAP_VERSION", "1.0");
-    props.setProperty("APP_VERSION", "v1.0");
-
-    // 2. 清理 PropertiesService
-    PropertiesService.getUserProperties().deleteAllProperties();
+    const scriptProps = PropertiesService.getScriptProperties();
+    const userProps = PropertiesService.getUserProperties();
     
-    return { status: "success", message: "全系統快取已徹底重置。" };
+    // 1. 呼叫全域快取清理 (遞增 APP_VERSION 以 Bust 靜態模板快取)
+    clearAllCache(false);
+
+    // 2. 清理系統級雜訊屬性 (排除 V1, Galaxy, Map 相關)
+    const sKeys = scriptProps.getKeys();
+    sKeys.forEach(k => {
+      const isGeneric = !k.includes("V1_") && !k.includes("GALAXY_") && !k.includes("MAP_");
+      // 清理任務進度與錯誤計數
+      if (isGeneric && (k.includes("_JOB") || k.includes("ERR_") || k.includes("PROG_"))) {
+        scriptProps.deleteProperty(k);
+      }
+    });
+
+    // 3. 清理 UserProperties 中的通用快取 (排除權重 WEIGHTS_)
+    const uKeys = userProps.getKeys();
+    uKeys.forEach(k => {
+      const isSystemLogic = k.startsWith("WEIGHTS_") || k.startsWith("A1") || k.startsWith("P1");
+      if (!isSystemLogic) {
+        userProps.deleteProperty(k);
+      }
+    });
+    
+    // 4. 清理 CacheService (全數失效，因為 APP_VERSION 已變)
+    CacheService.getScriptCache().removeAll(["APP_VERSION"]);
+
+    // 5. 自動執行系統冗餘屬性清理 (定義於 Index_Server.js)
+    if (typeof maintenance_PruneSystemProperties === "function") {
+      maintenance_PruneSystemProperties();
+    }
+    
+    return { status: "success", message: "系統核心快取已重置，並完成冗餘屬性清理，已保留預測權重與對照表設定。" };
   } catch (e) {
     return { status: "error", message: e.message };
   }
+}
+
+/**
+ * 取得系統重置前的版本變更預覽
+ * @returns {Object} 包含 current 與 next 版本號
+ */
+function getResetPreview() {
+  const props = PropertiesService.getScriptProperties();
+  const current = props.getProperty("APP_VERSION") || "v1.0.0";
+  // 配合 resetAllSystems 呼叫 clearAllCache(false) 的邏輯，改為預覽 Minor 遞增
+  const next = incrementSemVer(current, 'minor');
+  return { current: current, next: next };
+}
+
+/**
+ * 語義化版本 (SemVer) 遞增工具
+ * @param {string} version 當前版本 (例如 "v1.2.3" 或 "1.2")
+ * @param {string} type 遞增類型: 'major', 'minor', 'patch'
+ * @returns {string} 遞增後的新版本
+ */
+function incrementSemVer(version, type = 'patch') {
+  const isVPrefixed = /^v/i.test(version);
+  let cleanVer = version.replace(/^v/i, '');
+  let parts = cleanVer.split('.').map(n => parseInt(n, 10) || 0);
+  
+  // 確保符合 Major.Minor.Patch 結構，若不足則補 0
+  while (parts.length < 3) parts.push(0);
+  
+  let [major, minor, patch] = parts;
+  
+  if (type === 'major') {
+    major++; minor = 0; patch = 0;
+  } else if (type === 'minor') {
+    minor++; patch = 0;
+  } else {
+    patch++;
+  }
+  
+  const newVer = `${major}.${minor}.${patch}`;
+  return isVPrefixed ? 'v' + newVer : newVer;
 }
 
 /**
