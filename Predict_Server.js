@@ -4,7 +4,7 @@
  */
 
 /** 演算法邏輯版本：修改預測公式或修正 Bug 後請遞增此版本號以自動失效舊快取 */
-const PREDICT_ALGO_VERSION = "P107";
+const PREDICT_ALGO_VERSION = "P108"; // 修正歷史回測排除預測當日紀錄以符合預期行為
 
 /**
  * 獲取指定彩種的 AI 學習權重設定。
@@ -526,10 +526,13 @@ function get60PeriodHistoryStats(lotto, topN, targetDateStr, useTrend = true) {
       return [];
     }
 
+    const targetTime = targetDate.getTime();
     // 修正：找出早於「預測日期」的最後一筆歷史開獎紀錄索引
     let cutoffIdx = -1;
     for (let i = allDataRaw.length - 1; i >= 0; i--) {
-      if (allDataRaw[i][0] < targetDate) {
+      // 強制對比時間數值並排除今日 (含括時分秒偏差之防禦)
+      const rowTime = new Date(allDataRaw[i][0]).setHours(0, 0, 0, 0);
+      if (rowTime < targetTime) {
         cutoffIdx = i;
         break;
       }

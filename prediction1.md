@@ -100,28 +100,48 @@
 - [已處理]
   檢查 Prediction1_Server.js，為本命頻率增益加入「時間衰減」，讓越近期的匹配日對權重影響更大。
 - (新思維) 在"父母"欄位及其他紫微欄位,讀取預測日期當天的值,然後把 All工作表 > 相對欄位 相同的值,取最接近預測日期60期,進行 數字(N1~N5,N6,S1) 觀察其出現頻率 ,並了鮮其權重配置，嚐試提高命中率。
-- [已處理] 優化 getPrct1LottoConfig，加入不同彩種的「理論和值期望值」與「標準偏差範圍」，供數據分析師過濾器使用。
-- [已處理] 檢查 Prediction1_Server.js 中的 ziWeiFreq 計算，確保當多個宮位出現同一個號碼時，頻率累加邏輯不會導致特定號碼權重過高。
-- [已處理] 在 Prediction1.html 中增加一個「宮位分析明細」視窗，讓使用者能點擊查看哪些宮位對當前預測提供了最高的共振貢獻。
-- [已處理] 在「宮位分析明細」視窗中，為每個宮位增加一個「查看歷史球號」按鈕，讓使用者能直接看到該宮位參數在歷史上最常開出的前 3 顆星球。
-- [已處理] 在「宮位分析明細」視窗中，為這些「歷史星球」增加點擊功能，點擊後能自動將該球號加入到當前的預測組合中。
-- [已處理] 優化 Prediction1_Style.html，為 table-success-subtle 增加一個微弱的青色外發光效果，提升明細視窗的科技感。
-- [已處理] 優化 Prediction1_Server.js，將 ziWeiHouseDetails 的計算結果存入快取，避免每次點擊分析視窗都要重新計算。
-- [已處理] 在 Prediction1_Server.js 中增加一個「資料完整性檢查」函式，在執行 corePredict 前先驗證 trainingData 是否有遺漏的球號或錯誤格式。
-- [已處理] 檢查 Prediction1_Server.js 中是否還有其他地方遺留了未定義的 maxNum 或 ballCount 變數。
-- [已處理] 在 Prediction1_Server.js 中實作資料完整性檢查函式，在預測前自動過濾掉 trainingData 中非數值或超出 config.maxNum 範圍的異常資料。
-- [已處理] 檢查 Prediction1_Server.js 中是否還有其他函式（如 corePredict）存在重複宣告變數的情況。
-- [已處理] 優化 applyAnalystFilters 的邏輯，將 theoryMeanSum 與 stdDev 的賦值移至函式頂端，與 config 一起初始化，提高代碼整潔度。
-- [已處理] 優化 Prediction1_Server.js 中的 ziWeiFreq 計算，加入「宮位重要性權重」，例如本命宮的頻率貢獻應高於兄弟宮。
-- [已處理] 在 Prediction1_JS.html 中增加一個「共振雷達圖」按鈕，將十二宮位的得分轉換為圓形雷達圖顯示，更直觀地呈現能量分佈。
+- [已處理]
+  優化 getPrct1LottoConfig，加入不同彩種的「理論和值期望值」與「標準偏差範圍」，供數據分析師過濾器使用。
+- [已處理]
+  檢查 Prediction1_Server.js 中的 ziWeiFreq 計算，確保當多個宮位出現同一個號碼時，頻率累加邏輯不會導致特定號碼權重過高。
+- [已處理]
+  在 Prediction1.html 中增加一個「宮位分析明細」視窗，讓使用者能點擊查看哪些宮位對當前預測提供了最高的共振貢獻。
+- [已處理]
+  在「宮位分析明細」視窗中，為每個宮位增加一個「查看歷史球號」按鈕，讓使用者能直接看到該宮位參數在歷史上最常開出的前 3 顆星球。
+- [已處理]
+  在「宮位分析明細」視窗中，為這些「歷史星球」增加點擊功能，點擊後能自動將該球號加入到當前的預測組合中。
+- [已處理]
+  優化 Prediction1_Style.html，為 table-success-subtle 增加一個微弱的青色外發光效果，提升明細視窗的科技感。
+- [已處理]
+  優化 Prediction1_Server.js，將 ziWeiHouseDetails 的計算結果存入快取，避免每次點擊分析視窗都要重新計算。
+- [已處理]
+  在 Prediction1_Server.js 中增加一個「資料完整性檢查」函式，在執行 corePredict 前先驗證 trainingData 是否有遺漏的球號或錯誤格式。
+- [已處理]
+  檢查 Prediction1_Server.js 中是否還有其他地方遺留了未定義的 maxNum 或 ballCount 變數。
+- [已處理]
+  在 Prediction1_Server.js 中實作資料完整性檢查函式，在預測前自動過濾掉 trainingData 中非數值或超出 config.maxNum 範圍的異常資料。
+- [已處理]
+  檢查 Prediction1_Server.js 中是否還有其他函式（如 corePredict）存在重複宣告變數的情況。
+- [已處理]
+  優化 applyAnalystFilters 的邏輯，將 theoryMeanSum 與 stdDev 的賦值移至函式頂端，與 config 一起初始化，提高代碼整潔度。
+- [已處理]
+  優化 Prediction1_Server.js 中的 ziWeiFreq 計算，加入「宮位重要性權重」，例如本命宮的頻率貢獻應高於兄弟宮。
+- [已處理]
+  在 Prediction1_JS.html 中增加一個「共振雷達圖」按鈕，將十二宮位的得分轉換為圓形雷達圖顯示，更直觀地呈現能量分佈。
+- [已處理]
+  優化 Prediction1_JS.html 的「權重戰略面板」，為「紫微共振」增加一個小動畫，顯示當前匹配到的歷史期數佔總期數的百分比。
+- [已處理]
+  在 Prediction1_Server.js 中增加一個「黃金分割過濾器」，根據理論期望值計算 0.618 與 0.382 的黃金分割點，對處於這些關鍵點位附近的號碼給予額外加權。
+- [已處理]
+  在 validatePrct1TrainingData 中增加一個邏輯，如果被過濾掉的異常資料超過 20%，則在 finalResult 增加一個資料品質警告標籤。
+- [已處理]
+  優化 checkHits，使其能同時回傳「連莊球數」與「隔期球數」的命中統計，並顯示在預測結果卡片上。
+- [已處理]
+  在 Prediction1_Server.js 中實作「黃金分割過濾器」，根據彩種的理論期望值（theorySum）計算關鍵點位並加權。
 
 ## 建議事項
 
-- 在 VS Code 中，有沒有辦法查看 Gemini 建議修改的「對比視窗（Side-by-side diff）」？
-- 在 Prediction1_Server.js 中增加一個「黃金分割過濾器」，根據理論期望值計算 0.618 與 0.382 的黃金分割點，對處於這些關鍵點位附近的號碼給予額外加權。
 - 優化 Prediction1_JS.html 的戰略對比視窗，增加一個和值分佈的微型長條圖，顯示當前預測總和在標準差區間內的相對位置。
-- 在 validatePrct1TrainingData 中增加一個邏輯，如果被過濾掉的異常資料超過 20%，則自動發送錯誤通知給管理員。
-- 優化 checkHits，使其能同時回傳「連莊球數」與「隔期球數」的命中統計，並顯示在預測結果卡片上。
-- 在 Prediction1_Server.js 中實作「黃金分割過濾器」，根據彩種的理論期望值（theorySum）計算關鍵點位並加權。
 - 優化 Prediction1_JS.html，實作「共振雷達圖」視窗，視覺化呈現十二宮位的能量分佈。
-
+- 優化 Prediction1_JS.html，在預測結果卡片上方增加一個「環境能量強度」指示條，根據 changeRatio 視覺化呈現當前日期的參數變動劇烈程度。
+- 在 Prediction1_Server.js 中實作「和值引力熱力圖」數據回傳，供前端繪製和值在標準差區間內的位移趨勢。

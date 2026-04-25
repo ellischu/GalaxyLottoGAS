@@ -662,6 +662,11 @@ function getPropertySheetValue(
   const cache = CacheService.getScriptCache();
 
   // 1. 優先嘗試讀取特定 Key 的快取 (支援單一物件最高 100KB)
+  // 核心修正：如果 sheetName 是 prct1_Property，必須強制指定 targetSs
+  if (sheetName === "prct1_Property" && !targetSs) {
+    throw new Error(`'prct1_Property' must be accessed with a specific target spreadsheet (targetSs argument is required).`);
+  }
+
   const specificCacheKey = `SHEET_PROP_${ss.getId()}_${sName}_${key}`;
   const cachedVal = cache.get(specificCacheKey);
   if (cachedVal !== null) {
@@ -735,6 +740,11 @@ function setPropertySheetValue(sheetName, key, value, targetSs = null) {
   const sName = sheetName || (targetSs ? "prct1_Property" : "Property");
   let sheet = ss.getSheetByName(sName);
   if (!sheet) {
+    // 核心修正：如果 sheetName 是 prct1_Property，必須強制指定 targetSs
+    if (sName === "prct1_Property" && !targetSs) {
+      throw new Error(`'prct1_Property' must be written to a specific target spreadsheet (targetSs argument is required).`);
+    }
+
     sheet = ss.insertSheet(sName);
     sheet.appendRow(["Key", "Value", "LastUpdated"]); // 初始化標題行
     sheet.setFrozenRows(1);
@@ -994,21 +1004,26 @@ function logSystemError(module, error, context = {}) {
     lock.waitLock(10000);
 
     let sheet = mainspreadsheet.getSheetByName("ErrorLog");
+    const appVer = getCacheVersion() || "N/A";
+
     if (!sheet) {
       sheet = mainspreadsheet.insertSheet("ErrorLog");
-      sheet.appendRow(["時間", "模組", "錯誤訊息", "堆疊軌跡", "上下文數據"]);
+      sheet.appendRow(["時間", "版本", "模組", "錯誤訊息", "堆疊軌跡", "上下文數據"]);
       sheet.setFrozenRows(1);
     }
 
     const errMsg = error && error.message ? error.message : String(error);
     const errStack = error && error.stack ? error.stack : "N/A";
+    // 確保 Context 包含版本資訊
+    const fullContext = Object.assign({ appVersion: appVer }, context);
 
     sheet.appendRow([
       new Date(),
+      appVer,
       module,
       errMsg,
       errStack,
-      JSON.stringify(context),
+      JSON.stringify(fullContext),
     ]);
 
     // 強制執行寫入，確保日誌確實存檔

@@ -3,6 +3,7 @@
   let bsChart = null; // 大小平衡圖
   let oeChart = null; // 奇偶平衡圖
   let radarChart = null; // 共振雷達圖
+  let piChart = null; // 星系能量分佈圖 (和值引力)
   let progressInterval = null; // 進度輪詢計時器
   window.lastResult = null;
   window.originalResult = null; // 儲存最初預測結果供還原使用
@@ -107,6 +108,7 @@
     const $card = $("#historyCard");
     if (isVisible) {
       $card.removeClass("d-none");
+      $("#historyToggle").prop("disabled", false);
       // 如果有快取的圖表，確保重新渲染大小
       if (historyChart) {
         setTimeout(() => historyChart.update(), 100);
@@ -200,10 +202,13 @@
     const timeoutId = setTimeout(function () {
       if (isRequestActive) {
         isRequestActive = false;
+        const verInfo = window.sysVersion
+          ? `<br><small class="text-muted">系統版本: ${window.sysVersion}</small>`
+          : "";
         AppUI.close();
         AppUI.error(
           "連線超時",
-          "星系預測執行時間過長 (超過 5 分鐘)，請檢查網路或縮減預測範圍。",
+          "星系預測執行時間過長 (超過 5 分鐘)，請檢查網路。" + verInfo,
         );
       }
     }, 300000); // 延長至 5 分鐘
@@ -259,7 +264,10 @@
         stopPolling();
         clearTimeout(timeoutId);
         AppUI.close();
-        AppUI.showCommonError(err);
+        const verSuffix = window.sysVersion
+          ? `\n(版本: ${window.sysVersion})`
+          : "";
+        AppUI.error("系統異常", err.message + verSuffix);
       })
       .getPrediction01(data.lotto, data.date, data.trend, parseInt(data.topN));
   };
@@ -300,31 +308,84 @@
     if (showWeightSetting && res.hotTails && res.learnedWeights) {
       $weightPanel.removeClass("d-none");
       const w = res.learnedWeights;
+      const meta = res.weightMetadata || { learnCount: 0 };
+
+      // 判定 AI 進化階段
+      let stageText = "數據收集";
+      let stageClass = "bg-secondary";
+      const lc = meta.learnCount || 0;
+      if (lc >= 500) {
+        stageText = "星系大腦";
+        stageClass = "bg-galaxy-level";
+      } else if (lc >= 150) {
+        stageText = "智慧進化";
+        stageClass = "bg-primary";
+      } else if (lc >= 50) {
+        stageText = "規律識別";
+        stageClass = "bg-info";
+      } else if (lc >= 10) {
+        stageText = "初步啟蒙";
+        stageClass = "bg-success";
+      }
+
+      // 計算匹配百分比 (總搜尋量為 12 宮位 * 60 期 = 720)
+      const houseCount = res.ziWeiHouseDetails
+        ? res.ziWeiHouseDetails.length
+        : 12;
+      const totalPossible = houseCount * 60;
+      const matchPercent = Math.min(
+        100,
+        ((res.ziWeiMatchCount || 0) / totalPossible) * 100,
+      ).toFixed(0);
       const tails = res.hotTails.join(", ");
+
+      // 取得頻率統計指標
+      const fAvg =
+        typeof res.freqAvg === "number" ? res.freqAvg.toFixed(2) : "0.00";
+      const fSd =
+        typeof res.freqStdDev === "number" ? res.freqStdDev.toFixed(2) : "0.00";
+
+      // 計算紫微共振權重趨勢 (對比基準值 0.08)
+      const lpVal = w.metaBoostLifePalace || 0.08;
+      const lpTrend = 
+        lpVal > 0.0801 
+          ? '<i class="fas fa-caret-up text-danger ms-1" title="權重進化上升"></i>' 
+          : (lpVal < 0.0799 ? '<i class="fas fa-caret-down text-success ms-1" title="權重修正下降"></i>' : '');
+
       const panelHtml = `
           <div class="row g-2">
+            <div class="col-12 mb-1">
+               <div class="d-flex justify-content-between align-items-center px-1">
+                  <span class="small text-muted"><i class="fas fa-microchip me-1"></i>AI 進化階段:</span>
+                  <span class="badge ${stageClass} border shadow-sm" style="font-size: 0.7rem;">${stageText} (Lv.${lc})</span>
+               </div>
+            </div>
             <div class="col-6">
               <div class="p-2 border rounded bg-white shadow-sm">
                 <div class="small text-muted mb-1"><i class="fas fa-fire-alt text-danger me-1"></i>熱門尾數偵測</div>
                 <div class="fw-bold h6 mb-0 text-danger"><span class="ticker" data-val="${tails}">${tails}</span> 尾</div>
+                <div class="mt-1 border-top pt-1 d-flex justify-content-between" style="font-size: 0.65rem;">
+                   <span class="text-muted">離散度: <b class="text-dark">${fSd}</b></span>
+                   <span class="text-muted">Avg: <b class="text-dark">${fAvg}</b></span>
+                </div>
               </div>
             </div>
             <div class="col-6">
               <div class="p-2 border rounded bg-white shadow-sm">
                 <div class="small text-muted mb-1"><i class="fas fa-magnet text-primary me-1"></i>連莊引力權重</div>
-                <div class="fw-bold h6 mb-0 text-primary ticker" data-val="${(w.repeat || 0).toFixed(2)}">0.00</div>
+                <div class="fw-bold h6 mb-0 text-primary ticker" data-val="${(w.repeat || 0).toFixed(3)}">0.000</div>
               </div>
             </div>
             <div class="col-4">
               <div class="p-2 border rounded bg-light-subtle text-center">
                 <div class="small text-muted">年度五行</div>
-                <div class="fw-bold ticker" data-val="${(w.metaBoostYear || 0).toFixed(2)}">0.00</div>
+                <div class="fw-bold ticker" data-val="${(w.metaBoostYear || 0).toFixed(3)}">0.000</div>
               </div>
             </div>
             <div class="col-4">
               <div class="p-2 border rounded bg-light-subtle text-center">
                 <div class="small text-muted">三合噴發</div>
-                <div class="fw-bold ticker" data-val="${(w.metaBoostTriple || 0).toFixed(2)}">0.00</div>
+                <div class="fw-bold ticker" data-val="${(w.metaBoostTriple || 0).toFixed(3)}">0.000</div>
               </div>
             </div>
             <div class="col-4">
@@ -333,15 +394,30 @@
                    onclick="showHouseAnalysis()"
                    title="點擊查看各宮位共振明細"
                    data-bs-toggle="tooltip">
-                <div class="small text-muted">紫微共振 <i class="fas fa-info-circle ms-1"></i></div>
-                <div class="fw-bold ticker" data-val="${(w.metaBoostLifePalace || 0).toFixed(2)}">0.00</div>
-                <div class="text-muted" style="font-size: 0.65rem;">(匹配: ${res.ziWeiMatchCount || 0}期)</div>
+                <div class="small text-muted mb-1">紫微共振 <i class="fas fa-info-circle ms-1"></i></div>
+                <div class="fw-bold h6 mb-0 d-flex align-items-center justify-content-center">
+                  <span class="ticker" data-val="${(w.metaBoostLifePalace || 0).toFixed(3)}">0.000</span>
+                  ${lpTrend}
+                </div>
+                <div class="text-muted mb-1" style="font-size: 0.65rem;">(匹配: ${res.ziWeiMatchCount || 0}期)</div>
+                <div class="progress" style="height: 4px; background-color: rgba(var(--bs-info-rgb), 0.1); border-radius: 10px;">
+                  <div class="progress-bar bg-info progress-bar-striped progress-bar-animated" 
+                       role="progressbar" 
+                       style="width: 0%; transition: width 1.5s cubic-bezier(0.1, 0.7, 1.0, 0.1);" 
+                       data-target-width="${matchPercent}%"></div>
+                </div>
               </div>
             </div>
           </div>`;
       $weightBody.html(panelHtml);
       // 啟動數字跑動動畫
       animateTickers();
+
+      // 啟動進度條動畫
+      setTimeout(() => {
+        const $bar = $weightBody.find(".progress-bar");
+        $bar.css("width", $bar.data("target-width"));
+      }, 150);
 
       // 初始化 Tooltip
       const tooltipTriggerList = [].slice.call(
@@ -461,6 +537,17 @@
           <div class="card-body">
             <h5 class="card-title text-center mb-4">
               <span class="text-primary">${res.date}</span> 預測結果: ${res.hitSummary}
+              ${
+                res.hitStats &&
+                (res.hitStats.repeat > 0 || res.hitStats.skip > 0)
+                  ? `
+                <div class="mt-2 d-flex justify-content-center gap-2 flex-wrap">
+                  ${res.hitStats.repeat > 0 ? `<span class="badge badge-repeat" style="font-size:0.75rem;">連莊命中: ${res.hitStats.repeat}</span>` : ""}
+                  ${res.hitStats.skip > 0 ? `<span class="badge badge-skip" style="font-size:0.75rem;">隔期命中: ${res.hitStats.skip}</span>` : ""}
+                </div>
+              `
+                  : ""
+              }
               ${res.actualNums ? `<div class="mt-2 small text-muted">本期答案: <span class="fw-bold text-success">${res.actualNums.join(", ")}</span>${res.actualS1 ? ` <span class="badge bg-s1 text-dark">S:${res.actualS1}</span>` : ""}</div>` : ""}
             </h5>
             <div class="row row-cols-2 row-cols-sm-3 row-cols-md-5 g-3 justify-content-center">${ballHtml}</div>
@@ -647,17 +734,30 @@
         const predNums = res.prediction.map((n) =>
           Number(typeof n === "string" ? n : n.number),
         );
-        const mainHits = predNums.filter((n) => actualNums.includes(n)).length;
+
+        // 同步更新詳細命中統計
+        const mainHitsCount = predNums.filter((n) =>
+          actualNums.includes(n),
+        ).length;
+        const repeatHits = predNums.filter((n) =>
+          (res.lastDrawNums || []).includes(n),
+        ).length;
+        const skipHits = predNums.filter((n) =>
+          (res.prevDrawNums || []).includes(n),
+        ).length;
+
         const totalToHit = lotto === "L539" ? 5 : 6;
-        let summary = `命中 ${mainHits}/${totalToHit}`;
+        let summary = `命中 ${mainHitsCount}/${totalToHit}`;
 
         let s1HitNow = false;
         if (res.actualS1) {
           s1HitNow = predNums.includes(Number(res.actualS1));
           if (s1HitNow) summary += " (+特別號)";
         }
+
         res.hitSummary = summary;
         res.isS1Hit = s1HitNow; // 同步更新卡片邊框判定旗標
+        res.hitStats = { repeat: repeatHits, skip: skipHits };
       }
 
       // 2. 渲染結果並對新號碼套用動畫
@@ -696,13 +796,26 @@
     const currentSum = currentPrediction.reduce((a, b) => a + b, 0);
     if (!trend || !pred) return;
 
+    // 根據 gravityStatus 決定 CSS 類別與背景顏色
+    let sumRowClass = "table-success-subtle";
+    if (res.gravityStatus === "極端震盪")
+      sumRowClass = "table-danger text-white";
+    else if (res.gravityStatus === "震盪預警") sumRowClass = "table-warning";
+
     const ballCount = pred.big + pred.small;
+    const revProb = res.meanReversionProb || 50;
+    const probColor =
+      revProb > 70
+        ? "text-danger"
+        : revProb > 60
+          ? "text-warning"
+          : "text-success";
 
     let html = `
         <div class="table-responsive">
           <table class="table table-bordered table-sm small text-center mb-0">
             <thead class="table-dark">
-              <tr><th>維度</th><th>近期趨勢(平均)</th><th>當前預測組</th><th>偏差</th></tr>
+              <tr><th>維度</th><th>近期趨勢(平均)</th><th>當前預測組</th><th>引力狀態</th></tr>
             </thead>
             <tbody>
               <tr>
@@ -717,17 +830,31 @@
                 <td class="text-primary fw-bold">${pred.odd}奇 : ${pred.even}偶</td>
                 <td><span class="badge ${Math.abs(pred.odd / ballCount - trend.oddRatio) > 0.2 ? "bg-danger" : "bg-success"}">${((pred.odd / ballCount - trend.oddRatio) * 100).toFixed(0)}%</span></td>
               </tr>
-              <tr class="table-info-subtle">
+              <tr class="${sumRowClass}">
                 <td class="fw-bold">全組合總和</td>
                 <td>理論期望值: ${trend.theoryMeanSum.toFixed(1)} (±${trend.stdDev})</td>
-                <td class="text-primary fw-bold">Sum: ${currentSum}</td>
+                <td class="${res.gravityStatus === "極端震盪" ? "text-white" : "text-primary"} fw-bold">Sum: ${currentSum}</td>
                 <td>
-                  <span class="badge ${Math.abs(currentSum - trend.theoryMeanSum) > trend.stdDev ? "bg-danger" : Math.abs(currentSum - trend.theoryMeanSum) > (trend.stdDev * 0.6) ? "bg-warning text-dark" : "bg-success"}">
-                  ${Math.abs(currentSum - trend.theoryMeanSum) > trend.stdDev ? "極端偏差" : Math.abs(currentSum - trend.theoryMeanSum) > (trend.stdDev * 0.6) ? "震盪預警" : "穩定"}</span>
+                  <span class="badge ${res.gravityStatus === "極端震盪" ? "bg-light text-danger" : res.gravityStatus === "震盪預警" ? "bg-danger text-white" : "bg-success"}">
+                  ${res.gravityStatus}</span>
                 </td>
               </tr>
             </tbody>
           </table>
+
+          <div class="row mt-3">
+            <div class="col-12">
+              <div class="alert alert-light border p-2 mb-2 text-center shadow-sm">
+                <div class="small text-muted mb-1"><i class="fas fa-history me-1"></i>均值回歸動能評估</div>
+                <div class="h5 mb-0 ${probColor} fw-bold">${revProb}%</div>
+                <div class="text-muted" style="font-size: 0.65rem;">(下一期和值向中心點靠攏之機率)</div>
+              </div>
+              <div class="p-2 border rounded bg-light-subtle text-center" style="position: relative;">
+                <div class="small fw-bold text-muted mb-2"><i class="fas fa-atom me-1"></i>星系能量中心 (Sum Gravity)</div>
+                <div style="height: 180px;"><canvas id="piChartCanvas"></canvas></div>
+              </div>
+            </div>
+          </div>
 
           <div class="alert alert-secondary mt-3 p-2 small">
             <h6 class="fw-bold mb-1 border-bottom pb-1"><i class="fas fa-arrows-alt-h me-1"></i>星系位置平均值 (Position Means)</h6>
@@ -757,6 +884,113 @@
       html,
       "500px",
     );
+
+    // 彈窗開啟後渲染能量中心圖表
+    setTimeout(() => renderPiChart("piChartCanvas", res), 300);
+  };
+
+  /**
+   * 渲染星系能量分佈圖 (和值引力)
+   * 將球號映射至圓周相位，並計算能量中心點 (Centroid) 以顯示偏差方向
+   */
+  window.renderPiChart = function (canvasId, res) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (piChart) piChart.destroy();
+
+    const lotto = $("#lottoType").val();
+    const maxNum = lotto === "L539" || lotto === "L638" ? 39 : 49;
+    const prediction = res.prediction.map((item) =>
+      Number(typeof item === "string" ? item : item.number),
+    );
+
+    // 1. 計算每個號碼在圓周上的座標 (向量合成)
+    let sumX = 0,
+      sumY = 0;
+    const points = prediction.map((n) => {
+      // 將 1~MaxNum 映射到 0~2PI，起始點設為 12 點鐘方向
+      const angle = (n / maxNum) * 2 * Math.PI - Math.PI / 2;
+      const px = Math.cos(angle);
+      const py = Math.sin(angle);
+      sumX += px;
+      sumY += py;
+      return { x: px, y: py };
+    });
+
+    // 2. 計算質心 (能量中心點)
+    const centerX = sumX / prediction.length;
+    const centerY = sumY / prediction.length;
+
+    // 3. 建立背景參考軌道 (理論邊界與理想平衡區)
+    const outerOrbit = [];
+    const innerOrbit = []; // 理論期望平衡區 (靠近質心的穩定區域)
+    for (let i = 0; i <= 360; i += 6) {
+      const rad = (i * Math.PI) / 180;
+      outerOrbit.push({ x: Math.cos(rad), y: Math.sin(rad) });
+      innerOrbit.push({ x: Math.cos(rad) * 0.2, y: Math.sin(rad) * 0.2 });
+    }
+
+    const isDark =
+      document.documentElement.getAttribute("data-bs-theme") === "dark";
+
+    piChart = new Chart(ctx, {
+      type: "scatter",
+      data: {
+        datasets: [
+          {
+            label: "星系邊界",
+            data: outerOrbit,
+            borderColor: isDark
+              ? "rgba(255, 255, 255, 0.15)"
+              : "rgba(0, 0, 0, 0.05)",
+            borderWidth: 1,
+            borderDash: [5, 5],
+            showLine: true,
+            pointRadius: 0,
+            fill: false,
+          },
+          {
+            label: "理想平衡區",
+            data: innerOrbit,
+            borderColor: isDark
+              ? "rgba(0, 210, 255, 0.25)"
+              : "rgba(13, 110, 253, 0.1)",
+            borderWidth: 1,
+            borderDash: [2, 2],
+            showLine: true,
+            pointRadius: 0,
+            fill: false,
+          },
+          {
+            label: "星球分佈",
+            data: points.map((p) => ({ x: p.x, y: p.y })),
+            backgroundColor: "#0dcaf0",
+            pointRadius: 5,
+            zIndex: 1,
+          },
+          {
+            label: "能量中心點",
+            data: [{ x: centerX, y: centerY }],
+            backgroundColor: "#ff416c",
+            pointStyle: "crossRot",
+            pointRadius: 12,
+            borderWidth: 3,
+            borderColor: "#ff416c",
+            zIndex: 10,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { min: -1.2, max: 1.2, display: false },
+          y: { min: -1.2, max: 1.2, display: false },
+        },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      },
+    });
   };
 
   /**
@@ -878,14 +1112,45 @@
    */
   window.showHouseAnalysis = function () {
     const res = window.lastResult;
-    // 修正：檢查 res.ziWeiHouseDetails 是否存在且有內容
-    if (!res || !res.ziWeiHouseDetails || res.ziWeiHouseDetails.length === 0) {
-      AppUI.toast("當前日期缺少環境參數，無法進行宮位分析", "warning");
+
+    // 1. 檢查預測是否成功
+    if (!res || !res.success) {
+      AppUI.toast("請先完成預測後再查看分析", "warning");
+      return;
+    }
+
+    // 2. 檢查宮位明細是否存在
+    if (res.ziWeiHouseDetails === undefined || res.ziWeiHouseDetails === null) {
+      Swal.fire({
+        title: "缺少環境參數",
+        text: "系統在 AllData 工作表中找不到該日期的精確參數，且無可遞補的歷史資料。請確認「資料維護」是否已完成更新。",
+        icon: "warning",
+      });
+      return;
+    }
+
+    // 3. 檢查是否有匹配到任何宮位
+    if (res.ziWeiHouseDetails.length === 0) {
+      AppUI.toast(
+        "當前日期雖有基礎參數，但未偵測到有效的紫微宮位欄位(strp01-12)，請檢查試算表標頭或執行資料同步。",
+        "info",
+      );
+      return;
+    }
+
+    // 4. 檢查是否有歷史匹配記錄 (處理建議事項：無紀錄時優化顯示)
+    if (res.ziWeiMatchCount === 0) {
+      AppUI.alertHtml(
+        '<i class="fas fa-bullseye me-2"></i>紫微十二宮位共振分析',
+        '<div class="text-center p-4"><i class="fas fa-search-minus fa-3x text-muted mb-3"></i><h5 class="text-muted">本期無歷史匹配紀錄</h5><p class="small text-muted mb-0">當前的環境參數組合在過去 60 期中尚未有出現紀錄，共振權重已自動重置為基準值。</p></div>',
+        "450px",
+      );
       return;
     }
 
     let html = `
         <div class="table-responsive">
+          ${res.isUsingFallbackEnv ? `<div class="alert alert-warning py-1 px-2 mb-2" style="font-size:0.75rem"><i class="fas fa-exclamation-triangle me-1"></i> 注意：當前日期缺乏精確環境數據，已遞補使用最近一期參數進行模擬分析。</div>` : ""}
           <div class="d-grid mb-3">
             <button class="btn btn-outline-info btn-sm fw-bold" onclick="showResonanceRadar()"><i class="fas fa-chart-pie me-1"></i> 切換雷達分佈圖</button>
           </div>
@@ -903,9 +1168,17 @@
                   <td>${h.val}</td>
                   <td class="text-end">${h.matches}</td>
                   <td class="text-end">
-                    ${h.matches > 0 ? h.topBalls.map(b => 
-                      `<span class="badge bg-light text-primary border cursor-pointer me-1" 
-                             onclick="addBallFromAnalysis('${b}')" title="點擊將此球加入預測">${b}</span>`).join("") : "-"}
+                    ${
+                      h.matches > 0
+                        ? h.topBalls
+                            .map(
+                              (b) =>
+                                `<span class="badge bg-light text-primary border cursor-pointer me-1" 
+                             onclick="addBallFromAnalysis('${b}')" title="點擊將此球加入預測">${b}</span>`,
+                            )
+                            .join("")
+                        : "-"
+                    }
                   </td>
                   <td class="text-end fw-bold text-primary pe-2">${h.score}</td>
                 </tr>`,
@@ -928,10 +1201,10 @@
   /**
    * 顯示共振能量雷達圖
    */
-  window.showResonanceRadar = function() {
+  window.showResonanceRadar = function () {
     const res = window.lastResult;
     const details = res.ziWeiHouseDetails;
-    
+
     const html = `
       <div style="height: 350px; width: 100%;">
         <canvas id="resonanceRadarChart"></canvas>
@@ -939,40 +1212,56 @@
       <div class="text-center mt-3 small text-muted">雷達圖顯示各宮位對當前星球引力的百分比分佈</div>
     `;
 
-    AppUI.alertHtml('<i class="fas fa-project-diagram me-2"></i>星系宮位共振能量場', html, "500px");
+    AppUI.alertHtml(
+      '<i class="fas fa-project-diagram me-2"></i>星系宮位共振能量場',
+      html,
+      "500px",
+    );
 
     setTimeout(() => {
-      const ctx = document.getElementById('resonanceRadarChart').getContext('2d');
+      const ctx = document
+        .getElementById("resonanceRadarChart")
+        .getContext("2d");
       if (radarChart) radarChart.destroy();
 
-      const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+      const isDark =
+        document.documentElement.getAttribute("data-bs-theme") === "dark";
 
       radarChart = new Chart(ctx, {
-        type: 'radar',
+        type: "radar",
         data: {
-          labels: details.map(h => h.name),
-          datasets: [{
-            label: '共振得分',
-            data: details.map(h => parseFloat(h.score)),
-            backgroundColor: 'rgba(0, 210, 255, 0.2)',
-            borderColor: '#00d2ff',
-            pointBackgroundColor: '#00d2ff',
-            borderWidth: 2
-          }]
+          labels: details.map((h) => h.name),
+          datasets: [
+            {
+              label: "共振得分",
+              data: details.map((h) => parseFloat(h.score)),
+              backgroundColor: "rgba(0, 210, 255, 0.2)",
+              borderColor: "#00d2ff",
+              pointBackgroundColor: "#00d2ff",
+              borderWidth: 2,
+            },
+          ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
             r: {
-              angleLines: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
-              grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
-              pointLabels: { color: isDark ? '#adb5bd' : '#495057', font: { size: 12 } },
-              ticks: { display: false }
-            }
+              angleLines: {
+                color: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
+              },
+              grid: {
+                color: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
+              },
+              pointLabels: {
+                color: isDark ? "#adb5bd" : "#495057",
+                font: { size: 12 },
+              },
+              ticks: { display: false },
+            },
           },
-          plugins: { legend: { display: false } }
-        }
+          plugins: { legend: { display: false } },
+        },
       });
     }, 300);
   };
@@ -1040,6 +1329,9 @@
           v1HistoryCache[cacheKey] = data; // 將結果存入快取
           renderChart(data);
           $("#historyToggle").prop("disabled", false);
+        } else {
+          AppUI.toast("該時段暫無回測數據，請稍後重試或更新資料", "info");
+          $("#historyToggle").prop("checked", false);
         }
         stopPolling();
       })
@@ -1177,6 +1469,7 @@
     google.script.run
       .withSuccessHandler(function (info) {
         $container.css("opacity", "1");
+        window.sysVersion = info.version; // 儲存至全域供錯誤回報使用
         const html = `
         <div class="d-flex justify-content-center gap-3 mt-4 small text-muted border-top pt-2">
           <span><i class="fas fa-code-branch me-1"></i>版本: <b>${info.version}</b></span>
