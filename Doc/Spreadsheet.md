@@ -11,11 +11,11 @@
 - [LSix 工作表](#lsix-工作表) ： LSix象限的49顆星球出現的結果。
 - [AllData 工作表](#alldata-工作表) ： 日期相關係數。
 - [Method 工作表](#method-工作表) ： 搜尋條件相關序號。
-- [Sheets 工作表](#sheets-工作表) ：
-- [Folders 工作表](#folders-工作表)
-- [IDName 工作表](#idname-工作表)
-- [FieldName 工作表](#fieldname-工作表)
-- [ErrorLog 工作表](#errorlog-工作表)
+- [Sheets 工作表](#sheets-工作表) ： 相關試算表及網址。
+- [Folders 工作表](#folders-工作表) : 相關資料夾及網址。
+- [IDName 工作表](#idname-工作表) ： ID與ID名稱對照表。
+- [FieldName 工作表](#fieldname-工作表) ： 欄位名稱對照表。
+- [ErrorLog 工作表](#errorlog-工作表): 系統錯誤記錄表。
 
 [回首頁](#試算表及工作表資料)
 
@@ -218,17 +218,33 @@ ID與ID名稱對照表。
 # L539,L649,L638,LSix 試算表
 
 - 共用工作表
-  - [All 工作表](#all-工作表)
-  - [Miss 工作表](#miss-工作表)
+  - [All 工作表](#all-工作表) : 日期相關係數。
+  - [Miss 工作表](#miss-工作表) : 遺漏數表格工作表。
+  - [FreqSec 工作表](#freqsec-工作表) : 分區頻率序號提供工作表。
+    - [FreqSecM 工作表](#freqsecM-工作表) : 分區遺漏數工作表。
+    - [FreqSec05 工作表](#freqsec05-工作表) : 分區05頻率工作表。
+    - [FreqSec10 工作表](#freqsec10-工作表) : 分區10頻率工作表。
+    - [FreqSec25 工作表](#freqsec25-工作表) : 分區25頻率工作表。
+    - [FreqSec50 工作表](#freqsec50-工作表) : 分區50頻率工作表。
+    - [FreqSec100 工作表](#freqsec100-工作表) : 分區100頻率工作表。
+    - [FreqSecMHis 工作表](#freqsecMHis-工作表) : 分區歷史遺漏數工作表。
+    - [FreqSec05His 工作表](#freqsec05His-工作表) : 分區歷史05頻率工作表。
+    - [FreqSec10His 工作表](#freqsec10His-工作表) : 分區歷史10頻率工作表。
+    - [FreqSec25His 工作表](#freqsec25His-工作表) : 分區歷史25頻率工作表。
+    - [FreqSec50His 工作表](#freqsec50His-工作表) : 分區歷史50頻率工作表。
+    - [FreqSec100His 工作表](#freqsec100His-工作表) : 分區歷史100頻率工作表。
+
 - Predict 模組
   - [Predict 模組](Predict.md)
-  - [prct1_Settings 工作表](#prct1_settings-工作表)
-  - [prct1_Property 工作表](#prct1_property-工作表)
-  - [prct1_History 工作表](#prct1_history-工作表)
+  - [prct1_Settings 工作表](#prct1_settings-工作表) : Predict 模組專用設定表。
+  - [prct1_Property 工作表](#prct1_property-工作表) : Predict 模組專用屬性表。
+  - [prct1_History 工作表](#prct1_history-工作表) : Predict 模組歷史表。
 - Prediction1 模組
   - [Prediction1 模組](Prediction1.md)
-  - [predic1_Settings 工作表](#predic1_settings-工作表)
-  - [predic1_Property 工作表](#predic1_property-工作表)
+  - [predic1_Settings 工作表](#predic1_settings-工作表) :
+    Prediction1 模組專用設定表。
+  - [predic1_Property 工作表](#predic1_property-工作表) :
+    Prediction1 模組專用屬性表。
 
 [回首頁](#試算表及工作表資料)
 
@@ -239,13 +255,13 @@ ID與ID名稱對照表。
 | 欄位名稱     | 數值型態 | 預設值 | 標題         | 說明                       | 試算表              |
 | :----------- | :------- | :----- | :----------- | :------------------------- | :------------------ |
 | Date         | Date     | null   | 日期         | 日期(不可重複)             | L539,L649,L638,LSix |
-| N1           | Int      | null   | 號1          | 排序後號碼1                | L539,L649,L638,LSix |
-| N2           | Int      | null   | 號2          | 排序後號碼2                | L539,L649,L638,LSix |
-| N3           | Int      | null   | 號3          | 排序後號碼3                | L539,L649,L638,LSix |
-| N4           | Int      | null   | 號4          | 排序後號碼4                | L539,L649,L638,LSix |
-| N5           | Int      | null   | 號5          | 排序後號碼5                | L539,L649,L638,LSix |
-| N6           | Int      | null   | 號6          | 排序後號碼6                | L649,L638,LSix      |
-| S1           | Int      | null   | 特別號1      | 特別號1                    | L649,L638,LSix      |
+| N1           | Int      | 0      | 號1          | 排序後號碼1                | L539,L649,L638,LSix |
+| N2           | Int      | 0      | 號2          | 排序後號碼2                | L539,L649,L638,LSix |
+| N3           | Int      | 0      | 號3          | 排序後號碼3                | L539,L649,L638,LSix |
+| N4           | Int      | 0      | 號4          | 排序後號碼4                | L539,L649,L638,LSix |
+| N5           | Int      | 0      | 號5          | 排序後號碼5                | L539,L649,L638,LSix |
+| N6           | Int      | 0      | 號6          | 排序後號碼6                | L649,L638,LSix      |
+| S1           | Int      | 0      | 特別號1      | 特別號1                    | L649,L638,LSix      |
 | Sum          | Int      | 0      | 總合         | 號數總合<br> L638為(N1~N6) | L539,L638,L649,LSix |
 | 年天干       | String   | null   | 年天干       | 年天干                     | L539,L638,L649,LSix |
 | 年地支       | String   | null   | 年地支       | 年地支                     | L539,L638,L649,LSix |
@@ -276,6 +292,14 @@ ID與ID名稱對照表。
 
 ### 備註
 
+- N1~N6,S1,Sum 由
+  - [L539 工作表](#l539-工作表)提供。
+  - [L649 工作表](#l649-工作表)提供。
+  - [L638 工作表](#l638-工作表)提供。
+  - [LSix 工作表](#lsix-工作表)提供。
+
+- 其他係數 由 [AllData 工作表](#alldata-工作表)提供。
+
 | 象限種類           | L539 | L649 | L638 | LSix |
 | :----------------- | :--- | :--- | :--- | :--- |
 | 觀察星球總數       | 39   | 49   | 38   | 49   |
@@ -287,76 +311,335 @@ ID與ID名稱對照表。
 
 ## Miss 工作表
 
-遺漏數表格工作表 。
+遺漏數表格工作表。
 
 | 欄位名稱 | 數值型態 | 預設值 | 標題    | 說明                       | 試算表              |
 | :------- | :------- | :----- | :------ | :------------------------- | :------------------ |
 | Date     | Date     | null   | 日期    | 日期(不可重複)             | L539,L638,L649,LSix |
-| N1       | Int      | null   | 號1     | 排序後號碼1                | L539,L638,L649,LSix |
-| N2       | Int      | null   | 號2     | 排序後號碼2                | L539,L638,L649,LSix |
-| N3       | Int      | null   | 號3     | 排序後號碼3                | L539,L638,L649,LSix |
-| N4       | Int      | null   | 號4     | 排序後號碼4                | L539,L638,L649,LSix |
-| N5       | Int      | null   | 號5     | 排序後號碼5                | L539,L638,L649,LSix |
-| N6       | Int      | null   | 號6     | 排序後號碼6                | L649,L638,LSix      |
-| S1       | Int      | null   | 特別號1 | 特別號1                    | L649,L638,LSix      |
+| N1       | Int      | 0      | 號1     | 排序後號碼1                | L539,L638,L649,LSix |
+| N2       | Int      | 0      | 號2     | 排序後號碼2                | L539,L638,L649,LSix |
+| N3       | Int      | 0      | 號3     | 排序後號碼3                | L539,L638,L649,LSix |
+| N4       | Int      | 0      | 號4     | 排序後號碼4                | L539,L638,L649,LSix |
+| N5       | Int      | 0      | 號5     | 排序後號碼5                | L539,L638,L649,LSix |
+| N6       | Int      | 0      | 號6     | 排序後號碼6                | L649,L638,LSix      |
+| S1       | Int      | 0      | 特別號1 | 特別號1                    | L649,L638,LSix      |
 | Sum      | Int      | 0      | 總合    | 號數總合<br> L638為(N1~N6) | L539,L638,L649,LSix |
-| M1       | Int      | null   | 遺漏1   | 遺漏號碼1                  | L539,L638,L649,LSix |
-| M2       | Int      | null   | 遺漏2   | 遺漏號碼2                  | L539,L638,L649,LSix |
-| M3       | Int      | null   | 遺漏3   | 遺漏號碼3                  | L539,L638,L649,LSix |
-| M4       | Int      | null   | 遺漏4   | 遺漏號碼4                  | L539,L638,L649,LSix |
-| M5       | Int      | null   | 遺漏5   | 遺漏號碼5                  | L539,L638,L649,LSix |
-| M6       | Int      | null   | 遺漏6   | 遺漏號碼6                  | L539,L638,L649,LSix |
-| M7       | Int      | null   | 遺漏7   | 遺漏號碼7                  | L539,L638,L649,LSix |
-| M8       | Int      | null   | 遺漏8   | 遺漏號碼8                  | L539,L638,L649,LSix |
-| M9       | Int      | null   | 遺漏9   | 遺漏號碼9                  | L539,L638,L649,LSix |
-| M10      | Int      | null   | 遺漏10  | 遺漏號碼10                 | L539,L638,L649,LSix |
-| M11      | Int      | null   | 遺漏11  | 遺漏號碼11                 | L539,L638,L649,LSix |
-| M12      | Int      | null   | 遺漏12  | 遺漏號碼12                 | L539,L638,L649,LSix |
-| M13      | Int      | null   | 遺漏13  | 遺漏號碼13                 | L539,L638,L649,LSix |
-| M14      | Int      | null   | 遺漏14  | 遺漏號碼14                 | L539,L638,L649,LSix |
-| M15      | Int      | null   | 遺漏15  | 遺漏號碼15                 | L539,L638,L649,LSix |
-| M16      | Int      | null   | 遺漏16  | 遺漏號碼16                 | L539,L638,L649,LSix |
-| M17      | Int      | null   | 遺漏17  | 遺漏號碼17                 | L539,L638,L649,LSix |
-| M18      | Int      | null   | 遺漏18  | 遺漏號碼18                 | L539,L638,L649,LSix |
-| M19      | Int      | null   | 遺漏19  | 遺漏號碼19                 | L539,L638,L649,LSix |
-| M20      | Int      | null   | 遺漏20  | 遺漏號碼20                 | L539,L638,L649,LSix |
-| M21      | Int      | null   | 遺漏21  | 遺漏號碼21                 | L539,L638,L649,LSix |
-| M22      | Int      | null   | 遺漏22  | 遺漏號碼22                 | L539,L638,L649,LSix |
-| M23      | Int      | null   | 遺漏23  | 遺漏號碼23                 | L539,L638,L649,LSix |
-| M24      | Int      | null   | 遺漏24  | 遺漏號碼24                 | L539,L638,L649,LSix |
-| M25      | Int      | null   | 遺漏25  | 遺漏號碼25                 | L539,L638,L649,LSix |
-| M26      | Int      | null   | 遺漏26  | 遺漏號碼26                 | L539,L638,L649,LSix |
-| M27      | Int      | null   | 遺漏27  | 遺漏號碼27                 | L539,L638,L649,LSix |
-| M28      | Int      | null   | 遺漏28  | 遺漏號碼28                 | L539,L638,L649,LSix |
-| M29      | Int      | null   | 遺漏29  | 遺漏號碼29                 | L539,L638,L649,LSix |
-| M30      | Int      | null   | 遺漏30  | 遺漏號碼30                 | L539,L638,L649,LSix |
-| M31      | Int      | null   | 遺漏31  | 遺漏號碼31                 | L539,L638,L649,LSix |
-| M32      | Int      | null   | 遺漏32  | 遺漏號碼32                 | L539,L638,L649,LSix |
-| M33      | Int      | null   | 遺漏33  | 遺漏號碼33                 | L539,L638,L649,LSix |
-| M34      | Int      | null   | 遺漏34  | 遺漏號碼34                 | L539,L638,L649,LSix |
-| M35      | Int      | null   | 遺漏35  | 遺漏號碼35                 | L539,L638,L649,LSix |
-| M36      | Int      | null   | 遺漏36  | 遺漏號碼36                 | L539,L638,L649,LSix |
-| M37      | Int      | null   | 遺漏37  | 遺漏號碼37                 | L539,L638,L649,LSix |
-| M38      | Int      | null   | 遺漏38  | 遺漏號碼38                 | L539,L638,L649,LSix |
-| M39      | Int      | null   | 遺漏39  | 遺漏號碼39                 | L539,L649,LSix      |
-| M40      | Int      | null   | 遺漏40  | 遺漏號碼40                 | L649,LSix           |
-| M41      | Int      | null   | 遺漏41  | 遺漏號碼41                 | L649,LSix           |
-| M42      | Int      | null   | 遺漏42  | 遺漏號碼42                 | L649,LSix           |
-| M43      | Int      | null   | 遺漏43  | 遺漏號碼43                 | L649,LSix           |
-| M44      | Int      | null   | 遺漏44  | 遺漏號碼44                 | L649,LSix           |
-| M45      | Int      | null   | 遺漏45  | 遺漏號碼45                 | L649,LSix           |
-| M46      | Int      | null   | 遺漏46  | 遺漏號碼46                 | L649,LSix           |
-| M47      | Int      | null   | 遺漏47  | 遺漏號碼47                 | L649,LSix           |
-| M48      | Int      | null   | 遺漏48  | 遺漏號碼48                 | L649,LSix           |
-| M49      | Int      | null   | 遺漏49  | 遺漏號碼49                 | L649,LSix           |
-| SM1      | Int      | null   | 遺漏特1 | 遺漏特號1                  | L638                |
-| SM2      | Int      | null   | 遺漏特2 | 遺漏特號2                  | L638                |
-| SM3      | Int      | null   | 遺漏特3 | 遺漏特號3                  | L638                |
-| SM4      | Int      | null   | 遺漏特4 | 遺漏特號4                  | L638                |
-| SM5      | Int      | null   | 遺漏特5 | 遺漏特號5                  | L638                |
-| SM6      | Int      | null   | 遺漏特6 | 遺漏特號6                  | L638                |
-| SM7      | Int      | null   | 遺漏特7 | 遺漏特號7                  | L638                |
-| SM8      | Int      | null   | 遺漏特8 | 遺漏特號8                  | L638                |
+| M1       | Int      | 0      | 遺漏1   | 遺漏號碼1                  | L539,L638,L649,LSix |
+| M2       | Int      | 0      | 遺漏2   | 遺漏號碼2                  | L539,L638,L649,LSix |
+| M3       | Int      | 0      | 遺漏3   | 遺漏號碼3                  | L539,L638,L649,LSix |
+| M4       | Int      | 0      | 遺漏4   | 遺漏號碼4                  | L539,L638,L649,LSix |
+| M5       | Int      | 0      | 遺漏5   | 遺漏號碼5                  | L539,L638,L649,LSix |
+| M6       | Int      | 0      | 遺漏6   | 遺漏號碼6                  | L539,L638,L649,LSix |
+| M7       | Int      | 0      | 遺漏7   | 遺漏號碼7                  | L539,L638,L649,LSix |
+| M8       | Int      | 0      | 遺漏8   | 遺漏號碼8                  | L539,L638,L649,LSix |
+| M9       | Int      | 0      | 遺漏9   | 遺漏號碼9                  | L539,L638,L649,LSix |
+| M10      | Int      | 0      | 遺漏10  | 遺漏號碼10                 | L539,L638,L649,LSix |
+| M11      | Int      | 0      | 遺漏11  | 遺漏號碼11                 | L539,L638,L649,LSix |
+| M12      | Int      | 0      | 遺漏12  | 遺漏號碼12                 | L539,L638,L649,LSix |
+| M13      | Int      | 0      | 遺漏13  | 遺漏號碼13                 | L539,L638,L649,LSix |
+| M14      | Int      | 0      | 遺漏14  | 遺漏號碼14                 | L539,L638,L649,LSix |
+| M15      | Int      | 0      | 遺漏15  | 遺漏號碼15                 | L539,L638,L649,LSix |
+| M16      | Int      | 0      | 遺漏16  | 遺漏號碼16                 | L539,L638,L649,LSix |
+| M17      | Int      | 0      | 遺漏17  | 遺漏號碼17                 | L539,L638,L649,LSix |
+| M18      | Int      | 0      | 遺漏18  | 遺漏號碼18                 | L539,L638,L649,LSix |
+| M19      | Int      | 0      | 遺漏19  | 遺漏號碼19                 | L539,L638,L649,LSix |
+| M20      | Int      | 0      | 遺漏20  | 遺漏號碼20                 | L539,L638,L649,LSix |
+| M21      | Int      | 0      | 遺漏21  | 遺漏號碼21                 | L539,L638,L649,LSix |
+| M22      | Int      | 0      | 遺漏22  | 遺漏號碼22                 | L539,L638,L649,LSix |
+| M23      | Int      | 0      | 遺漏23  | 遺漏號碼23                 | L539,L638,L649,LSix |
+| M24      | Int      | 0      | 遺漏24  | 遺漏號碼24                 | L539,L638,L649,LSix |
+| M25      | Int      | 0      | 遺漏25  | 遺漏號碼25                 | L539,L638,L649,LSix |
+| M26      | Int      | 0      | 遺漏26  | 遺漏號碼26                 | L539,L638,L649,LSix |
+| M27      | Int      | 0      | 遺漏27  | 遺漏號碼27                 | L539,L638,L649,LSix |
+| M28      | Int      | 0      | 遺漏28  | 遺漏號碼28                 | L539,L638,L649,LSix |
+| M29      | Int      | 0      | 遺漏29  | 遺漏號碼29                 | L539,L638,L649,LSix |
+| M30      | Int      | 0      | 遺漏30  | 遺漏號碼30                 | L539,L638,L649,LSix |
+| M31      | Int      | 0      | 遺漏31  | 遺漏號碼31                 | L539,L638,L649,LSix |
+| M32      | Int      | 0      | 遺漏32  | 遺漏號碼32                 | L539,L638,L649,LSix |
+| M33      | Int      | 0      | 遺漏33  | 遺漏號碼33                 | L539,L638,L649,LSix |
+| M34      | Int      | 0      | 遺漏34  | 遺漏號碼34                 | L539,L638,L649,LSix |
+| M35      | Int      | 0      | 遺漏35  | 遺漏號碼35                 | L539,L638,L649,LSix |
+| M36      | Int      | 0      | 遺漏36  | 遺漏號碼36                 | L539,L638,L649,LSix |
+| M37      | Int      | 0      | 遺漏37  | 遺漏號碼37                 | L539,L638,L649,LSix |
+| M38      | Int      | 0      | 遺漏38  | 遺漏號碼38                 | L539,L638,L649,LSix |
+| M39      | Int      | 0      | 遺漏39  | 遺漏號碼39                 | L539,L649,LSix      |
+| M40      | Int      | 0      | 遺漏40  | 遺漏號碼40                 | L649,LSix           |
+| M41      | Int      | 0      | 遺漏41  | 遺漏號碼41                 | L649,LSix           |
+| M42      | Int      | 0      | 遺漏42  | 遺漏號碼42                 | L649,LSix           |
+| M43      | Int      | 0      | 遺漏43  | 遺漏號碼43                 | L649,LSix           |
+| M44      | Int      | 0      | 遺漏44  | 遺漏號碼44                 | L649,LSix           |
+| M45      | Int      | 0      | 遺漏45  | 遺漏號碼45                 | L649,LSix           |
+| M46      | Int      | 0      | 遺漏46  | 遺漏號碼46                 | L649,LSix           |
+| M47      | Int      | 0      | 遺漏47  | 遺漏號碼47                 | L649,LSix           |
+| M48      | Int      | 0      | 遺漏48  | 遺漏號碼48                 | L649,LSix           |
+| M49      | Int      | 0      | 遺漏49  | 遺漏號碼49                 | L649,LSix           |
+| SM1      | Int      | 0      | 遺漏特1 | 遺漏特號1                  | L638                |
+| SM2      | Int      | 0      | 遺漏特2 | 遺漏特號2                  | L638                |
+| SM3      | Int      | 0      | 遺漏特3 | 遺漏特號3                  | L638                |
+| SM4      | Int      | 0      | 遺漏特4 | 遺漏特號4                  | L638                |
+| SM5      | Int      | 0      | 遺漏特5 | 遺漏特號5                  | L638                |
+| SM6      | Int      | 0      | 遺漏特6 | 遺漏特號6                  | L638                |
+| SM7      | Int      | 0      | 遺漏特7 | 遺漏特號7                  | L638                |
+| SM8      | Int      | 0      | 遺漏特8 | 遺漏特號8                  | L638                |
+
+### 備註
+
+- N1~N6,S1,Sum 由
+  - [L539 工作表](#l539-工作表)提供。
+  - [L649 工作表](#l649-工作表)提供。
+  - [L638 工作表](#l638-工作表)提供。
+  - [LSix 工作表](#lsix-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec 工作表
+
+分區頻率序號提供工作表。
+
+| 欄位名稱    | 數值型態 | 預設值         | 標題         | 說明                   |
+| :---------- | :------- | :------------- | :----------- | :--------------------- |
+| lngFreqSN   | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號(自動遞增) |
+| period      | String   | null           | 期數         | 官方期數               |
+| lngMethodSN | Binint   | null           | 方法序號     | 方法序號               |
+| IntN        | Int      | 0              | 號碼         | 星球代碼               |
+
+### 備註
+
+- period由
+  - [L539 工作表](#l539-工作表)提供。
+  - [L649 工作表](#l649-工作表)提供。
+  - [L638 工作表](#l638-工作表)提供。
+  - [LSix 工作表](#lsix-工作表)提供。
+
+- lngMethodSN由[Method 工作表](#method-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSecM 工作表
+
+分區遺漏數工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明         |
+| :-------- | :------- | :------------- | :----------- | :----------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號 |
+| IntM      | Int      | 0              | 遺漏數       | 遺漏數值     |
+| IntMinM   | Int      | 0              | 最小值       | 遺漏數最小值 |
+| IntMaxM   | Int      | 0              | 最大值       | 遺漏數最大值 |
+| IntAvgM   | Int      | 0              | 平均值       | 遺漏數平均值 |
+| IntACM    | Double   | 0              | 標準差       | 遺漏數標準差 |
+
+### 備註
+
+- lngFreqSN由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec05 工作表
+
+分區05頻率工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明           |
+| :-------- | :------- | :------------- | :----------- | :------------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號   |
+| intFreq05 | Int      | 0              | 頻率05       | 分區05出現次數 |
+| intMin05  | Int      | 0              | 最小值05     | 分區05最小值   |
+| intMax05  | Int      | 0              | 最大值05     | 分區05最大值   |
+| intAvg05  | Int      | 0              | 平均值05     | 分區05平均值   |
+| intAC05   | Double   | 0              | 標準差05     | 分區05標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec10 工作表
+
+分區10頻率工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明           |
+| :-------- | :------- | :------------- | :----------- | :------------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號   |
+| intFreq10 | Int      | 0              | 頻率10       | 分區10出現次數 |
+| intMin10  | Int      | 0              | 最小值10     | 分區10最小值   |
+| intMax10  | Int      | 0              | 最大值10     | 分區10最大值   |
+| intAvg10  | Int      | 0              | 平均值10     | 分區10平均值   |
+| intAC10   | Double   | 0              | 標準差10     | 分區10標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec25 工作表
+
+分區25頻率工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明           |
+| :-------- | :------- | :------------- | :----------- | :------------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號   |
+| intFreq25 | Int      | 0              | 頻率25       | 分區25出現次數 |
+| intMin25  | Int      | 0              | 最小值25     | 分區25最小值   |
+| intMax25  | Int      | 0              | 最大值25     | 分區25最大值   |
+| intAvg25  | Int      | 0              | 平均值25     | 分區25平均值   |
+| intAC25   | Double   | 0              | 標準差25     | 分區25標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec50 工作表
+
+分區50頻率工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明           |
+| :-------- | :------- | :------------- | :----------- | :------------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號   |
+| intFreq50 | Int      | 0              | 頻率50       | 分區50出現次數 |
+| intMin50  | Int      | 0              | 最小值50     | 分區50最小值   |
+| intMax50  | Int      | 0              | 最大值50     | 分區50最大值   |
+| intAvg50  | Int      | 0              | 平均值50     | 分區50平均值   |
+| intAC50   | Double   | 0              | 標準差50     | 分區50標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec100 工作表
+
+分區100頻率工作表。
+
+| 欄位名稱   | 數值型態 | 預設值         | 標題         | 說明            |
+| :--------- | :------- | :------------- | :----------- | :-------------- |
+| lngFreqSN  | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號    |
+| intFreq100 | Int      | 0              | 頻率100      | 分區100出現次數 |
+| intMin100  | Int      | 0              | 最小值100    | 分區100最小值   |
+| intMax100  | Int      | 0              | 最大值100    | 分區100最大值   |
+| intAvg100  | Int      | 0              | 平均值100    | 分區100平均值   |
+| intAC100   | Double   | 0              | 標準差100    | 分區100標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSecMHis 工作表
+
+分區歷史遺漏數工作表。
+
+| 欄位名稱     | 數值型態 | 預設值         | 標題         | 說明         |
+| :----------- | -------- | :------------- | :----------- | :----------- |
+| lngFreqHisSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號 |
+| IntM         | Int      | 0              | 遺漏數       | 遺漏數值     |
+| IntMinM      | Int      | 0              | 最小值       | 遺漏數最小值 |
+| IntMaxM      | Int      | 0              | 最大值       | 遺漏數最大值 |
+| IntAvgM      | Int      | 0              | 平均值       | 遺漏數平均值 |
+| IntACM       | Double   | 0              | 標準差       | 遺漏數標準差 |
+
+### 備註
+
+- lngFreqHisSN 由[FreqSecHis 工作表](#freqsechis-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec05His 工作表
+
+分區歷史05頻率工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明           |
+| :-------- | -------- | :------------- | :----------- | :------------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號   |
+| intFreq05 | Int      | 0              | 頻率05       | 分區05出現次數 |
+| intMin05  | Int      | 0              | 最小值05     | 分區05最小值   |
+| intMax05  | Int      | 0              | 最大值05     | 分區05最大值   |
+| intAvg05  | Int      | 0              | 平均值05     | 分區05平均值   |
+| intAC05   | Double   | 0              | 標準差05     | 分區05標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec10His 工作表
+
+分區歷史10頻率工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明           |
+| :-------- | :------- | :------------- | :----------- | :------------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號   |
+| intFreq10 | Int      | 0              | 頻率10       | 分區10出現次數 |
+| intMin10  | Int      | 0              | 最小值10     | 分區10最小值   |
+| intMax10  | Int      | 0              | 最大值10     | 分區10最大值   |
+| intAvg10  | Int      | 0              | 平均值10     | 分區10平均值   |
+| intAC10   | Double   | 0              | 標準差10     | 分區10標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec25His 工作表
+
+分區歷史25頻率工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明           |
+| :-------- | :------- | :------------- | :----------- | :------------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號   |
+| intFreq25 | Int      | 0              | 頻率25       | 分區25出現次數 |
+| intMin25  | Int      | 0              | 最小值25     | 分區25最小值   |
+| intMax25  | Int      | 0              | 最大值25     | 分區25最大值   |
+| intAvg25  | Int      | 0              | 平均值25     | 分區25平均值   |
+| intAC25   | Double   | 0              | 標準差25     | 分區25標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec50His 工作表
+
+分區歷史50頻率工作表。
+
+| 欄位名稱  | 數值型態 | 預設值         | 標題         | 說明           |
+| :-------- | :------- | :------------- | :----------- | :------------- |
+| lngFreqSN | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號   |
+| intFreq50 | Int      | 0              | 頻率50       | 分區50出現次數 |
+| intMin50  | Int      | 0              | 最小值50     | 分區50最小值   |
+| intMax50  | Int      | 0              | 最大值50     | 分區50最大值   |
+| intAvg50  | Int      | 0              | 平均值50     | 分區50平均值   |
+| intAC50   | Double   | 0              | 標準差50     | 分區50標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSec 工作表](#freqsec-工作表)提供。
+
+[Back](#l539l649l638lsix-試算表)
+
+## FreqSec100His 工作表
+
+分區歷史100頻率工作表。
+
+| 欄位名稱   | 數值型態 | 預設值         | 標題         | 說明            |
+| :--------- | :------- | :------------- | :----------- | :-------------- |
+| lngFreqSN  | Bigint   | auto Increment | 分區頻率序號 | 分區頻率序號    |
+| intFreq100 | Int      | 0              | 頻率100      | 分區100出現次數 |
+| intMin100  | Int      | 0              | 最小值100    | 分區100最小值   |
+| intMax100  | Int      | 0              | 最大值100    | 分區100最大值   |
+| intAvg100  | Int      | 0              | 平均值100    | 分區100平均值   |
+| intAC100   | Double   | 0              | 標準差100    | 分區100標準差   |
+
+### 備註
+
+- lngFreqSN 由[FreqSecHis 工作表](#freqsechis-工作表)提供。
 
 [Back](#l539l649l638lsix-試算表)
 
@@ -368,8 +651,8 @@ Predict 模組專用設定表。
 | :----------- | :------- | :----- | :----------- | :------------------- |
 | 執行時間     | DateTime | null   | 執行時間     | 執行時間             |
 | 執行日期     | Date     | null   | 執行日期     | 預測日期             |
-| 相關係數     | Double   | null   | 相關係數     | 相關係數             |
-| 推薦數       | Int      | null   | 推薦數       | 推薦數               |
+| 相關係數     | Double   | 0      | 相關係數     | 相關係數             |
+| 推薦數       | Int      | 0      | 推薦數       | 推薦數               |
 | 遺漏模式     | Boolean  | false  | 遺漏模式     | 遺漏模式(true/false) |
 | 變動參數摘要 | String   | null   | 變動參數摘要 | 變動參數摘要         |
 | 備註         | String   | null   | 備註         | 備註                 |

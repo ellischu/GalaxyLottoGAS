@@ -1,51 +1,51 @@
 # 重新設計預測程式(Predict.html)
 
 ## 系統環境
-* GAS
-* jQuery
-* BootStrap
-* swal2 界面
 
-## 試算表
-* 試算表 L539 ,L649 ,L638 ,LSix
-* 每個試算表裹的工作表
-  * All 工作表
-    * 欄位名 : Date ,N1 ,N2 ,N3 ,N4 ,N5 ,Sum ,年天干 ,年地支 ,月天干 ,月地支 ,日天干 ,日地支 ,時柱 ,日五形 ,日十二建除 ,日九星 ,日二十八星宿 ,時二十八星宿 ,日八掛 ,本命 ,父母 ,福德 ,田宅 ,官祿 ,奴僕 ,遷移 ,疾厄 ,財帛 ,子女 ,夫妻 ,兄弟 ,命重
-    * **(N1 \~ N6 ,S1 會依彩別有變動)**
-    
-    
-    * 值範例 : 2026/4/7 ,4 ,8 ,21 ,27 ,29 ,89 ,丙 ,午 ,壬 ,辰	辛 ,亥 ,戊戌 ,金 ,危I ,9紫 ,尾 ,胃 ,震 ,天府 ,天同 ,武曲 ,太陽 ,天相 ,天機 ,紫微 ,文昌 ,鈴星 ,文曲 ,廉貞 ,陀羅 ,4.099999905
-    
-  * Miss 工作表
-    * 欄位名 : Date ,N1 ,N2 ,N3 ,N4 ,N5 (,N6 ,S1) ,Sum ,M1 ,M2 ,M3 ,M4 ,M5 ,M6 ,M7 ,M8 ,M9 ,M10 ,M11 ,M12 ,M13 ,M14 ,M15 ,M16 ,M17 ,M18 ,M19 ,M20 ,M21 ,M22 ,M23 ,M24 ,M25 ,M26 ,M27 ,M28 ,M29 ,M30 ,M31 ,M32 ,M33 ,M34 ,M35 ,M36 ,M37 ,M38 ,M39 ,M40 ,M41 ,M42 ,M43 ,M44 ,M45 ,M46 ,M47 ,M48 ,M49 (,SM1\~SM8)
-    * **(N1 \~ N6,S1, ,SM1\~SM8 會依彩別有變動)**
-    
-  * predic1_Settings 工作表 : 存放設定值(如果不存在工作表需建立)
-  * predic1_Property 工作表 : 存放權重(如果不存在工作表需建立)
+- [系統環境](Galaxy計劃文件.md#系統環境)
+
+## 相關資料庫
+
+- [GalaxyLotto 試算表](Spreadsheet.md#galaxylotto-試算表)
+  - [AllData 工作表](Spreadsheet.md#alldata-工作表)
+- [L539L649L638LSix 試算表](Spreadsheet.md#l539l649l638lsix-試算表)
+  - [All 工作表](Spreadsheet.md#all-工作表)
+  - [Miss 工作表](Spreadsheet.md#miss-工作表)
+  - [predic1_Settings 工作表](Spreadsheet.md#predic1_settings-工作表)
+    : 存放設定值(如果不存在工作表需建立)
+  - [predic1_Property 工作表](Spreadsheet.md#predic1_property-工作表)
+    : 存放權重(如果不存在工作表需建立)
 
 ## 網頁及程式碼
 
-* Predict.html : 網頁進入點
-  * 日期選擇項目 : 預設值是今天 
-  * 彩別選擇項目 ：
-  * 推薦數量選擇項目 ：有10個，7個，最低數量，依不同彩別設定最低數量。
-  * 使用遺漏數開關 :
-  * 顯示詳細資料開關 :
-  * 歷史數據圖形顯示區開關 :
-  * AI策略顯示區開關 :
-  * 預測按鈕
-  * 歷史數據圖形顯示區
-  * AI策略顯示區
-  * 預測結果顯示區
-  * 詳細資料顯示區
-* Predict_Style.html : 網頁樣式
-* Predict_JS.html : 網頁jQuery 前端程式碼
-* Predict_Server.js :　伺服端程式碼
-* Utility.js : 公用程式
+- [Predict.html](..\Predict.html) : 網頁進入點
+
+| ID                   | 標題                               | Type       | Tip                        | 預設值   | 說明                              |
+| :------------------- | :--------------------------------- | :--------- | :------------------------- | :------- | :-------------------------------- |
+| predictDate          | 日期                               | Input/Date | 請輸入預測日期             | Today    |                                   |
+| lottoSelect          | 選擇彩種                           | select     | 請選擇彩種                 | 今彩 539 |                                   |
+| topNSelect           | 推薦數量                           | select     | 請選擇推薦數量             | 10       | 有10，7，依不同彩別設定最低數量。 |
+| useTrend             | 考慮冷熱號權重趨勢(基於遺漏表分析) | checkbox   |                            | checked  |                                   |
+| historyStatsToggle   | 顯示歷史準確度(近30期)             | checkbox   |                            |          |                                   |
+| gaugeDisplayToggle   | 顯示星系震盪儀表                   | checkbox   |                            |          |                                   |
+| displayModeToggle    | 詳細分析模式                       | checkbox   | 顯示詳細資料               |          |                                   |
+| predictButton        | 開始星系預測                       | button     | 開始星系預測               |          |                                   |
+| clearWeightsCacheBtn | 刷新AI權重快取                     | button     |                            |          |                                   |
+| clearGalaxyCacheBtn  | 清除星系規律預測快取               | button     | 刷新星系快取               |          |                                   |
+| aiSuggestionArea     |                                    | div        | AI智能建議區               |          |                                   |
+| gaugeArea            |                                    | div        | 星系震盪儀表(詳細模式使用) |          |                                   |
+| historyStatsArea     |                                    | div        | 歷史數據圖形顯示區         |          |                                   |
+| predictResultArea    |                                    | div        | 預測結果顯示區             |          |                                   |
+
+
+- [Predict_Style.html](../Predict_Style.html) : 網頁樣式
+- [Predict_JS.html](../Predict_JS.html) : 網頁jQuery 前端程式碼
+- [Predict_Server.js](../Predict_Server.js) :　伺服端程式碼
+- [Utility.js](../Utility.js) : 公用程式
 
 ## 注意事項
-* 除了以上檔案,請勿更動其他程式碼檔案
-* 每個function 需建立除錯機制
-* GAS 有執行 6分鐘 限制,儘量不要使用伺服器屬性,各彩別的權重及資料及快取須分開儲存在試算表中。
-* 要注意不要把答案帶入計算。
-* 
+
+- 除了以上檔案,請勿更動其他程式碼檔案
+- 每個function 需建立除錯機制
+- GAS 有執行 6分鐘 限制,儘量不要使用伺服器屬性,各彩別的權重及資料及快取須分開儲存在試算表中。
+- 要注意不要把答案帶入計算。
