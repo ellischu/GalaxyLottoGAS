@@ -2,23 +2,23 @@
 
 ## 系統環境
 
-- [系統環境](Galaxy計劃文件.md#系統環境)
+- [系統環境](DocGalaxy計劃文件.md#系統環境)
 
 ## 相關資料庫
 
-- [GalaxyLotto 試算表](Spreadsheet.md#galaxylotto-試算表)
-  - [AllData 工作表](Spreadsheet.md#alldata-工作表)
-- [L539L649L638LSix 試算表](Spreadsheet.md#l539l649l638lsix-試算表)
-  - [All 工作表](Spreadsheet.md#all-工作表)
-  - [Miss 工作表](Spreadsheet.md#miss-工作表)
-  - [predic1_Settings 工作表](Spreadsheet.md#predic1_settings-工作表)
+- [GalaxyLotto 試算表](DocSpreadsheet.md#galaxylotto-試算表)
+  - [AllData 工作表](DocSpreadsheet.md#alldata-工作表)
+- [L539L649L638LSix 試算表](DocSpreadsheet.md#l539l649l638lsix-試算表)
+  - [All 工作表](DocSpreadsheet.md#all-工作表)
+  - [Miss 工作表](DocSpreadsheet.md#miss-工作表)
+  - [predic1_Settings 工作表](DocSpreadsheet.md#predic1_settings-工作表)
     : 存放設定值(如果不存在工作表需建立)
-  - [predic1_Property 工作表](Spreadsheet.md#predic1_property-工作表)
+  - [predic1_Property 工作表](DocSpreadsheet.md#predic1_property-工作表)
     : 存放權重(如果不存在工作表需建立)
 
 ## 網頁及程式碼
 
-- [Predict.html](..\Predict.html) : 網頁進入點
+- [Predict.html](Predict.html) : 網頁進入點
 
 | ID                   | 標題                               | Type       | Tip                        | 預設值   | 說明                              |
 | :------------------- | :--------------------------------- | :--------- | :------------------------- | :------- | :-------------------------------- |
@@ -37,11 +37,10 @@
 | historyStatsArea     |                                    | div        | 歷史數據圖形顯示區         |          |                                   |
 | predictResultArea    |                                    | div        | 預測結果顯示區             |          |                                   |
 
-
-- [Predict_Style.html](../Predict_Style.html) : 網頁樣式
-- [Predict_JS.html](../Predict_JS.html) : 網頁jQuery 前端程式碼
-- [Predict_Server.js](../Predict_Server.js) :　伺服端程式碼
-- [Utility.js](../Utility.js) : 公用程式
+- [Predict_Style.html](Predict_Style.html) : 網頁樣式
+- [Predict_JS.html](Predict_JS.html) : 網頁jQuery 前端程式碼
+- [Predict_Server.js](Predict_Server.js) :　伺服端程式碼
+- [Utility.js](Utility.js) : 公用程式
 
 ## 注意事項
 

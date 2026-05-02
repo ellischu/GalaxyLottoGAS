@@ -187,9 +187,19 @@
 
   /* 衛星雷達掃描動畫 */
   @keyframes radar-spin-pulse {
-    0% { transform: rotate(0deg) scale(1); opacity: 1; }
-    50% { transform: rotate(180deg) scale(1.3); opacity: 0.8; filter: brightness(1.5); }
-    100% { transform: rotate(360deg) scale(1); opacity: 1; }
+    0% {
+      transform: rotate(0deg) scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: rotate(180deg) scale(1.3);
+      opacity: 0.8;
+      filter: brightness(1.5);
+    }
+    100% {
+      transform: rotate(360deg) scale(1);
+      opacity: 1;
+    }
   }
   .radar-active {
     animation: radar-spin-pulse 2s infinite linear;
@@ -289,6 +299,18 @@
           onclick="openPageUrl('Prediction1')"
         >
           <i class="fas fa-brain me-2"></i>智慧預測 V1
+        </a>
+      </li>
+
+      <li class="nav-item">
+        <a
+          class="nav-link"
+          style="color: #fd7e14"
+          id="navSearchS"
+          href="javascript:void(0)"
+          onclick="openPageUrl('SearchS')"
+        >
+          <i class="fas fa-sliders-h me-2"></i>查詢表單
         </a>
       </li>
 

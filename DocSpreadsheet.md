@@ -101,35 +101,35 @@
 
 日期相關係數。
 
-| 欄位名稱     | 數值型態 | 預設值 | 顯示標題     | 說明           |
-| :----------- | :------- | :----- | :----------- | :------------- |
-| Date         | Date     | null   | 日期         | 日期(不可重複) |
-| 年天干       | String   | null   | 年天干       | 年天干         |
-| 年地支       | String   | null   | 年地支       | 年地支         |
-| 月天干       | String   | null   | 月天干       | 月天干         |
-| 月地支       | String   | null   | 月地支       | 月地支         |
-| 日天干       | String   | null   | 日天干       | 日天干         |
-| 日地支       | String   | null   | 日地支       | 日地支         |
-| 時柱         | String   | null   | 時柱         | 時柱           |
-| 日五形       | String   | null   | 日五形       | 日五形         |
-| 日十二建除   | String   | null   | 日十二建除   | 日十二建除     |
-| 日九星       | String   | null   | 日九星       | 日九星         |
-| 日二十八星宿 | String   | null   | 日二十八星宿 | 日二十八星宿   |
-| 時二十八星宿 | String   | null   | 時二十八星宿 | 時二十八星宿   |
-| 日八掛       | String   | null   | 日八掛       | 日八掛         |
-| 本命         | String   | null   | 本命         | 本命           |
-| 父母         | String   | null   | 父母         | 父母           |
-| 福德         | String   | null   | 福德         | 福德           |
-| 田宅         | String   | null   | 田宅         | 田宅           |
-| 官祿         | String   | null   | 官祿         | 官祿           |
-| 奴僕         | String   | null   | 奴僕         | 奴僕           |
-| 遷移         | String   | null   | 遷移         | 遷移           |
-| 疾厄         | String   | null   | 疾厄         | 疾厄           |
-| 財帛         | String   | null   | 財帛         | 財帛           |
-| 子女         | String   | null   | 子女         | 子女           |
-| 夫妻         | String   | null   | 夫妻         | 夫妻           |
-| 兄弟         | String   | null   | 兄弟         | 兄弟           |
-| 命重         | String   | null   | 命重         | 命重           |
+| 欄位名稱     | 數值型態 | 預設值 | 顯示標題 | 說明           |
+| :----------- | :------- | :----- | :------- | :------------- |
+| Date         | Date     | null   | 日期     | 日期(不可重複) |
+| 年天干       | String   | null   | 年干     | 年天干         |
+| 年地支       | String   | null   | 年支     | 年地支         |
+| 月天干       | String   | null   | 月干     | 月天干         |
+| 月地支       | String   | null   | 月支     | 月地支         |
+| 日天干       | String   | null   | 日干     | 日天干         |
+| 日地支       | String   | null   | 日支     | 日地支         |
+| 時柱         | String   | null   | 時柱     | 時柱           |
+| 日五形       | String   | null   | 日形     | 日五形         |
+| 日十二建除   | String   | null   | 日執     | 日十二建除     |
+| 日九星       | String   | null   | 日星     | 日九星         |
+| 日二十八星宿 | String   | null   | 日宿     | 日二十八星宿   |
+| 時二十八星宿 | String   | null   | 時宿     | 時二十八星宿   |
+| 日八掛       | String   | null   | 日掛     | 日八掛         |
+| 本命         | String   | null   | 本命     | 本命           |
+| 父母         | String   | null   | 父母     | 父母           |
+| 福德         | String   | null   | 福德     | 福德           |
+| 田宅         | String   | null   | 田宅     | 田宅           |
+| 官祿         | String   | null   | 官祿     | 官祿           |
+| 奴僕         | String   | null   | 奴僕     | 奴僕           |
+| 遷移         | String   | null   | 遷移     | 遷移           |
+| 疾厄         | String   | null   | 疾厄     | 疾厄           |
+| 財帛         | String   | null   | 財帛     | 財帛           |
+| 子女         | String   | null   | 子女     | 子女           |
+| 夫妻         | String   | null   | 夫妻     | 夫妻           |
+| 兄弟         | String   | null   | 兄弟     | 兄弟           |
+| 命重         | String   | null   | 命重     | 命重           |
 
 [Back](#galaxylotto-試算表)
 
@@ -224,12 +224,12 @@ ID與ID名稱對照表。
   - [FreqSecHis 工作表](#freqsechis-工作表) : 分區歷史遺漏數工作表。
 
 - Predict 模組
-  - [Predict 模組](Predict.md)
+  - [Predict 模組](DocPredict.md)
   - [prct1_Settings 工作表](#prct1_settings-工作表) : Predict 模組專用設定表。
   - [prct1_Property 工作表](#prct1_property-工作表) : Predict 模組專用屬性表。
   - [prct1_History 工作表](#prct1_history-工作表) : Predict 模組歷史表。
 - Prediction1 模組
-  - [Prediction1 模組](Prediction1.md)
+  - [Prediction1 模組](DocPrediction1.md)
   - [predic1_Settings 工作表](#predic1_settings-工作表) :
     Prediction1 模組專用設定表。
   - [predic1_Property 工作表](#predic1_property-工作表) :
@@ -510,7 +510,7 @@ Predict 模組專用屬性表。
 
 [Back](#l539l649l638lsix-試算表)
 
-## prct1_History
+## prct1_History 工作表
 
 Predict 模組專用歷史表。
 

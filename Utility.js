@@ -540,6 +540,148 @@ function includeFooter() {
 }
 
 /**
+ * 根據傳入的條件物件，取得對應的方法序號 (lngMethodSN)。
+ * 若條件組合已存在，則回傳其序號；若不存在，則新增一筆並回傳新序號。
+ *
+ * @param {object} methodObj 包含搜尋條件的物件，例如：
+ *   {
+ *     strCompareType: "AND",
+ *     FieldMode: false,
+ *     strCompares: "", // 可以是字串或字串陣列，例如 "Field1#Field2"
+ *     strComparesDetail: "", // 可以是字串或字串陣列，例如 "Value1#Value2"
+ *     NextNumsMode: false,
+ *     intNextNums: 0,
+ *     intNextStep: 0,
+     strNextNums: "", // 可以是字串或字串陣列，例如 "1#2#3"
+ *     StrNextNumSpe: "", // 可以是字串或字串陣列，例如 "S1#S2"
+ *     intDataLimit: 0,
+ *     intDataOffset: 0,
+ *     intSearchLimit: 0,
+ *     intSearchOffset: 0
+ *   }
+ * @returns {number} 對應的方法序號 lngMethodSN
+ */
+function getMethodSN(methodObj) {
+  const sheetName = "Method";
+  const cache = CacheService.getScriptCache();
+  const appVersion = getCacheVersion(); // 取得當前應用程式版本號
+  const cacheKeyPrefix = appVersion + "_METHOD_SN_";
+
+  let sheet = mainspreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = mainspreadsheet.insertSheet(sheetName);
+    sheet.appendRow([
+      "lngMethodSN",
+      "strCompareType",
+      "FieldMode",
+      "strCompares",
+      "strComparesDetail",
+      "NextNumsMode",
+      "intNextNums",
+      "intNextStep",
+      "strNextNums",
+      "StrNextNumSpe",
+      "intDataLimit",
+      "intDataOffset",
+      "intSearchLimit",
+      "intSearchOffset",
+      "strcheck",
+    ]);
+    sheet.setFrozenRows(1);
+    Logger.log(`[getMethodSN] Created new sheet: ${sheetName}`);
+  }
+
+  // 定義用於生成 strcheck 和新行數據的屬性順序
+  const orderedPropsForMethod = [
+    "strCompareType",
+    "FieldMode",
+    "strCompares",
+    "strComparesDetail",
+    "NextNumsMode",
+    "intNextNums",
+    "intNextStep",
+    "strNextNums",
+    "StrNextNumSpe",
+    "intDataLimit",
+    "intDataOffset",
+    "intSearchLimit",
+    "intSearchOffset",
+  ];
+
+  // 輔助函式：將值標準化為字串，用於 strcheck
+  const normalizeForStrcheck = (value) => {
+    if (typeof value === "boolean") return value ? "true" : "false";
+    if (value === null || value === undefined) return "";
+    if (Array.isArray(value)) return value.join("#");
+    return String(value);
+  };
+
+  // 輔助函式：將值標準化為適合試算表儲存的格式
+  const normalizeForSheet = (value) => {
+    if (Array.isArray(value)) return value.join("#");
+    if (value === null || value === undefined) return "";
+    return value;
+  };
+
+  // 生成 strcheck 字串
+  const strcheck = orderedPropsForMethod
+    .map((prop) => normalizeForStrcheck(methodObj[prop]))
+    .join(",");
+
+  const specificCacheKey = cacheKeyPrefix + strcheck;
+  let cachedSN = cache.get(specificCacheKey);
+  if (cachedSN) {
+    return parseInt(cachedSN, 10);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const strcheckColIdx = headers.indexOf("strcheck");
+  const lngMethodSNColIdx = headers.indexOf("lngMethodSN");
+
+  if (strcheckColIdx === -1 || lngMethodSNColIdx === -1) {
+    throw new Error(
+      `[getMethodSN] Missing required columns in ${sheetName} sheet: 'strcheck' or 'lngMethodSN'.`,
+    );
+  }
+
+  // 搜尋現有的 strcheck
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][strcheckColIdx] === strcheck) {
+      const existingSN = parseInt(data[i][lngMethodSNColIdx], 10);
+      cache.put(specificCacheKey, String(existingSN), 21600); // 快取 6 小時
+      return existingSN;
+    }
+  }
+
+  // 如果找不到，則新增一筆
+  let nextLngMethodSN = 1;
+  if (data.length > 1) {
+    // 從現有數據中找到最大的 lngMethodSN
+    const existingSNs = data
+      .slice(1)
+      .map((row) => parseInt(row[lngMethodSNColIdx], 10))
+      .filter((sn) => !isNaN(sn));
+    if (existingSNs.length > 0) {
+      nextLngMethodSN = Math.max(...existingSNs) + 1;
+    }
+  }
+
+  const newRow = [nextLngMethodSN];
+  orderedPropsForMethod.forEach((prop) => {
+    newRow.push(normalizeForSheet(methodObj[prop]));
+  });
+  newRow.push(strcheck); // 加入生成的 strcheck
+
+  sheet.appendRow(newRow);
+  cache.put(specificCacheKey, String(nextLngMethodSN), 21600); // 快取 6 小時
+  Logger.log(
+    `[getMethodSN] Added new method SN: ${nextLngMethodSN} for strcheck: ${strcheck}`,
+  );
+  return nextLngMethodSN;
+}
+
+/**
  * 提供給 HTML 範本呼叫，用來載入導航列組件
  * @returns
  */

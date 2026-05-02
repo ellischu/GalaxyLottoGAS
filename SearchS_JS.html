@@ -1,0 +1,142 @@
+<script>
+  /**
+   * SearchS.html 邏輯處理
+   */
+  $(document).ready(function () {
+    // 1. 介面初始化
+    initPage();
+
+    // 2. 開關聯動與滑動效果
+    $("#chkField").on("change", function () {
+      $("#AreaField").slideToggle(this.checked);
+    });
+    $("#chkNext").on("change", function () {
+      $("#AreaNext").slideToggle(this.checked);
+    });
+    $("#chkRange").on("change", function () {
+      $("#AreaRange").slideToggle(this.checked);
+    });
+
+    // 3. 資料預覽更新監聽
+    $("#INDate, #SecLotto").on("change", function () {
+      loadPreviewData();
+    });
+
+    // 4. 提交查詢
+    $("#btnQuery").on("click", function () {
+      startGalaxySearch();
+    });
+  });
+
+  function initPage() {
+    // 設定預設日期為今天
+    const today = new Date().toISOString().split("T")[0];
+    $("#INDate").val(today);
+
+    // 從伺服器獲取欄位列表以填充 Select
+    google.script.run
+      .withSuccessHandler(function (fields) {
+        const $selects = $("#SecField1, #SecField2, #SecField3, #SecField4");
+        fields.forEach((f) => {
+          $selects.append($("<option>", { value: f.id, text: f.name }));
+        });
+        loadPreviewData();
+      })
+      .getFieldList();
+  }
+
+  function loadPreviewData() {
+    const lotto = $("#SecLotto").val();
+    const date = $("#INDate").val();
+    const $container = $("#AeraAllData");
+
+    $container.html(
+      '<div class="text-center p-2"><div class="spinner-border spinner-border-sm text-info"></div> 讀取中...</div>',
+    );
+
+    google.script.run
+      .withSuccessHandler(function (data) {
+        if (!data) {
+          $container.html(
+            '<span class="text-muted">此日期無可用環境參數。</span>',
+          );
+          return;
+        }
+        let html = '<div class="row row-cols-2 row-cols-md-4 g-2 small">';
+
+        // 處理 null 或 undefined，避免顯示 "nullnull"
+        const dayG = data.dayG || "";
+        const dayZ = data.dayZ || "";
+        const gz = dayG || dayZ ? `${dayG}${dayZ}` : "無";
+
+        const items = [
+          { label: "日干支", val: gz },
+          { label: "日形", val: data.fiveElements },
+          { label: "日星", val: data.dayStar },
+          { label: "本命", val: data.lifePalace },
+        ];
+        items.forEach((it) => {
+          html += `<div class="col"><strong>${it.label}:</strong> <span class="text-primary">${it.val || "無"}</span></div>`;
+        });
+        html += "</div>";
+        $container.html(html);
+      })
+      .getDatePreview(lotto, date);
+  }
+
+  function startGalaxySearch() {
+    const params = {
+      lotto: $("#SecLotto").val(),
+      date: $("#INDate").val(),
+      module: $("#SecModules").val(),
+      fieldMode: $("#chkField").is(":checked"),
+      fields: [
+        $("#SecField1").val(),
+        $("#SecField2").val(),
+        $("#SecField3").val(),
+        $("#SecField4").val(),
+      ].filter((v) => v),
+      nextMode: $("#chkNext").is(":checked"),
+      nextNums: parseInt($("#SecNextNums").val()),
+      nextStep: parseInt($("#SecNextStep").val()),
+      dataLimit: parseInt($("#InDataLimit").val()) || 0,
+      dataOffset: parseInt($("#InDataOffset").val()) || 0,
+      searchLimit: parseInt($("#InSearchLimit").val()) || 0,
+      searchOffset: parseInt($("#InSearchOffset").val()) || 0,
+    };
+
+    // 【除錯】顯示 startGalaxySearch 的 params 內容
+    const $debug = $("#AreaDebug");
+    $debug
+      .html(
+        "<strong>[Client-Side params]</strong>\n" +
+          JSON.stringify(params, null, 2),
+      )
+      .removeClass("d-none");
+    console.log("Debug Params:", params);
+
+    Swal.fire({
+      title: "啟動查詢",
+      text: "正在連結星系資料庫...",
+      icon: "info",
+      showConfirmButton: false,
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        Swal.close();
+        // 【除錯】顯示伺服器構造後的內容
+        if (res.methodObj) {
+          $debug.append(
+            "\n\n<strong>[Server-Side methodObj (constructed)]</strong>\n" +
+              JSON.stringify(res.methodObj, null, 2),
+          );
+        }
+
+        if (res.url) window.open(res.url, "_blank");
+      })
+      .prepareActivityQuery(params);
+  }
+</script>

@@ -9,7 +9,7 @@
 
 ## 系統環境
 
-- [系統環境](Galaxy計劃文件.md#系統環境)
+- [系統環境](DocGalaxy計劃文件.md#系統環境)
 
 [返回最上層](#活性表單設計總覽)
 
@@ -21,21 +21,21 @@
 
 ## 相關資料庫
 
-- [GalaxyLotto 試算表](Spreadsheet.md#galaxylotto-試算表)
-  - [AllData 工作表](Spreadsheet.md#alldata-工作表)
-  - [Method 工作表](Spreadsheet.md#method-工作表)
-- [L539,L649,L638,LSix 試算表](Spreadsheet.md#l539l649l638lsix-試算表)
-  - [All 工作表](Spreadsheet.md#all-工作表)
-  - [Miss 工作表](Spreadsheet.md#miss-工作表)
-  - [FreqSec 工作表](Spreadsheet.md#freqsec-工作表)
-  - [FreqSecHis 工作表](Spreadsheet.md#freqsechis-工作表)
+- [GalaxyLotto 試算表](DocSpreadsheet.md#galaxylotto-試算表)
+  - [AllData 工作表](DocSpreadsheet.md#alldata-工作表)
+  - [Method 工作表](DocSpreadsheet.md#method-工作表)
+- [L539,L649,L638,LSix 試算表](DocSpreadsheet.md#l539l649l638lsix-試算表)
+  - [All 工作表](DocSpreadsheet.md#all-工作表)
+  - [Miss 工作表](DocSpreadsheet.md#miss-工作表)
+  - [FreqSec 工作表](DocSpreadsheet.md#freqsec-工作表)
+  - [FreqSecHis 工作表](DocSpreadsheet.md#freqsechis-工作表)
 
 [返回最上層](#活性表單設計總覽)
 
 ## 相關函式
 
-- [getMethodSN](Utility.md#函式-getmethodsn-設計概念)
-- [GetallData](Utility.md#函式-getalldata-設計概念)
+- [getMethodSN](DocUtility.md#函式-getmethodsn-設計概念)
+- [GetallData](DocUtility.md#函式-getalldata-設計概念)
 
 [返回最上層](#活性表單設計總覽)
 
@@ -45,8 +45,14 @@
 
 ## 頁面設計
 
-- [ActivityS.html](#activityshtml) : 參數設定頁面
-- [Activity.html](#activityhtml) : ActivityS.html 的輸出頁面
+- [SearchS.html](#searchshtml) : 參數設定頁面
+  - [SearchS_JS.html](SearchS_JS.html) : 網頁jQuery 前端程式碼
+  - [SearchS_Style.html](SearchS_Style.html) : 網頁樣式
+  - [SearchS_Server.js](SearchS_Server.js) : 伺服端程式碼
+
+---
+
+- [Activity.html](#activityhtml) : SearchS.html 的輸出頁面
   - [lblMethod](#lblmethod) : 方法序號詳細資料區 (Type : Label)
   - [AeraAll](#aeraall) : 當日結果及日期詳細資料區 (Type : Table)
   - [AreaTable](#aeratable) : 結果資料區 (Type : Table)
@@ -56,9 +62,10 @@
 
 [返回最上層](#活性表單設計總覽)
 
-### ActivityS.html
+### SearchS.html
 
-參數設定頁面
+- 參數設定頁面
+- [SearchS.html](SearchS.html)
 
 | ID             | Type        | 名稱           | 說明           |
 | :------------- | :---------- | :------------- | :------------- |
@@ -84,11 +91,15 @@
 | SecModules     | select      | 模組           | 模組選擇       |
 | btnQuery       | button      | 查詢           | 查詢(另開新頁) |
 
+- 欄位選項為 [AllData 工作表](DocSpreadsheet.md#alldata-工作表)
+  的欄位名稱(不含日期)。
+
 [返回](#頁面設計)
 
 ### Activity.html
 
-ActivityS.html 的輸出頁面
+- [SearchS.html](#searchshtml) 的輸出頁面
+- [Activity.html](Activity.html)
 
 | ID                      | Type  | 名稱                     | 說明                                                 |
 | :---------------------- | :---- | :----------------------- | :--------------------------------------------------- |

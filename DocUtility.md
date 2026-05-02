@@ -2,8 +2,8 @@
 
 ## 系統環境
 
-- [系統環境](Galaxy計劃文件.md#系統環境)
-- [工作表資料](Spreadsheet.md)
+- [系統環境](DocGalaxy計劃文件.md#系統環境)
+- [工作表資料](DocSpreadsheet.md)
 
 ## 常數 mainspreadsheet
 
@@ -12,6 +12,12 @@ const mainspreadsheet = SpreadsheetApp.getActiveSpreadsheet(); //已建立
 ```
 
 ## 相關函式設計
+
+- [combineData](DocUtility.md#函式-combinedata-設計概念)
+- [getTarget](DocUtility.md#函式-gettarget-設計概念)
+- [getTargetsheet](DocUtility.md#函式-gettargetsheet-設計概念)
+- [getAllData](DocUtility.md#函式-getalldata-設計概念)
+- [getMethodSN](DocUtility.md#函式-getmethodsn-設計概念)
 
 ### 函式 combineData 設計概念
 
@@ -34,6 +40,8 @@ function combineData(sheetname) {
 
 - 先處理10筆資料用以驗證正確性。
 
+[返回](#相關函式設計)
+
 ### 函式 getTarget 設計概念
 
 - 建立Utility.js 中 getTarget。
@@ -55,6 +63,8 @@ function getTarget(sheetName, targetName) {
 }
 ```
 
+[返回](#相關函式設計)
+
 ### 函式 getTargetsheet 設計概念
 
 - 建立Utility.js 中 getTargetsheet。
@@ -72,6 +82,8 @@ function getTargetsheet(sheetName, targetName) {
 }
 ```
 
+[返回](#相關函式設計)
+
 ### 函式 getAllData 設計概念
 
 - 建立Utility.js 中 getAllData。
@@ -83,10 +95,14 @@ function getAllData(date) {
 }
 ```
 
+[返回](#相關函式設計)
+
 ### 函式 getMethodSN 設計概念
 
 - 在 Utility.js 中建立 function getMethodSN。
-- 傳入物件的值 參照 [methed工作表](spreadsheet.md#method-工作表)
+- 傳入物件的值 參照 [methed工作表](Docspreadsheet.md#method-工作表)
   之欄位名稱(不含 lngMethodSN , strcheck) 。
 - 欄位 strcheck 為檢查機制。
 - 把物件轉成 strcheck ,再以 strcheck 查詢，如果查詢不到則新增。
+
+[返回](#相關函式設計)

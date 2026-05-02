@@ -1,29 +1,36 @@
 # prediction1 開發概要
 
 ## 資料
-- [Spreadsheet](Spreadsheet.md)
+
+- [Spreadsheet](DocSpreadsheet.md)
 - 分析 L539.xlsx ,L649.xlsx , L638.xlsx , LSix.slsx 的欄位和值.
 - Date 是日期
 - N1~N5,N6是相關開出的數值,S1是特別號,Sum是數值總合。
 
 ## 相關工作表
-- mainSpreadSheet 試算表 > AllData 工作表
-- L539(L649,L638,LSix) 試算表 > All 工作表
-- L539(L649,L638,LSix) 試算表 > Miss 工作表
-- L539(L649,L638,LSix) 試算表 > prct1_Settings 工作表 
-- L539(L649,L638,LSix) 試算表 > prct1_History 工作表
-- L539(L649,L638,LSix) 試算表 > prct1_Property 工作表
+
+- mainSpreadSheet 試算表 > [AllData 工作表](DocSpreadsheet.md#alldata-工作表)
+- mainSpreadSheet 試算表 > [Method 工作表](DocSpreadsheet.md#method-工作表)
+- L539(L649,L638,LSix) 試算表 > [All 工作表](DocSpreadsheet.md#all-工作表)
+- L539(L649,L638,LSix) 試算表 > [Miss 工作表](DocSpreadsheet.md#miss-工作表)
+- L539(L649,L638,LSix) 試算表 >
+  [prct1_Settings 工作表](DocSpreadsheet.md#prct1_settings-工作表)
+- L539(L649,L638,LSix) 試算表 >
+  [prct1_History 工作表](DocSpreadsheet.md#prct1_history-工作表)
+- L539(L649,L638,LSix) 試算表 >
+  [prct1_Property 工作表](DocSpreadsheet.md#prct1_property-工作表)
 
 ## 檔案
 
-| 檔名 | 說明 |
-| :--- | :--- |
-| Prediction1.html |  包含 日期選項 ,種類選項 ,推薦數量選項 ,使用遺漏數選項 ,推薦結果表格 ,歷史數據圖形 ,預測結果按鈕。| 
-| Prediction1_JS.html | 前端程式碼 |
-| Prediction1_Style.html | 頁面樣式 CSS |
-| Prediction1_Server.js | 後端程式碼 |
+| 檔名                                             | 說明                                                                                              |
+| :----------------------------------------------- | :------------------------------------------------------------------------------------------------ |
+| [Prediction1.html](Prediction1.html)             | 包含 日期選項 ,種類選項 ,推薦數量選項 ,使用遺漏數選項 ,推薦結果表格 ,歷史數據圖形 ,預測結果按鈕。 |
+| [Prediction1_JS.html](Prediction1_JS.html)       | 前端程式碼                                                                                        |
+| [Prediction1_Style.html](Prediction1_Style.html) | 頁面樣式 CSS                                                                                      |
+| [Prediction1_Server.js](Prediction1_Server.js)   | 後端程式碼                                                                                        |
 
 ## 設計概要
+
 - 程式 : 重新寫新的預測程式getPrediction01(lotto, dateStr, useTrend, topNChoice)
   - lotto : 種類 ,
   - dateStr : 日期 ,
@@ -32,12 +39,13 @@
     - 推薦數字有10 個 ,7個 及 依不同種類開出的實際數量.
 - 可重複使用的 function 分開獨立成 functions 且要有除錯機制。
   1. 提取 mainSpreadSheet 試算表 > AllData 工作表 的 預測日期的資料。
-  2. 提取 L539(L649,L638,LSix) 試算表 > All 工作表 的最近小於預測日期 60 期間內的的資料。檢測其相關性及特徵,權重,若不適當則自行調整測試期數,並把相關係數寫入 各別試算表>prct1_Settings 工作表中。
+  2. 提取 L539(L649,L638,LSix) 試算表 >
+     All 工作表 的最近小於預測日期 60 期間內的的資料。檢測其相關性及特徵,權重,若不適當則自行調整測試期數,並把相關係數寫入 各別試算表>prct1_Settings 工作表中。
   3. 若有 勾選 使用遺漏數,則把遺漏數(提取 L539(L649,L638,LSix) 試算表 >
-       Miss 工作表的最近小於預測日期 60 期間內的的資料,提取數量與上面第2項相同)納入計算。
+     Miss 工作表的最近小於預測日期 60 期間內的的資料,提取數量與上面第2項相同)納入計算。
   4. 預測結果與L539(L649,L638,LSix) 試算表 > All 工作表比對命中結果。
   5. 歷史數據圖形中 顯示自行推演 前10期 (由 L539(L649,L638,LSix) 試算表 >
-       All 工作表 的最近小於預測日期 10 期提供日期)的命中結果.
+     All 工作表 的最近小於預測日期 10 期提供日期)的命中結果.
   6. 注意 : 不要把答案納入計算。
   7. 在推薦數字球旁標示命中,過熱,過冷...等等字樣。
   8. 如果有答案 要標示命中個數 例如 L539 日期 , 命中 3/5 .
@@ -49,6 +57,7 @@
 - 把建議事項存在頁尾。
 
 ## 已處理事項
+
 - [已處理] 請為 Prediction1_JS.html 中的
   `renderResults`函數進行重構，將其拆分為多個子函數以提升可讀性。
 - [已處理] 在 Prediction1_Server.js 中，針對
