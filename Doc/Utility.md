@@ -3,6 +3,7 @@
 ## 系統環境
 
 - [系統環境](Galaxy計劃文件.md#系統環境)
+- [工作表資料](Spreadsheet.md)
 
 ## 常數 mainspreadsheet
 
@@ -76,8 +77,16 @@ function getTargetsheet(sheetName, targetName) {
 - 建立Utility.js 中 getAllData。
 
 ```javascript
-function getAllData(date){
-   const srsheet2 = mainspreadsheet.getSheetByName(“AllData”);
-   // 以 date find Date 欄位,並傳回 整列資料
-   }
+function getAllData(date) {
+  const srsheet2 = mainspreadsheet.getSheetByName("AllData");
+  // 以 date find Date 欄位,並傳回 整列資料
+}
 ```
+
+### 函式 getMethodSN 設計概念
+
+- 在 Utility.js 中建立 function getMethodSN。
+- 傳入物件的值 參照 [methed工作表](spreadsheet.md#method-工作表)
+  之欄位名稱(不含 lngMethodSN , strcheck) 。
+- 欄位 strcheck 為檢查機制。
+- 把物件轉成 strcheck ,再以 strcheck 查詢，如果查詢不到則新增。
