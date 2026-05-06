@@ -83,29 +83,15 @@ function getActivityDisplayTitle(fieldName) {
  */
 function getDatePreview(lotto, dateStr) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName("AllData");
-    if (!sheet) return null;
-    // 取得標題列並修剪空白
-    const headers = sheet
-      .getRange(1, 1, 1, sheet.getLastColumn())
-      .getValues()[0]
-      .map((h) => String(h).trim());
-
-    const date = new Date(dateStr);
-    const rowData = getAllData(date); // 調用 Utility.js 中的函式，傳回的是原始陣列
+    const date = new Date(dateStr.replace(/-/g, "/"));
+    const rowData = getAllData(date, true); // 使用物件模式取得資料
     if (!rowData || rowData.length === 0) return null;
 
-    // 輔助函式：根據標題名稱安全地從陣列中提取數值
-    const getVal = (name) => {
-      const idx = headers.indexOf(name);
-      return idx > -1 &&
-        rowData[idx] !== null &&
-        rowData[idx] !== undefined &&
-        rowData[idx] !== ""
-        ? String(rowData[idx])
+    // 直接透過欄位名稱存取，不用再管索引
+    const getVal = (name) =>
+      rowData[name] !== undefined && rowData[name] !== ""
+        ? String(rowData[name])
         : "";
-    };
 
     // 確保即使 Key 不存在也不會回傳 null，而是回傳 undefined 或空字串
     return {
@@ -125,24 +111,57 @@ function getDatePreview(lotto, dateStr) {
  */
 function prepareActivityQuery(params) {
   try {
-    // 1. 構造方法參數並獲取序號 (getMethodSN 定義於 Utility.js)
+    const targetDate = new Date(params.date.replace(/-/g, "/"));
+    let detail = "";
+    let compares = "";
+    let conditions = {};
+
+    // 優化：僅在開啟欄位模式 (fieldMode) 時才呼叫 getAllData 取得環境數值
+    if (params.fieldMode) {
+      const rowData = getAllData(targetDate, true);
+      if (!rowData) throw new Error("找不到該日期的環境參數資料 (AllData)");
+
+      if (params.fields && params.fields.length > 0) {
+        compares = params.fields.join("#");
+        detail = params.fields
+          .map((f) => (rowData[f] !== undefined ? String(rowData[f]) : ""))
+          .join("#");
+
+        params.fields.forEach((f) => {
+          if (rowData[f] !== undefined) conditions[f] = rowData[f];
+        });
+      }
+    }
+
+    // 1. 構造方法參數並獲取序號
     const methodObj = {
       strCompareType: "AND",
       FieldMode: params.fieldMode,
-      strCompares: params.fields.join("#"),
-      strComparesDetail: "", // 後端會根據日期自動匹配細節
+      strCompares: compares,
+      strComparesDetail: detail,
       NextNumsMode: params.nextMode,
       intNextNums: params.nextNums,
       intNextStep: params.nextStep,
+      strNextNums: "",
+      StrNextNumSpe: "",
       intDataLimit: params.dataLimit,
       intDataOffset: params.dataOffset,
       intSearchLimit: params.searchLimit,
       intSearchOffset: params.searchOffset,
     };
 
-    // 【除錯中】目前先不要 call getMethodSN
-    // const methodSN = getMethodSN(methodObj);
-    const methodSN = 9999; // 暫時固定序號
+    if (params.nextMode) {
+      const nextNumData = getNextNum(
+        params.lotto,
+        targetDate,
+        params.nextNums,
+        params.nextStep,
+        conditions
+      );
+      methodObj.strNextNums = nextNumData.strNextNums;
+      methodObj.StrNextNumSpe = nextNumData.StrNextNumSpe;
+    }
+    const methodSN = getMethodSN(methodObj);
     const isDebugMode = true;
 
     // 2. 生成 Web App URL
@@ -170,7 +189,120 @@ function prepareActivityQuery(params) {
       status: "success",
       url: url,
       methodSN: methodSN,
-      methodObj: isDebugMode ? methodObj : null, // 回傳構造後的物件供前端偵錯顯示
+      methodObj: null, // 查詢時不再回傳除錯資訊
+    };
+  } catch (e) {
+    return { status: "error", message: e.toString() };
+  }
+}
+
+/**
+ * 獲取預覽資料
+ * 根據 Lotto, Date, Field 所提供的數值，讀取小於 Date 的 20 筆相符資料
+ */
+function getPreviewData(params) {
+  try {
+    const targetDate = new Date(params.date.replace(/-/g, "/"));
+    let envData = null;
+    let detail = "";
+    let compares = "";
+    let conditions = {};
+
+    // 1. 統一獲取環境參數 (僅在開啟欄位模式時執行一次，避免重複讀取 AllData)
+    if (params.fieldMode) {
+      envData = getAllData(targetDate, true);
+      if (!envData) throw new Error("找不到該日期的環境參數資料 (AllData)");
+
+      if (params.fields && params.fields.length > 0) {
+        compares = params.fields.join("#");
+        detail = params.fields
+          .map((f) => (envData[f] !== undefined ? String(envData[f]) : ""))
+          .join("#");
+
+        params.fields.forEach((f) => {
+          if (envData[f] !== undefined) conditions[f] = envData[f];
+        });
+      }
+    }
+
+    const methodObj = {
+      strCompareType: "AND",
+      FieldMode: params.fieldMode,
+      strCompares: compares,
+      strComparesDetail: detail,
+      NextNumsMode: params.nextMode,
+      intNextNums: params.nextNums,
+      intNextStep: params.nextStep,
+      strNextNums: "",
+      StrNextNumSpe: "",
+      intDataLimit: params.dataLimit,
+      intDataOffset: params.dataOffset,
+      intSearchLimit: params.searchLimit,
+      intSearchOffset: params.searchOffset,
+    };
+
+    if (params.nextMode) {
+      const nextNumData = getNextNum(
+        params.lotto,
+        targetDate,
+        params.nextNums,
+        params.nextStep,
+        conditions
+      );
+      methodObj.strNextNums = nextNumData.strNextNums;
+      methodObj.StrNextNumSpe = nextNumData.StrNextNumSpe;
+    }
+    const methodSN = getMethodSN(methodObj); // 同樣調用此邏輯以供測試
+    const isDebugMode = true;
+
+    // 2. 開啟目標彩種試算表的 All 工作表
+    const targetObj = getTargetsheet("Sheets", params.lotto);
+    const sheet = targetObj.spreadsheet.getSheetByName("All");
+    if (!sheet) throw new Error(`找不到 ${params.lotto} 試算表中的 All 工作表`);
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return { status: "success", headers: [], rows: [] };
+
+    const headers = data[0];
+    const rows = data.slice(1);
+    const dateIdx = headers.indexOf("Date");
+
+    // 3. 過濾資料
+    const filtered = rows.filter((row) => {
+      const rowDate = new Date(row[dateIdx]);
+      // 小於 Date (不含)
+      if (rowDate >= targetDate) return false;
+
+      // 檢查欄位條件
+      for (let field in conditions) {
+        const colIdx = headers.indexOf(field);
+        if (colIdx === -1) continue;
+        // 轉字串比對
+        if (String(row[colIdx]) !== String(conditions[field])) return false;
+      }
+      return true;
+    });
+
+    // 4. 依日期降序排序並取前 20 筆
+    filtered.sort((a, b) => new Date(b[dateIdx]) - new Date(a[dateIdx]));
+    const resultRows = filtered.slice(0, 20).map((row) => {
+      // 格式化日期顯示
+      if (row[dateIdx] instanceof Date) {
+        row[dateIdx] = Utilities.formatDate(
+          row[dateIdx],
+          "Asia/Taipei",
+          "yyyy-MM-dd",
+        );
+      }
+      return row;
+    });
+
+    return {
+      status: "success",
+      headers: headers,
+      rows: resultRows,
+      methodSN: methodSN,
+      methodObj: isDebugMode ? methodObj : null,
     };
   } catch (e) {
     return { status: "error", message: e.toString() };

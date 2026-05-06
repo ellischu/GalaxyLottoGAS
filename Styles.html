@@ -7,7 +7,8 @@
   }
 
   .navbar-custom {
-    background-color: #0d6efd;
+    background-color: rgba(13, 110, 253, 0.8) !important; /* 半透明 80%，確保飽和度 */
+    backdrop-filter: blur(8px); /* 磨砂玻璃效果 */
     color: white;
   }
 
@@ -379,6 +380,8 @@
     text-align: center;
     border-top: 1px solid #dee2e6;
     color: #6c757d;
+    display: flex; /* Make it a flex container */
+    justify-content: center; /* Center content horizontally */
   }
   .footer-section a {
     color: #dc3545;

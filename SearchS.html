@@ -14,9 +14,22 @@
       href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css"
       rel="stylesheet"
     />
+    <!-- 載入 Font Awesome 圖示庫 -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <!-- 載入 Bootstrap Icons -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
+    />
+    <?!= includeStyles(); ?>
     <?!= HtmlService.createHtmlOutputFromFile('SearchS_Style').getContent(); ?>
   </head>
   <body>
+    <?!= includeNav(); ?>
+
     <div class="container mt-4">
       <div class="card config-card">
         <div class="card-body p-4">
@@ -198,13 +211,27 @@
               </select>
             </div>
             <div class="col-md-12 mt-4">
-              <button
-                type="button"
-                id="btnQuery"
-                class="btn btn-primary btn-lg w-100 shadow-sm"
-              >
-                <i class="bi bi-search"></i> 啟動星系查詢
-              </button>
+              <div class="d-flex gap-2">
+                <button
+                  type="button"
+                  id="btnQuery"
+                  class="btn btn-outline-primary btn-lg flex-grow-1 shadow-sm"
+                >
+                  <i class="bi bi-search"></i> 啟動星系查詢
+                </button>
+                <button
+                  type="button"
+                  id="btnPreview"
+                  class="btn btn-outline-success btn-lg flex-grow-1 shadow-sm"
+                >
+                  <i class="bi bi-eye"></i> 預覽資料
+                </button>
+              </div>
+            </div>
+
+            <!-- 結果資料區 (預覽用) -->
+            <div class="col-md-12 mt-3">
+              <div id="AreaTable" class="mt-2 d-none"></div>
             </div>
 
             <!-- 偵錯顯示區 (除錯完後移除) -->
@@ -220,6 +247,12 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- 自動備援機制 (Fallback) -->
+    <?!= include("Lib_jQuery") ?>
+    <?!= include("Lib_Bootstrap") ?>
+    <?!= include("Lib_Swal") ?>
+    <?!= include('Scripts'); ?>
     <?!= HtmlService.createHtmlOutputFromFile('SearchS_JS').getContent(); ?>
+    <?!= includeFooter(); ?>
   </body>
 </html>

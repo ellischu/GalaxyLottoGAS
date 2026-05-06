@@ -1,0 +1,154 @@
+<script>
+  /**
+   * Activity 活性分析報告專屬邏輯
+   */
+
+  // --- 獨立主題控制邏輯 ---
+  window.applyActivityTheme = function (theme) {
+    document.documentElement.setAttribute("data-bs-theme", theme);
+    localStorage.setItem("activity_theme", theme);
+    const $icon = $("#activityThemeToggle i");
+    if (theme === "dark") {
+      $icon.removeClass("bi-moon-stars").addClass("bi-sun");
+      $("body").removeClass("bg-light").css("background-color", "#121212");
+    } else {
+      $icon.removeClass("bi-sun").addClass("bi-moon-stars");
+      $("body").addClass("bg-light").css("background-color", "");
+    }
+  };
+
+  window.toggleActivityTheme = function () {
+    const current = document.documentElement.getAttribute("data-bs-theme") || "light";
+    const next = current === "dark" ? "light" : "dark";
+    window.applyActivityTheme(next);
+  };
+
+  // 立即執行初始化
+  (function initActivityTheme() {
+    const savedTheme = localStorage.getItem("activity_theme");
+    const theme = savedTheme || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-bs-theme", theme);
+  })();
+
+  $(document).ready(function () {
+    // 同步圖示與背景狀態
+    const currentTheme = document.documentElement.getAttribute("data-bs-theme") || "light";
+    window.applyActivityTheme(currentTheme);
+    // 1. 從網址取得參數 (例如 ?lotto=L539&date=2024-05-01&method=1)
+    const urlParams = new URLSearchParams(window.location.search);
+    const lotto = urlParams.get("lotto") || "L539";
+    const date = urlParams.get("date") || "";
+    const method = urlParams.get("method") || "V1";
+
+    $("#lblMethod").html(
+      `<i class="bi bi-cpu me-1"></i> 分析核心：${method} (${lotto})`,
+    );
+
+    // 2. 呼叫 GAS 後端獲取報告資料
+    google.script.run
+      .withSuccessHandler(renderReport)
+      .withFailureHandler(function (err) {
+        $("#AreaTable").html(
+          `<div class="alert alert-danger m-3">載入失敗：${err.message}</div>`,
+        );
+      })
+      .getActivityReport(lotto, date, method);
+  });
+
+  /**
+   * 渲染完整報告
+   */
+  function renderReport(res) {
+    if (!res || res.status === "error") {
+      $("#AreaTable").html(
+        `<div class="alert alert-warning m-3">${res ? res.message : "找不到相關數據"}</div>`,
+      );
+      return;
+    }
+
+    // A. 渲染環境參數與開獎紀錄 (垂直表格)
+    renderEnvironmentTable(res.envData);
+
+    // B. 渲染統計分析結果 (水平表格)
+    renderStatsTable(res.statsData);
+  }
+
+  /**
+   * 渲染環境參數區塊
+   */
+  function renderEnvironmentTable(data) {
+    if (!data || data.length === 0) {
+      $("#AeraAll").html('<div class="p-3 text-muted">無環境參數資料</div>');
+      return;
+    }
+
+    let html = '<table class="table table-bordered mb-0">';
+    data.forEach((item) => {
+      let displayValue = item.value;
+
+      // 如果是開獎號碼，套用圓圈樣式
+      if (item.isBall && item.value) {
+        displayValue = `<span class="num-circle">${item.value}</span>`;
+      }
+
+      html += `
+        <tr>
+          <th>${item.label}</th>
+          <td class="${item.isChanged ? "table-warning fw-bold" : ""}">${displayValue || "-"}</td>
+        </tr>`;
+    });
+    html += "</table>";
+    $("#AeraAll").html(html);
+  }
+
+  /**
+   * 渲染統計分析結果表格
+   */
+  function renderStatsTable(data) {
+    if (!data || !data.rows || data.rows.length === 0) {
+      $("#AreaTable").html(
+        '<div class="p-3 text-center text-muted">無統計數據</div>',
+      );
+      return;
+    }
+
+    let html = `
+      <table class="table table-hover table-striped mb-0">
+        <thead>
+          <tr>`;
+
+    // 渲染表頭
+    data.headers.forEach((h) => {
+      html += `<th>${h}</th>`;
+    });
+
+    html += `
+          </tr>
+        </thead>
+        <tbody>`;
+
+    // 渲染資料列
+    data.rows.forEach((row) => {
+      html += "<tr>";
+      row.forEach((cell, idx) => {
+        let content = cell;
+
+        // 針對「號碼」欄位進行特殊處理
+        if (data.headers[idx] === "號碼") {
+          content = `<span class="num-circle" style="background-color:#6c757d;">${cell}</span>`;
+        }
+
+        // 命中標記處理
+        if (data.headers[idx] === "狀態" && cell === "命中") {
+          content = `<span class="badge bg-success">命中</span>`;
+        }
+
+        html += `<td>${content}</td>`;
+      });
+      html += "</tr>";
+    });
+
+    html += "</tbody></table>";
+    $("#AreaTable").html(html);
+  }
+</script>

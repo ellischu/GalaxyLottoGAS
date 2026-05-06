@@ -121,14 +121,17 @@ function getTargetsheet(sheetName, targetName) {
 
 /**
  *
- * @param {*} date type Date
- * @returns
+ * @param {Date|string} date type Date 或日期字串
+ * @param {boolean} withHeaders 是否同時輸出欄位名稱與值 (預設為 false)
+ * @returns {Array|Object} 預設傳回整列資料陣列；若 withHeaders 為 true 則傳回鍵值對物件
  */
-function getAllData(date) {
+function getAllData(date, withHeaders = false) {
   const srsheet2 = mainspreadsheet.getSheetByName("AllData");
-  if (!srsheet2) return [];
+  if (!srsheet2) return withHeaders ? null : [];
   // 以 date find Date 欄位,並傳回 整列資料
   var data = srsheet2.getDataRange().getValues();
+  if (data.length === 0) return withHeaders ? null : [];
+  var headers = data[0];
 
   // 優化日期比對：確保輸入與歷史數據皆以相同的時區格式進行字串比對
   var normalizeDateStr = function (v) {
@@ -139,15 +142,22 @@ function getAllData(date) {
     return Utilities.formatDate(d, "Asia/Taipei", "yyyy-MM-dd");
   };
   var targetTimeStr = normalizeDateStr(date);
-  if (!targetTimeStr) return [];
+  if (!targetTimeStr) return withHeaders ? null : [];
 
   for (var i = 1; i < data.length; i++) {
     var rowTimeStr = normalizeDateStr(data[i][0]);
     if (rowTimeStr === targetTimeStr) {
+      if (withHeaders) {
+        var resultObj = {};
+        headers.forEach(function(header, index) {
+          resultObj[header] = data[i][index];
+        });
+        return resultObj;
+      }
       return data[i];
     }
   }
-  return [];
+  return withHeaders ? null : [];
 }
 
 /**
@@ -679,6 +689,127 @@ function getMethodSN(methodObj) {
     `[getMethodSN] Added new method SN: ${nextLngMethodSN} for strcheck: ${strcheck}`,
   );
   return nextLngMethodSN;
+}
+
+/**
+ * 輔助函式：產生陣列的所有組合 (C(n, k))
+ * @param {Array<any>} arr 原始陣列
+ * @param {number} k 組合長度
+ * @returns {Array<Array<any>>} 所有組合的陣列
+ */
+function combinations(arr, k) {
+  const result = [];
+  if (k < 0 || k > arr.length) {
+    return result;
+  }
+  function backtrack(start, currentCombination) {
+    if (currentCombination.length === k) {
+      result.push([...currentCombination]);
+      return;
+    }
+    for (let i = start; i < arr.length; i++) {
+      currentCombination.push(arr[i]);
+      backtrack(i + 1, currentCombination);
+      currentCombination.pop();
+    }
+  }
+  backtrack(0, []);
+  return result;
+}
+
+/**
+ * 根據彩種、日期、托牌星數和間隔期數，計算托牌號碼組合。
+ * @param {string} lotto 彩種 (e.g., "L539", "L649", "L638", "LSix")
+ * @param {Date} date 預測日期
+ * @param {number} intNextNums 托牌星數 (k)
+ * @param {number} intNextStep 間隔期數
+ * @param {object} conditions 比對條件 (Step 1 產生的環境參數)
+ * @returns {{strNextNums: string, StrNextNumSpe: string}} 托牌號碼字串和特別號字串
+ */
+function getNextNum(lotto, date, intNextNums, intNextStep, conditions = {}) {
+  let strNextNums = "";
+  let StrNextNumSpe = "";
+
+  if (!lotto || !date || intNextNums <= 0 || intNextStep <= 0) {
+    return { strNextNums, StrNextNumSpe };
+  }
+
+  try {
+    const trObj = getTargetsheet("Sheets", lotto);
+    const sheet = trObj.spreadsheet.getSheetByName("All");
+    if (!sheet) {
+      throw new Error(`找不到 ${lotto} 試算表中的 All 工作表`);
+    }
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      return { strNextNums, StrNextNumSpe };
+    }
+
+    const headers = data[0];
+    const dateColIdx = headers.indexOf("Date");
+
+    // 過濾出早於預測日期且符合條件的資料 (Step 2 邏輯)
+    const historicalData = data.slice(1).filter((row) => {
+      const rowDate = new Date(row[dateColIdx]);
+      if (rowDate.getTime() >= date.getTime()) return false;
+
+      // 檢查欄位比對條件
+      for (let field in conditions) {
+        const colIdx = headers.indexOf(field);
+        if (colIdx === -1) continue;
+        // 轉字串比對
+        if (String(row[colIdx]) !== String(conditions[field])) return false;
+      }
+      return true;
+    });
+
+    // 取得特定的第 intNextStep 期的資料 (1 代表最近一期，2 代表前二期...)
+    const targetIdx = historicalData.length - intNextStep;
+    if (targetIdx < 0) {
+      return { strNextNums, StrNextNumSpe };
+    }
+    const row = historicalData[targetIdx];
+
+    const s1ColIdx = headers.indexOf("S1");
+    const numbers = [];
+
+    if (lotto === "L638") {
+      // Lotto == L638: 所得 N1~N6 的資料，排列組合 C(6, intNextNums)，StrNextNumSpe == S1
+      for (let i = 1; i <= 6; i++) {
+        const nIdx = headers.indexOf(`N${i}`);
+        const num = nIdx !== -1 ? Number(row[nIdx]) : 0;
+        if (!isNaN(num) && num > 0) numbers.push(num);
+      }
+      if (s1ColIdx !== -1) {
+        StrNextNumSpe = String(row[s1ColIdx] || "");
+      }
+    } else {
+      // Lotto != L638: 所得 N1~N5, S1 的資料 (以L539為例)，排列組合 C(5, intNextNums)，StrNextNumSpe == ""
+      // L539 只會抓到 N1~N5；L649/LSix 會抓到 N1~N5 和 S1
+      for (let i = 1; i <= 5; i++) {
+        const nIdx = headers.indexOf(`N${i}`);
+        const num = nIdx !== -1 ? Number(row[nIdx]) : 0;
+        if (!isNaN(num) && num > 0) numbers.push(num);
+      }
+      if (lotto !== "L539" && s1ColIdx !== -1) {
+        const s1Num = Number(row[s1ColIdx]);
+        if (!isNaN(s1Num) && s1Num > 0) numbers.push(s1Num);
+      }
+    }
+
+    if (numbers.length > 0) {
+      const allCombinations = combinations(numbers, intNextNums).map((combo) => {
+        return combo.sort((a, b) => a - b).join(";");
+      });
+      strNextNums = allCombinations.join("#");
+    }
+
+    return { strNextNums, StrNextNumSpe };
+  } catch (e) {
+    Logger.log(`[getNextNum Error] ${e.message}`);
+    return { strNextNums: "", StrNextNumSpe: "" };
+  }
 }
 
 /**

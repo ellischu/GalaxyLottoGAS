@@ -62,6 +62,14 @@
           >MP</span
         >
       </div>
+    <button
+      class="btn btn-link p-0 text-white ms-1 border-0"
+      onclick="window.toggleTheme()"
+      title="切換深淺模式"
+      style="line-height: 1"
+    >
+      <i id="navThemeIcon" class="fas fa-moon" style="font-size: 14px"></i>
+    </button>
 
       <button
         class="btn btn-link p-0 text-white-50 ms-1 border-0"
@@ -386,6 +394,28 @@
 
 <script>
   /**
+   * 全域主題控制 (Nav 整合版)
+   */
+  window.applyTheme = function (theme) {
+    document.documentElement.setAttribute("data-bs-theme", theme);
+    localStorage.setItem("theme", theme);
+    
+    // 更新 Nav 上的圖示
+    const $navIcon = $("#navThemeIcon");
+    if (theme === "dark") {
+      $navIcon.removeClass("fa-moon").addClass("fa-sun");
+    } else {
+      $navIcon.removeClass("fa-sun").addClass("fa-moon");
+    }
+  };
+
+  window.toggleTheme = function () {
+    const current = document.documentElement.getAttribute("data-bs-theme") || "light";
+    const next = current === "dark" ? "light" : "dark";
+    window.applyTheme(next);
+  };
+
+  /**
    * 切換手機端狀態明細顯示
    */
   function toggleStatusDetails() {
@@ -653,6 +683,11 @@
       // 初始化連線模式選擇
       const savedMode = localStorage.getItem("connection_mode") || "auto";
       $("#connectionModeSelect").val(savedMode);
+      
+      // 初始化全域主題 (優先讀取 localStorage，若無則跟隨系統)
+      const currentTheme = localStorage.getItem("theme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      window.applyTheme(currentTheme);
+
       detectAndApplyMode();
 
       // 啟動網路品質監控，確保在不穩定的環境下自動降級

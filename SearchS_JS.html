@@ -26,6 +26,11 @@
     $("#btnQuery").on("click", function () {
       startGalaxySearch();
     });
+
+    // 5. 預覽資料
+    $("#btnPreview").on("click", function () {
+      showDataPreview();
+    });
   });
 
   function initPage() {
@@ -85,35 +90,31 @@
   }
 
   function startGalaxySearch() {
+    const nextMode = $("#chkNext").is(":checked");
+    const rangeMode = $("#chkRange").is(":checked");
+    const fieldMode = $("#chkField").is(":checked");
+
     const params = {
       lotto: $("#SecLotto").val(),
       date: $("#INDate").val(),
       module: $("#SecModules").val(),
-      fieldMode: $("#chkField").is(":checked"),
-      fields: [
-        $("#SecField1").val(),
-        $("#SecField2").val(),
-        $("#SecField3").val(),
-        $("#SecField4").val(),
-      ].filter((v) => v),
-      nextMode: $("#chkNext").is(":checked"),
-      nextNums: parseInt($("#SecNextNums").val()),
-      nextStep: parseInt($("#SecNextStep").val()),
-      dataLimit: parseInt($("#InDataLimit").val()) || 0,
-      dataOffset: parseInt($("#InDataOffset").val()) || 0,
-      searchLimit: parseInt($("#InSearchLimit").val()) || 0,
-      searchOffset: parseInt($("#InSearchOffset").val()) || 0,
+      fieldMode: fieldMode,
+      fields: fieldMode
+        ? [
+            $("#SecField1").val(),
+            $("#SecField2").val(),
+            $("#SecField3").val(),
+            $("#SecField4").val(),
+          ].filter((v) => v)
+        : [],
+      nextMode: nextMode,
+      nextNums: nextMode ? parseInt($("#SecNextNums").val()) || 0 : 0,
+      nextStep: nextMode ? parseInt($("#SecNextStep").val()) || 0 : 0,
+      dataLimit: rangeMode ? parseInt($("#InDataLimit").val()) || 0 : 0,
+      dataOffset: rangeMode ? parseInt($("#InDataOffset").val()) || 0 : 0,
+      searchLimit: rangeMode ? parseInt($("#InSearchLimit").val()) || 0 : 0,
+      searchOffset: rangeMode ? parseInt($("#InSearchOffset").val()) || 0 : 0,
     };
-
-    // 【除錯】顯示 startGalaxySearch 的 params 內容
-    const $debug = $("#AreaDebug");
-    $debug
-      .html(
-        "<strong>[Client-Side params]</strong>\n" +
-          JSON.stringify(params, null, 2),
-      )
-      .removeClass("d-none");
-    console.log("Debug Params:", params);
 
     Swal.fire({
       title: "啟動查詢",
@@ -127,16 +128,176 @@
     google.script.run
       .withSuccessHandler(function (res) {
         Swal.close();
+        if (res.url) window.open(res.url, "_blank");
+      })
+      .prepareActivityQuery(params);
+  }
+
+  function showDataPreview() {
+    const nextMode = $("#chkNext").is(":checked");
+    const rangeMode = $("#chkRange").is(":checked");
+    const fieldMode = $("#chkField").is(":checked");
+
+    const params = {
+      lotto: $("#SecLotto").val(),
+      date: $("#INDate").val(),
+      fieldMode: fieldMode,
+      fields: fieldMode
+        ? [
+            $("#SecField1").val(),
+            $("#SecField2").val(),
+            $("#SecField3").val(),
+            $("#SecField4").val(),
+          ].filter((v) => v)
+        : [],
+      // 加入其餘參數供除錯面板觀察輸入狀態
+      nextMode: nextMode,
+      nextNums: nextMode ? parseInt($("#SecNextNums").val()) || 0 : 0,
+      nextStep: nextMode ? parseInt($("#SecNextStep").val()) || 0 : 0,
+      dataLimit: rangeMode ? parseInt($("#InDataLimit").val()) || 0 : 0,
+      dataOffset: rangeMode ? parseInt($("#InDataOffset").val()) || 0 : 0,
+      searchLimit: rangeMode ? parseInt($("#InSearchLimit").val()) || 0 : 0,
+      searchOffset: rangeMode ? parseInt($("#InSearchOffset").val()) || 0 : 0,
+    };
+
+    if (!params.date) {
+      Swal.fire("提醒", "請先選擇日期", "warning");
+      return;
+    }
+
+    // 【除錯】顯示預覽時的 params 內容
+    const $debug = $("#AreaDebug");
+    $debug
+      .html(
+        "<strong>[Client-Side Preview params]</strong>\n" +
+          JSON.stringify(params, null, 2),
+      )
+      .removeClass("d-none");
+    console.log("Debug Preview Params:", params);
+
+    const $tableContainer = $("#AreaTable");
+    $tableContainer
+      .html(
+        '<div class="text-center p-4"><div class="spinner-border text-success"></div><p class="mt-2 text-secondary">正在檢索星系歷史紀錄...</p></div>',
+      )
+      .removeClass("d-none");
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res.status === "error") {
+          $tableContainer.html(
+            '<div class="alert alert-danger">' + res.message + "</div>",
+          );
+          return;
+        }
+
         // 【除錯】顯示伺服器構造後的內容
         if (res.methodObj) {
           $debug.append(
-            "\n\n<strong>[Server-Side methodObj (constructed)]</strong>\n" +
+            "\n\n<strong>[Server-Side methodObj (constructed during preview)]</strong>\n" +
               JSON.stringify(res.methodObj, null, 2),
           );
         }
 
-        if (res.url) window.open(res.url, "_blank");
+        if (res.methodSN) {
+          $debug.append(
+            "\n\n<strong>[Obtained MethodSN]</strong>: " + res.methodSN,
+          );
+        }
+
+        renderPreviewTable(res.headers, res.rows);
       })
-      .prepareActivityQuery(params);
+      .withFailureHandler(function (err) {
+        $tableContainer.html(
+          '<div class="alert alert-danger">系統傳輸錯誤: ' +
+            err.message +
+            "</div>",
+        );
+      })
+      .getPreviewData(params);
+  }
+
+  function renderPreviewTable(headers, rows) {
+    const $container = $("#AreaTable");
+    if (!rows || rows.length === 0) {
+      $container.html(
+        '<div class="alert alert-info text-center">根據目前欄位條件，在此日期前找不到相關紀錄。</div>',
+      );
+      return;
+    }
+
+    // 定義要顯示的關鍵欄位
+    const displayFields = [
+      "Date",
+      "N1",
+      "N2",
+      "N3",
+      "N4",
+      "N5",
+      "N6",
+      "S1",
+      "Sum",
+    ];
+
+    let html = '<div class="section-title">歷史數據預覽 (最近 20 筆)</div>';
+    html += '<div class="table-responsive shadow-sm rounded-3 border">';
+    html +=
+      '<table class="table table-sm table-hover table-striped bg-white mb-0" style="font-size:0.8rem;">';
+
+    // Header
+    html += '<thead class="table-dark"><tr>';
+    displayFields.forEach((f) => {
+      if (headers.indexOf(f) > -1) {
+        const title = getLocalTitle(f);
+        html += `<th class="text-center py-2">${title}</th>`;
+      }
+    });
+    html += "</tr></thead>";
+
+    // Body
+    html += "<tbody>";
+    rows.forEach((row) => {
+      html += "<tr>";
+      displayFields.forEach((f) => {
+        const idx = headers.indexOf(f);
+        if (idx > -1) {
+          const val = row[idx];
+          const isNum = f.startsWith("N") || f === "S1";
+          const isSum = f === "Sum";
+
+          let cellContent = val;
+          if (isNum && val && val !== 0) {
+            const ballClass = f === "S1" ? "bg-info" : "bg-primary";
+            cellContent = `<span class="badge ${ballClass} rounded-pill" style="width:26px; height:26px; line-height:18px;">${val}</span>`;
+          } else if (isSum) {
+            cellContent = `<strong>${val}</strong>`;
+          }
+
+          html += `<td class="text-center align-middle">${cellContent || ""}</td>`;
+        }
+      });
+      html += "</tr>";
+    });
+    html += "</tbody></table></div>";
+
+    $container.html(html);
+
+    // 自動捲動到結果區
+    $("html, body").animate({ scrollTop: $container.offset().top - 20 }, 500);
+  }
+
+  function getLocalTitle(fieldName) {
+    const mapping = {
+      Date: "日期",
+      N1: "號1",
+      N2: "號2",
+      N3: "號3",
+      N4: "號4",
+      N5: "號5",
+      N6: "號6",
+      S1: "特1",
+      Sum: "總合",
+    };
+    return mapping[fieldName] || fieldName;
   }
 </script>

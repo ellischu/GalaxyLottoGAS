@@ -100,9 +100,18 @@ function getAllData(date) {
 ### 函式 getMethodSN 設計概念
 
 - 在 Utility.js 中建立 function getMethodSN。
-- 傳入物件的值 參照 [methed工作表](Docspreadsheet.md#method-工作表)
+- 傳入 物件(objdct) 的值 參照 [methed工作表](Docspreadsheet.md#method-工作表)
   之欄位名稱(不含 lngMethodSN , strcheck) 。
 - 欄位 strcheck 為檢查機制。
 - 把物件轉成 strcheck ,再以 strcheck 查詢，如果查詢不到則新增。
+
+[返回](#相關函式設計)
+
+### 輔助函式 getNextNum
+
+- 建立Utility.js 中 getNextNum。
+- 傳入 物件(objdct) 的值有 , lotto , Date , intNextNums , intNextStep。
+- 輸出 strNextNums , StrNextNumSpe 。
+- 
 
 [返回](#相關函式設計)

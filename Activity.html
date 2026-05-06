@@ -14,13 +14,23 @@
     />
     <?!= HtmlService.createHtmlOutputFromFile('Activity_Style').getContent(); ?>
   </head>
-  <body class="bg-light">
+  <body>
     <div class="container-fluid py-4">
       <!-- 頁首標題與方法序號 -->
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h3 class="text-primary mb-0">
-          <i class="bi bi-graph-up-arrow"></i> 活性分析報告
-        </h3>
+        <div class="d-flex align-items-center gap-3">
+          <h3 class="text-primary mb-0">
+            <i class="bi bi-graph-up-arrow"></i> 活性分析報告
+          </h3>
+          <button
+            id="activityThemeToggle"
+            class="btn btn-outline-secondary btn-sm"
+            onclick="window.toggleActivityTheme()"
+            title="切換報告主題"
+          >
+            <i class="bi bi-moon-stars"></i>
+          </button>
+        </div>
         <div id="lblMethod" class="badge bg-primary fs-6 p-2 shadow-sm">
           正在載入方法...
         </div>

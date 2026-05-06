@@ -29,9 +29,6 @@
     var showWeight = localStorage.getItem("showWeightPanel") !== "false";
     $("#weightPanelToggle").prop("checked", showWeight);
 
-    // 初始化主題
-    initTheme();
-
     // 確保歷史趨勢 (回測) 開關在載入時處於禁用且未勾選狀態
     $("#historyToggle").prop("checked", false).prop("disabled", true);
     $("#historyCard").addClass("d-none");
@@ -53,37 +50,7 @@
     setInterval(updateCacheInfo, 60000); // 每 60 秒背景更新一次
   });
 
-  // --- 主題切換邏輯 ---
-  window.applyTheme = function (theme) {
-    document.documentElement.setAttribute("data-bs-theme", theme);
-    localStorage.setItem("theme", theme);
-    const $icon = $(
-      ".tech-panel button i.fa-moon, .tech-panel button i.fa-sun",
-    );
-    if (theme === "dark") {
-      $icon.removeClass("fa-moon").addClass("fa-sun");
-    } else {
-      $icon.removeClass("fa-sun").addClass("fa-moon");
-    }
-  };
-
-  window.toggleTheme = function () {
-    var current =
-      document.documentElement.getAttribute("data-bs-theme") || "light";
-    var next = current === "dark" ? "light" : "dark";
-    window.applyTheme(next);
-  };
-
-  function initTheme() {
-    var savedTheme = localStorage.getItem("theme");
-    if (!savedTheme) {
-      savedTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
-    }
-    window.applyTheme(savedTheme);
-  }
-
+  // --- 顯示模式切換邏輯 ---
   window.toggleDisplayMode = function (isDetailed) {
     localStorage.setItem("detailedMode", isDetailed);
     updateDetailedToggleUI(isDetailed);
@@ -91,19 +58,22 @@
 
     if (window.lastResult) {
       renderResults(window.lastResult);
+
+      // 核心優化：切換至詳細模式時觸發星雲擴張動畫
+      if (isDetailed) {
+        setTimeout(function () {
+          $(".ball").addClass("nebula-expand");
+          // 動畫結束後移除類別以便下次觸發
+          setTimeout(() => $(".ball").removeClass("nebula-expand"), 800);
+        }, 100);
+      }
     }
 
     // 當開啟詳細模式時，自動捲動至 AI 戰略分析區
-    if (isDetailed) {
-      setTimeout(function () {
-        $("html, body").animate(
-          { scrollTop: $("#aiSuggestionArea").offset().top - 80 },
-          600,
-        );
-      }, 300); // 延遲 300ms 等待結果渲染完成
-    }
+    setTimeout(function () {
+      $("html, body").animate({ scrollTop: $("#aiSuggestionArea").offset().top - 80 }, 600);
+    }, 300); // 延遲 300ms 等待結果渲染完成
   };
-
   window.toggleHistoryStats = function (isVisible) {
     const $card = $("#historyCard");
     if (isVisible) {
@@ -347,10 +317,12 @@
 
       // 計算紫微共振權重趨勢 (對比基準值 0.08)
       const lpVal = w.metaBoostLifePalace || 0.08;
-      const lpTrend = 
-        lpVal > 0.0801 
-          ? '<i class="fas fa-caret-up text-danger ms-1" title="權重進化上升"></i>' 
-          : (lpVal < 0.0799 ? '<i class="fas fa-caret-down text-success ms-1" title="權重修正下降"></i>' : '');
+      const lpTrend =
+        lpVal > 0.0801
+          ? '<i class="fas fa-caret-up text-danger ms-1" title="權重進化上升"></i>'
+          : lpVal < 0.0799
+            ? '<i class="fas fa-caret-down text-success ms-1" title="權重修正下降"></i>'
+            : "";
 
       const panelHtml = `
           <div class="row g-2">

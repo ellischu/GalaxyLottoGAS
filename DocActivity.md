@@ -90,9 +90,34 @@
 | InSearchOffset | input       | 搜尋偏移量     | 查詢偏量       |
 | SecModules     | select      | 模組           | 模組選擇       |
 | btnQuery       | button      | 查詢           | 查詢(另開新頁) |
+| btnPreview     | button      | 預覽           | 預覽           |
+| AreaTable      | Div         | 結果資料區     | 結果資料區     |
+| AreaDebug      | Div         | 偵錯顯示區     | 偵錯顯示區     |
+
+#### 設計摘要
 
 - 欄位選項為 [AllData 工作表](DocSpreadsheet.md#alldata-工作表)
   的欄位名稱(不含日期)。
+
+1. Step1
+
+- 在 btnQuery 下方建立一個暫時的顯示區(除錯完後移除)
+- 顯示內容為 function startGalaxySearch() 的 params 的內容
+- 目前先不要 call getMethodSN，等debug 完再執行。
+
+2. Step2
+
+- 在 btnQuery 右方加入預覽按鈕
+- 按下 預覽按鈕 後,在下方 顯示資料表。
+- 根據 Lotto,Date,Field, 所提供的數值，開啟 Lotto 的試算表>All 工作表，讀取小於Date(不含)，且根據Field所提供的條件 20 筆資料。
+
+3. Step3
+
+- 如果chkNext==true,先處理step2的資料,利用此資料處理下方流程。
+- Lotto!=L638
+  , 則根據 Step2 獲得的資料,向前第 SecNextStep 期，所得 N1~N5,S1 的資料(以L539為例)，進行排列組合 C(5,SecNextNums)，N1~N5 的值以";"分隔，每組以 "#" 分隔，填入 strNextNums 中,StrNextNumSpe==""。
+- Lotto == L638
+  , 則根據 Step2 獲得的資料,向前第 SecNextStep 期，所得 N1~N6 的資料(以L638為例)，進行排列組合 C(6,SecNextNums)，N1~N6 的值以";"分隔，每組以 "#" 分隔，填入 strNextNums 中,StrNextNumSpe==S1。
 
 [返回](#頁面設計)
 
@@ -170,6 +195,8 @@ lblMethod.text = strField + strNext || "一般";
 | 兄弟         | String | 兄弟         | 兄弟     | 紫微兄弟宮              |
 | 命重         | String | 命重         | 命重     | 命重                    |
 
+#### 設計摘要
+
 - N1~N6,S1 要隨著彩種而異。
 
 [返回](#頁面設計)
@@ -212,6 +239,9 @@ lblMethod.text = strField + strNext || "一般";
 | intAvg100  | Int      | 0      | 頻100均   | 分區100平均值   |
 | intAC100   | Double   | 0      | 頻100標差 | 分區100標準差   |
 
+#### 設計摘要
+
+- 按標題可以進行排序。
 - Double 為 小數點 3 位 。
 
 [返回](#頁面設計)
