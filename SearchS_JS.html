@@ -16,6 +16,9 @@
     $("#chkRange").on("change", function () {
       $("#AreaRange").slideToggle(this.checked);
     });
+    $("#chkPreview").on("change", function () {
+      $("#AreaTable, #AreaDebug").slideToggle(this.checked);
+    });
 
     // 3. 資料預覽更新監聽
     $("#INDate, #SecLotto").on("change", function () {
@@ -165,6 +168,10 @@
       return;
     }
 
+    // 自動開啟預覽開關並確保區域顯示
+    $("#chkPreview").prop("checked", true);
+    $("#AreaTable, #AreaDebug").show();
+
     // 【除錯】顯示預覽時的 params 內容
     const $debug = $("#AreaDebug");
     $debug
@@ -172,7 +179,7 @@
         "<strong>[Client-Side Preview params]</strong>\n" +
           JSON.stringify(params, null, 2),
       )
-      .removeClass("d-none");
+      .show();
     console.log("Debug Preview Params:", params);
 
     const $tableContainer = $("#AreaTable");
@@ -180,7 +187,7 @@
       .html(
         '<div class="text-center p-4"><div class="spinner-border text-success"></div><p class="mt-2 text-secondary">正在檢索星系歷史紀錄...</p></div>',
       )
-      .removeClass("d-none");
+      .show();
 
     google.script.run
       .withSuccessHandler(function (res) {

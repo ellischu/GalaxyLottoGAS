@@ -42,8 +42,15 @@
 
     <div class="container main-container">
       <div id="progressArea" class="mt-4" style="display: none">
-        <div class="d-flex justify-content-between mb-1">
-          <span id="progressLabel" class="text-muted small">準備處理...</span>
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <div>
+            <span id="progressLabel" class="text-muted small">準備處理...</span>
+            <span
+              id="queueStatus"
+              class="badge bg-info-subtle text-info border border-info-subtle small ms-2 d-none"
+              style="font-size: 0.7rem"
+            ></span>
+          </div>
           <span id="progressPercent" class="text-primary fw-bold small"
             >0%</span
           >
@@ -60,11 +67,13 @@
       </div>
       <hr />
       <div class="card shadow-sm mb-4">
-        <h5 class="text-center">更新表格</h5>
+        <h5 class="text-center">星系資料庫維護中心</h5>
         <div class="card-body">
-          <div class="row align-items-end">
-            <div class="col-12">
-              <!-- <label for="secLotto" class="form-label label-text">合併表格</label> -->
+          <div class="row g-2 align-items-end">
+            <div class="col-6">
+              <label for="secLotto" class="form-label small text-muted"
+                >彩種選擇</label
+              >
               <select id="secLotto" class="form-select label-text">
                 <option value="L539">539</option>
                 <option value="L649">大樂透</option>
@@ -72,16 +81,25 @@
                 <option value="LSix">六合彩</option>
               </select>
             </div>
+            <div class="col-6">
+              <label for="secUpdateType" class="form-label small text-muted"
+                >任務類型</label
+              >
+              <select id="secUpdateType" class="form-select label-text">
+                <option value="Cmb">合併表格</option>
+                <option value="Miss">遺漏表</option>
+              </select>
+            </div>
           </div>
-          <div class="row g-2 align-items-end">
+          <div class="row g-2 align-items-end mt-2">
             <div class="col-6">
               <div class="d-grid">
                 <button
                   class="btn btn-primary label-text text-white"
                   type="button"
-                  id="btnCmbUpdate"
+                  id="btnUpdate"
                 >
-                  <i class="fas fa-sync-alt me-2"></i> 合併表格更新
+                  <i class="fas fa-play me-2"></i> 啟動更新
                 </button>
               </div>
             </div>
@@ -90,35 +108,49 @@
                 <button
                   class="btn btn-danger label-text text-white"
                   type="button"
-                  id="btnCmbStop"
+                  id="btnStop"
                   disabled
                 >
-                  <i class="fas fa-stop me-2"></i> 合併表格停止
+                  <i class="fas fa-stop me-2"></i> 停止執行
                 </button>
               </div>
             </div>
           </div>
-          <div class="row g-2 align-items-end">
-            <div class="col-6">
+          <div class="row g-2 align-items-end mt-2">
+            <div class="col-12">
               <div class="d-grid">
                 <button
-                  class="btn btn-primary label-text text-white"
+                  class="btn btn-info label-text text-white"
                   type="button"
-                  id="btnMissUpdate"
+                  id="btnUpdateAll"
                 >
-                  <i class="fas fa-sync-alt me-2"></i> 遺漏表更新
+                  <i class="fas fa-magic me-2"></i> 一鍵更新全部彩種
                 </button>
               </div>
             </div>
-            <div class="col-6">
+          </div>
+          <div class="row g-2 align-items-end mt-2">
+            <div class="col-12">
               <div class="d-grid">
                 <button
-                  class="btn btn-danger label-text text-white"
+                  class="btn btn-secondary label-text text-white"
                   type="button"
-                  id="btnMissStop"
-                  disabled
+                  id="btnClearProgress"
                 >
-                  <i class="fas fa-stop me-2"></i> 遺漏表停止
+                  <i class="fas fa-eraser me-2"></i> 清理快取進度
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="row g-2 align-items-end mt-2">
+            <div class="col-12">
+              <div class="d-grid">
+                <button
+                  class="btn btn-warning label-text text-white"
+                  type="button"
+                  id="btnCheckHealth"
+                >
+                  <i class="fas fa-heartbeat me-2"></i> 資料庫體檢
                 </button>
               </div>
             </div>
@@ -130,212 +162,468 @@
     <script>
       /* global google, AppUI, openPageUrl */
       (function ($) {
-        /** @type {string|null} */
-        var UpdateStatus = null;
+        // 將狀態變數提升至 IIFE 作用域，確保所有 window 函式都能存取
+        let isUpdatingAll = false;
+        let updateQueue = [];
+        let failedTasks = [];
+        let batchTaskDurations = [];
+        let currentTaskStartTime = null;
+        const allLotteries = ["L539", "L649", "L638", "LSix"];
+        const lottoNames = {
+          L539: "539",
+          L649: "大樂透",
+          L638: "威力彩",
+          LSix: "六合彩",
+        };
 
         $(document).ready(function () {
-          $("#btnCmbUpdate").click(handleCmbUpdate);
-          $("#btnCmbStop").click(stopCmbUpdate);
-          $("#btnMissUpdate").click(handleMissUpdate);
-          $("#btnMissStop").click(stopMissUpdate);
+          $("#btnUpdate").click(handleUpdate);
+          $("#btnStop").click(stopUpdate);
+          $("#btnCheckHealth").click(handleCheckDatabaseHealth);
+          $("#btnClearProgress").click(handleClearProgress);
           sessionStorage.removeItem("UpdateStatus");
-          google.script.run.clearProgress("Update_JOB");
-          google.script.run.clearProgress("Miss_JOB");
+
+          // 不再於頁面載入時清除進度，保留斷點續傳的可能性
         });
 
-        window.handleCmbUpdate = function (e) {
+        // 處理單一彩種更新
+        window.handleUpdate = function (e) {
           if (e) e.preventDefault();
-          var lotto = $("#secLotto").val();
+          const lotto = $("#secLotto").val();
+          const type = $("#secUpdateType").val();
+          const typeName = type === "Cmb" ? "合併表格" : "遺漏表";
+          const lottoName = lottoNames[lotto] || lotto;
 
           const startProcess = () => {
+            // 啟動前先清空該任務的舊進度，確保是全新開始
+            const jobKey = type === "Cmb" ? "Update_JOB" : "Miss_JOB";
+            google.script.run.clearProgress(jobKey);
+            $("#queueStatus").addClass("d-none"); // 單一任務隱藏佇列狀態
+
             $("#progressArea").show();
-            updateProgressBar(0, 100, "啟動中...");
-            callCmbUpdate(lotto);
+            updateProgressBar(
+              0,
+              100,
+              "啟動中...",
+              `當前任務：${lottoName} - ${typeName}`,
+            );
+            callUpdateProcess(type, lotto, false); // 明確指定為非批次更新
           };
-          AppUI.confirm("確認更新合併表格?", "這將會從來源抓取新資料。").then(
-            (result) => {
-              if (result.isConfirmed) {
-                UpdateStatus = sessionStorage.getItem("UpdateStatus");
-                if (UpdateStatus === null) {
-                  sessionStorage.setItem("UpdateStatus", "continue");
-                }
-                window.freeUI("Cmb");
-                startProcess();
-              } else {
-                window.resetUI();
-              }
-            },
-          );
-        };
-
-        window.callCmbUpdate = function (lotto) {
-          UpdateStatus = sessionStorage.getItem("UpdateStatus");
-          // console.log(UpdateStatus);
-          if (UpdateStatus == "stop") {
-            AppUI.error("處理停止", "使用者已手動終止更新").then(() => {
-              sessionStorage.removeItem("UpdateStatus");
-              resetUI();
-              // 必須等待後端 clearProgress 完成後才重新載入頁面
-              // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
-              google.script.run
-                .withSuccessHandler(function () {
-                  //重新戴入頁面
-                  setTimeout(function () {
-                    openPageUrl("UpdateAll");
-                  }, 100);
-                })
-                .withFailureHandler(window.showError)
-                .clearProgress("Update_JOB");
-            });
-            return;
-          } else {
-            google.script.run
-              .withSuccessHandler(function (res) {
-                if (res.status === "continue") {
-                  // 計算並更新百分比
-                  let percent = Math.round(
-                    (res.currentIndex / res.total) * 100,
-                  );
-                  updateProgressBar(percent, 100, res.message);
-                  // 停上一下再繼續下一回合
-                  setTimeout(() => {
-                    callCmbUpdate(lotto);
-                  }, 2000);
-                } else if (res.status === "complete") {
-                  // 完成
-                  updateProgressBar(100, 100, res.message);
-                  AppUI.success("處理完成", res.message).then(() => {
-                    sessionStorage.removeItem("UpdateStatus");
-                    window.resetUI();
-                  });
-                } else if (res.status === "error") {
-                  // 處理錯誤情況
-                  AppUI.error("處理失敗", res.message).then(() => {
-                    window.resetUI();
-                  });
-                }
-              })
-              .withFailureHandler(AppUI.showCommonError.bind(AppUI))
-              .combineData(lotto);
-          }
-        };
-
-        window.stopCmbUpdate = function () {
-          $("#btnCmbStop")
-            .prop("disabled", true)
-            .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
-          sessionStorage.setItem("UpdateStatus", "stop");
-        };
-
-        window.handleMissUpdate = function (e) {
-          if (e) e.preventDefault();
-          var lotto = $("#secLotto").val();
-
-          const startProcess = () => {
-            $("#progressArea").show();
-            updateProgressBar(0, 100, "啟動中...");
-            callMissUpdate(lotto);
-          };
-          AppUI.confirm("確認更新遺漏表?").then((result) => {
+          AppUI.confirm(
+            `確認更新${typeName}?`,
+            "這將會從來源抓取新資料。",
+          ).then((result) => {
             if (result.isConfirmed) {
-              UpdateStatus = sessionStorage.getItem("UpdateStatus");
-              if (UpdateStatus === null) {
-                sessionStorage.setItem("UpdateStatus", "continue");
-              }
-              window.freeUI("Miss");
+              sessionStorage.setItem("UpdateStatus", "continue");
+              window.freeUI();
               startProcess();
-            } else {
-              window.resetUI();
             }
           });
         };
 
-        window.callMissUpdate = function (lotto) {
-          UpdateStatus = sessionStorage.getItem("UpdateStatus");
-          // console.log(UpdateStatus);
+        // 新增處理一鍵更新所有彩種的函式
+        $("#btnUpdateAll").click(handleUpdateAllLotteries);
+
+        window.handleUpdateAllLotteries = function (e) {
+          if (e) e.preventDefault();
+
+          AppUI.confirm(
+            "確認一鍵更新所有彩種?",
+            "這將會依序更新所有彩種的合併表格與遺漏表，過程可能較長。",
+          ).then((result) => {
+            if (result.isConfirmed) {
+              isUpdatingAll = true;
+              updateQueue = [];
+              failedTasks = [];
+              batchTaskDurations = [];
+              // 批次啟動前先清除所有相關進度快取
+              google.script.run.clearProgress("Update_JOB");
+              google.script.run.clearProgress("Miss_JOB");
+
+              allLotteries.forEach((lotto) => {
+                updateQueue.push({ lotto: lotto, type: "Cmb" });
+                updateQueue.push({ lotto: lotto, type: "Miss" });
+              });
+              sessionStorage.setItem("UpdateStatus", "continue");
+              window.freeUI();
+              startNextQueuedUpdate();
+            }
+          });
+        };
+
+        function startNextQueuedUpdate() {
+          if (updateQueue.length === 0) {
+            $("#queueStatus").addClass("d-none");
+            if (failedTasks.length > 0) {
+              const errorListItems = failedTasks
+                .map(
+                  (t) =>
+                    `<li><b>${lottoNames[t.lotto] || t.lotto}</b> (${t.type === "Cmb" ? "合併" : "遺漏"}): ${t.msg}</li>`,
+                )
+                .join("");
+
+              // 使用 Swal.fire 自定義視窗，提供重試按鈕
+              Swal.fire({
+                title: "批次更新結束 (部分失敗)",
+                html: `完成更新，但以下項目發生錯誤：<br>
+                       <div class="text-start small mt-2 bg-light p-2 rounded border" style="max-height: 200px; overflow-y: auto;">
+                         <ul class="mb-0 ps-3">${errorListItems}</ul>
+                       </div><p class="mt-2 mb-0 small text-muted">是否要針對上述失敗項目重新執行？</p>`,
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonText:
+                  '<i class="fas fa-redo me-1"></i> 重試失敗項目',
+                cancelButtonText: "關閉並結束",
+                allowOutsideClick: false,
+              }).then((result) => {
+                if (result.isConfirmed) {
+                  handleRetryFailures();
+                } else {
+                  isUpdatingAll = false;
+                  window.resetUI();
+                }
+              });
+            } else {
+              AppUI.success("所有彩種更新完成！").then(() => {
+                isUpdatingAll = false;
+                window.resetUI();
+              });
+            }
+            return;
+          }
+
+          const nextTask = updateQueue.shift();
+          const typeName = nextTask.type === "Cmb" ? "合併表格" : "遺漏表";
+          const lottoName = lottoNames[nextTask.lotto] || nextTask.lotto;
+
+          // 計算預估剩餘時間 (基於已完成任務的平均時間)
+          let timeEstimate = "";
+          if (batchTaskDurations.length > 0) {
+            const avg =
+              batchTaskDurations.reduce((a, b) => a + b, 0) /
+              batchTaskDurations.length;
+            const remainingTasksCount = updateQueue.length + 1; // 包含當前正在執行的這一個
+            timeEstimate = ` | 預計剩餘: ${formatDuration(avg * remainingTasksCount)}`;
+          }
+
+          // 更新佇列剩餘顯示
+          $("#queueStatus")
+            .removeClass("d-none")
+            .html(
+              `<i class="fas fa-list-ol me-1"></i>佇列剩餘: ${updateQueue.length} 任務${timeEstimate}`,
+            );
+
+          currentTaskStartTime = Date.now();
+
+          updateProgressBar(
+            0,
+            100,
+            "初始化...",
+            `一鍵更新：${lottoName} (${typeName})`,
+          );
+          callUpdateProcess(nextTask.type, nextTask.lotto, true); // 傳遞 true 表示為批次更新
+        }
+
+        /**
+         * 處理重試失敗項目的邏輯
+         */
+        window.handleRetryFailures = function () {
+          // 將失敗項目重新轉換回任務格式
+          updateQueue = failedTasks.map((t) => ({
+            lotto: t.lotto,
+            type: t.type,
+          }));
+          failedTasks = []; // 重置失敗清單
+          isUpdatingAll = true;
+          window.freeUI();
+          startNextQueuedUpdate();
+        };
+
+        // 更新處理進程的通用函式，增加 isBatchUpdate 參數
+        window.callUpdateProcess = function (type, lotto, isBatchUpdate) {
+          const UpdateStatus = sessionStorage.getItem("UpdateStatus");
+          const jobKey = type === "Cmb" ? "Update_JOB" : "Miss_JOB";
+
           if (UpdateStatus == "stop") {
-            AppUI.error("處理停止", "遺漏表更新已終止").then(() => {
+            AppUI.error("處理停止", "任務已由使用者手動終止").then(() => {
               sessionStorage.removeItem("UpdateStatus");
-              window.resetUI();
-              // 必須等待後端 clearProgress 完成後才重新載入頁面
-              // 否則會因為頁面已跳轉而導致 message channel closed 錯誤
+              isUpdatingAll = false; // 確保批次更新狀態被重置
+              resetUI();
               google.script.run
-                .withSuccessHandler(function () {
-                  //重新戴入頁面
-                  setTimeout(function () {
-                    openPageUrl("UpdateAll");
-                  }, 100);
-                })
+                .withSuccessHandler(() =>
+                  setTimeout(() => openPageUrl("UpdateAll"), 100),
+                )
                 .withFailureHandler(window.showError)
-                .clearProgress("Miss_JOB");
+                .clearProgress(jobKey);
             });
             return;
-          } else {
-            google.script.run
-              .withSuccessHandler(function (res) {
-                if (res.status === "continue") {
-                  // 計算並更新百分比
-                  let percent = Math.round(
-                    (res.currentIndex / res.total) * 100,
-                  );
-                  updateProgressBar(percent, 100, res.message);
-                  // 停上一下再繼續下一回合
-                  setTimeout(() => {
-                    callMissUpdate(lotto);
-                  }, 2000);
-                } else if (res.status === "complete") {
-                  // 完成
-                  updateProgressBar(100, 100, res.message);
+          }
+
+          const runner = google.script.run
+            .withSuccessHandler(function (res) {
+              if (res.status === "continue") {
+                let percent = Math.round((res.currentIndex / res.total) * 100);
+                updateProgressBar(percent, 100, res.message);
+                setTimeout(
+                  () => callUpdateProcess(type, lotto, isBatchUpdate),
+                  2000,
+                ); // 繼續傳遞 isBatchUpdate 狀態
+              } else if (res.status === "complete") {
+                updateProgressBar(100, 100, res.message);
+                if (isBatchUpdate) {
+                  // 紀錄該任務耗時
+                  if (currentTaskStartTime) {
+                    batchTaskDurations.push(Date.now() - currentTaskStartTime);
+                  }
+                  // 如果是批次更新的一部分，則不顯示成功訊息，直接進行下一個任務
+                  startNextQueuedUpdate();
+                } else {
+                  // 否則，顯示成功訊息並重置 UI
                   AppUI.success("處理完成", res.message).then(() => {
                     sessionStorage.removeItem("UpdateStatus");
                     window.resetUI();
                   });
-                } else if (res.status === "error") {
-                  // 處理錯誤情況
+                }
+              } else if (res.status === "error") {
+                if (isBatchUpdate) {
+                  // 失敗也列入時間計算，以維護預估穩定性
+                  if (currentTaskStartTime) {
+                    batchTaskDurations.push(Date.now() - currentTaskStartTime);
+                  }
+                  failedTasks.push({
+                    lotto: lotto,
+                    type: type,
+                    msg: res.message,
+                  });
+                  console.warn(
+                    `[Batch] 任務失敗: ${lotto} ${type}`,
+                    res.message,
+                  );
+                  startNextQueuedUpdate(); // 跳過並繼續下一個
+                } else {
                   AppUI.error("處理失敗", res.message).then(() => {
+                    isUpdatingAll = false;
                     window.resetUI();
                   });
                 }
-              })
-              .withFailureHandler(AppUI.showCommonError.bind(AppUI))
-              .genMissData(lotto);
-          }
+              }
+            })
+            .withFailureHandler(function (err) {
+              if (isBatchUpdate) {
+                // 超時或連線中斷也列入計算
+                if (currentTaskStartTime) {
+                  batchTaskDurations.push(Date.now() - currentTaskStartTime);
+                }
+                // 若發生超時 (Timeout)，不清除後端進度，僅紀錄並跳過
+                const errorMsg = err.message || "系統超時或連線中斷";
+                failedTasks.push({ lotto: lotto, type: type, msg: errorMsg });
+                console.error(
+                  `[Batch Critical] ${lotto} ${type} 失敗:`,
+                  errorMsg,
+                );
+                startNextQueuedUpdate(); // 超時也跳過繼續下一個
+              } else {
+                AppUI.showCommonError(err);
+              }
+            });
+
+          if (type === "Cmb") runner.combineData(lotto);
+          else runner.genMissData(lotto);
         };
 
-        window.stopMissUpdate = function () {
-          $("#btnMissStop")
+        window.stopUpdate = function () {
+          $("#btnStop")
             .prop("disabled", true)
             .html('<i class="fas fa-spinner fa-spin me-2"></i> 停止中...');
           sessionStorage.setItem("UpdateStatus", "stop");
+          // 如果正在進行批次更新，則清空任務佇列並隱藏狀態
+          if (isUpdatingAll) {
+            updateQueue = [];
+            isUpdatingAll = false;
+            $("#queueStatus").addClass("d-none");
+          }
         };
 
-        window.updateProgressBar = function (percent, total, message) {
+        // 更新進度條，新增 taskInfo 參數用於更新下方提示文字
+        window.updateProgressBar = function (
+          percent,
+          total,
+          message,
+          taskInfo,
+        ) {
           $("#progressBar").width(percent + "%");
           $("#progressPercent").text(percent + "%");
           $("#progressLabel").text(message);
+          if (taskInfo) {
+            $("#currentTask").text(taskInfo);
+          }
         };
 
-        window.freeUI = function (btn) {
-          $("#btnCmbUpdate").prop("disabled", true);
-          $("#btnCmbStop").prop("disabled", !(btn === "Cmb"));
-          $("#btnMissUpdate").prop("disabled", true);
-          $("#btnMissStop").prop("disabled", !(btn === "Miss"));
-          $("#secLotto").prop("disabled", true);
+        /**
+         * 處理清理快取進度按鈕的點擊事件
+         */
+        window.handleClearProgress = function () {
+          AppUI.confirm(
+            "確認清理所有快取進度?",
+            "這將會重置所有更新任務的斷點續傳狀態，並清理各彩種過期快取數據。",
+          ).then((result) => {
+            if (result.isConfirmed) {
+              AppUI.loading("處理中", "正在執行全局快取清理任務...");
+              google.script.run
+                .withSuccessHandler(function (res) {
+                  // 將後端回傳的換行符號轉為 <br> 以利 SweetAlert2 正確渲染摘要內容
+                  AppUI.success(
+                    "清理完成",
+                    res.message.replace(/\n/g, "<br>"),
+                  ).then(() => {
+                    window.resetUI();
+                  });
+                })
+                .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+                .cleanupAllLotteryCaches();
+            }
+          });
+        };
+
+        /**
+         * 處理資料庫體檢按鈕的點擊事件
+         */
+        window.handleCheckDatabaseHealth = function () {
+          AppUI.loading("檢查中", "正在生成資料庫體檢報告...");
+          google.script.run
+            .withSuccessHandler(function (res) {
+              if (res.status === "success") {
+                AppUI.success(
+                  "體檢完成",
+                  res.message.replace(/\n/g, "<br>"),
+                ).then(() => {
+                  window.resetUI();
+                });
+              } else if (res.status === "warning" && res.details) {
+                // 解析報告中的基準日期
+                const adDateMatch = res.message.match(/AllData\): ([\d-]+)/);
+                const adDate = adDateMatch ? adDateMatch[1] : "未知";
+
+                let html = `
+                  <div class="text-start small">
+                    <div class="mb-3 p-2 bg-light border rounded shadow-sm">主資料來源 (AllData): <b class="text-primary">${adDate}</b></div>
+                    <div class="list-group border-0">
+                `;
+
+                res.details.forEach((item) => {
+                  const name = lottoNames[item.id] || item.id;
+                  const fixBtn = item.canFix
+                    ? `<button class="btn btn-sm btn-primary py-0 px-2 float-end" onclick="window.triggerQuickFix('${item.id}', 'Cmb')"><i class="fas fa-wrench me-1"></i>修復</button>`
+                    : "";
+                  html += `
+                    <div class="list-group-item py-2 px-1 border-0 border-bottom d-flex justify-content-between align-items-center">
+                      <span><b class="text-dark">${name}</b>: ${item.status} <span class="text-muted">(${item.date})</span></span>
+                      ${fixBtn}
+                    </div>`;
+                });
+
+                // 檢查是否有任何異常項目需要修復
+                const hasAbnormal = res.details.some((item) => item.canFix);
+                if (hasAbnormal) {
+                  window._lastHealthDetails = res.details; // 暫存明細供一鍵修復使用
+                  html += `
+                    <div class="mt-3 d-grid">
+                      <button class="btn btn-warning btn-sm fw-bold shadow-sm" onclick="window.triggerFixAll()">
+                        <i class="fas fa-tools me-1"></i> 修復所有異常項目
+                      </button>
+                    </div>`;
+                }
+
+                html += `</div></div>`;
+
+                Swal.fire({
+                  title:
+                    '<i class="fas fa-notes-medical text-warning me-2"></i>資料庫體檢報告',
+                  html: html,
+                  width: "500px",
+                  confirmButtonText: "關閉並返回",
+                }).then(() => window.resetUI());
+              } else {
+                AppUI.error(
+                  "體檢失敗",
+                  res.message.replace(/\n/g, "<br>"),
+                ).then(() => {
+                  window.resetUI();
+                });
+              }
+            })
+            .withFailureHandler(AppUI.showCommonError.bind(AppUI))
+            .checkDatabaseHealth();
+        };
+
+        /**
+         * 一鍵修復：針對體檢報告中的所有異常項目啟動佇列更新
+         */
+        window.triggerFixAll = function () {
+          if (!window._lastHealthDetails) return;
+
+          const itemsToFix = window._lastHealthDetails.filter((d) => d.canFix);
+          if (itemsToFix.length === 0) return;
+
+          AppUI.confirm(
+            "啟動批次修復?",
+            `系統將自動更新 ${itemsToFix.length} 個異常彩種的合併表格與遺漏表。`,
+          ).then((result) => {
+            if (result.isConfirmed) {
+              Swal.close(); // 關閉報告視窗
+              isUpdatingAll = true;
+              updateQueue = [];
+              failedTasks = [];
+              batchTaskDurations = [];
+
+              // 批次啟動前先清除相關進度快取
+              google.script.run.clearProgress("Update_JOB");
+              google.script.run.clearProgress("Miss_JOB");
+
+              // 依序將需要修復的彩種放入任務佇列
+              itemsToFix.forEach((item) => {
+                updateQueue.push({ lotto: item.id, type: "Cmb" });
+                updateQueue.push({ lotto: item.id, type: "Miss" });
+              });
+
+              sessionStorage.setItem("UpdateStatus", "continue");
+              window.freeUI();
+              startNextQueuedUpdate();
+            }
+          });
+        };
+
+        /**
+         * 快速修復：從體檢報告直接觸發更新
+         */
+        window.triggerQuickFix = function (lotto, type) {
+          Swal.close();
+          $("#secLotto").val(lotto);
+          $("#secUpdateType").val(type);
+          window.handleUpdate(); // 觸發標準更新流程（含確認視窗）
+        };
+
+        window.freeUI = function () {
+          $(
+            "#btnUpdate, #secLotto, #secUpdateType, #btnUpdateAll, #btnClearProgress, #btnCheckHealth",
+          ).prop("disabled", true);
+          $("#btnStop").prop("disabled", false);
         };
 
         window.resetUI = function () {
-          $("#btnCmbUpdate").prop("disabled", false);
-          $("#btnCmbStop")
+          $(
+            "#btnUpdate, #secLotto, #secUpdateType, #btnUpdateAll, #btnClearProgress, #btnCheckHealth",
+          ).prop("disabled", false);
+          $("#btnStop")
             .prop("disabled", true)
-            .html('<i class="fas fa-stop me-2"></i> 合併表格停止');
-          $("#btnMissUpdate").prop("disabled", false);
-          $("#btnMissStop")
-            .prop("disabled", true)
-            .html('<i class="fas fa-stop me-2"></i> 遺漏表停止');
-          $("#secLotto").prop("disabled", false);
+            .html('<i class="fas fa-stop me-2"></i> 停止執行');
           $("#progressArea").fadeOut();
           $("#progressBar").width("0%");
           $("#progressPercent").text("0%");
+          $("#queueStatus").addClass("d-none").text("");
+          $("#currentTask").text(""); // 重置時清空任務文字
+          failedTasks = [];
+          batchTaskDurations = [];
           sessionStorage.removeItem("UpdateStatus");
         };
 
@@ -343,6 +631,22 @@
           window.resetUI();
           AppUI.showCommonError(err);
         };
+
+        /**
+         * 格式化毫秒為易讀時間字串
+         */
+        function formatDuration(ms) {
+          if (ms <= 0) return "0秒";
+          const totalSeconds = Math.floor(ms / 1000);
+          const hours = Math.floor(totalSeconds / 3600);
+          const minutes = Math.floor((totalSeconds % 3600) / 60);
+          const seconds = totalSeconds % 60;
+          let result = "";
+          if (hours > 0) result += hours + "時";
+          if (minutes > 0) result += minutes + "分";
+          if (seconds > 0 || result === "") result += seconds + "秒";
+          return result;
+        }
       })(jQuery);
     </script>
     <?!= includeFooter(); ?>

@@ -337,6 +337,27 @@
 
       <li class="nav-item">
         <a
+          class="nav-link text-success fw-bold"
+          id="navRunDailyUpdate"
+          href="javascript:void(0)"
+          onclick="handleDailyUpdate()"
+        >
+          <i class="fas fa-play-circle me-2"></i>執行每日更新 (自動續傳)
+        </a>
+      </li>
+
+      <li class="nav-item">
+        <a
+          class="nav-link text-primary fw-bold"
+          id="navRefreshUI"
+          href="javascript:void(0)"
+          onclick="handleRefreshUI()"
+        >
+          <i class="fas fa-sync-alt me-2"></i>更新界面 (清除快取)
+        </a>
+      </li>
+      <li class="nav-item">
+        <a
           class="nav-link text-warning"
           id="navRefreshMapping"
           href="javascript:void(0)"
@@ -427,6 +448,77 @@
     }
   }
 
+  /**
+   * 處理執行每日更新的 UI 邏輯 (支援自動續傳)
+   */
+  function handleDailyUpdate() {
+    // 1. 關閉 Offcanvas 導覽列
+    var offcanvasElement = document.querySelector("#offcanvasNavbar");
+    if (offcanvasElement) {
+      var bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+      if (bsOffcanvas) bsOffcanvas.hide();
+    }
+
+    // 2. 顯示初始化 Loading
+    AppUI.loading("同步中", "正在準備執行每日更新任務...");
+
+    // 3. 定義遞迴執行函式
+    function runUpdateCycle() {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.status === "continue") {
+            // 收到續傳訊號，更新訊息並再次發送請求
+            AppUI.loading("更新進行中", res.message); // 使用 res.message 更新進度
+            console.log("[DailyUpdate] " + res.message);
+            runUpdateCycle();
+          } else if (res.status === "complete") {
+            // 全部完成
+            AppUI.success("更新成功", res.message, 3000).then(function () {
+              if (typeof checkSystemStatus === "function") checkSystemStatus(true);
+            });
+          } else {
+            AppUI.showCommonError(res);
+          }
+        })
+        .withFailureHandler(function (err) {
+          AppUI.showCommonError(err);
+        })
+        .dailyupdate(true);
+    }
+
+    // 4. 開始第一次執行
+    runUpdateCycle();
+  }
+
+  /**
+   * 處理更新界面的 UI 邏輯 (清除快取並重新載入頁面)
+   */
+  function handleRefreshUI() {
+    // 1. 關閉 Offcanvas 導覽列
+    var offcanvasElement = document.querySelector("#offcanvasNavbar");
+    if (offcanvasElement) {
+      var bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+      if (bsOffcanvas) bsOffcanvas.hide();
+    }
+
+    // 2. 顯示初始化 Loading
+    AppUI.loading("更新界面中", "正在清除瀏覽器快取並重新載入頁面...");
+
+    // 3. 呼叫後端 clearAllCache (會遞增 APP_VERSION 並失效快取)
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res.status === "success") {
+          AppUI.success("更新成功", res.message, 1500).then(function () {
+            // 重新載入當前頁面，強制從伺服器獲取最新版本
+            openPageUrl(window.currentPageName || "Index", "_top", true);
+          });
+        } else {
+          AppUI.showCommonError(res);
+        }
+      })
+      .withFailureHandler(AppUI.showCommonError)
+      .clearAllCache(false); // 傳入 false 表示不是大版本更新，只遞增 minor 版本
+  }
   /**
    * 處理刷新對照表快取的 UI 邏輯
    */

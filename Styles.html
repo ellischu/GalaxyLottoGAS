@@ -1,13 +1,23 @@
 <style>
   /* 共用全域樣式 */
+  :root {
+    --font-scale: 1; /* 確保在 JS 載入前基礎比例不為 0 */
+  }
+
   body {
     background-color: #f8f9fa;
     font-family: "Microsoft JhengHei", Arial, sans-serif;
+    padding-bottom: 80px; /* 增加底部填充，避免內容被切或與底部導航重疊 */
     line-height: 1.6;
   }
 
   .navbar-custom {
-    background-color: rgba(13, 110, 253, 0.8) !important; /* 半透明 80%，確保飽和度 */
+    background-color: rgba(
+      13,
+      110,
+      253,
+      0.8
+    ) !important; /* 半透明 80%，確保飽和度 */
     backdrop-filter: blur(8px); /* 磨砂玻璃效果 */
     color: white;
   }
@@ -243,11 +253,13 @@
 
   /* 強化開關控制項 (Switch) 的觸控面積與比例 */
   .form-check-input {
-    width: calc(4rem * var(--font-scale)) !important;
-    height: calc(2rem * var(--font-scale)) !important;
+    width: calc(2.4rem * var(--font-scale)) !important; /* 縮小至 60% */
+    height: calc(1.2rem * var(--font-scale)) !important; /* 縮小至 60% */
     margin-top: 0 !important;
     /* 確保內部的開關圓鈕或勾選勾勾隨比例縮放 */
-    background-size: calc(1.5rem * var(--font-scale)) !important;
+    background-size: calc(
+      1.2rem * var(--font-scale)
+    ) !important; /* 縮小至 80% */
     cursor: pointer;
     transition:
       box-shadow 0.2s ease-in-out,
@@ -460,6 +472,18 @@
   [data-bs-theme="dark"] .table-light {
     --bs-table-bg: #2d2d2d;
     --bs-table-color: #fff;
+  }
+
+  /* 修正開關在深色模式下的圖示 (SVG 圓鈕) 不可見問題 */
+  [data-bs-theme="dark"] .form-check-input {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.25);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%28255, 255, 255, 0.6%29'/%3e%3c/svg%3e") !important;
+  }
+  [data-bs-theme="dark"] .form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
   }
 
   /* === Retina 高解析度螢幕優化 (High DPI Optimization) === */

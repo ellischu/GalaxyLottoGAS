@@ -10,48 +10,92 @@
 https://api.taiwanlottery.com/TLCAPIWeB/Lottery/Daily539Result?period=115000001
  */
 
-function dailyupdate() {
-  // 直接呼叫 updatenumber 函式並指定 sheetName
-  updatenumber("L539");
-  Logger.log("已抓取L539");
-  updatenumber("L649");
-  Logger.log("已抓取L649");
-  updatenumber("L638");
-  Logger.log("已抓取L638");
-  updatenumber("LSix");
-  Logger.log("已抓取LSix");
-  // 合併
-  var result = combineData("L539");
-  Logger.log("已合併L539" + result.message);
+/**
+ * 每日更新主流程
+ * @param {boolean} isUI 是否為 UI 模式 (UI 模式會每步回傳以更新進度條)
+ */
+function dailyupdate(isUI) {
+  const stateKey = "DAILY_UPDATE_FLOW_STATE";
+  let state = getProgress(stateKey) || { step: 0 };
+  const lottos = ["L539", "L649", "L638", "LSix"];
 
-  result = combineData("L649");
-  Logger.log("已合併L649" + result.message);
+  // 定義任務序列
+  const tasks = [];
+  lottos.forEach((l) =>
+    tasks.push({ name: "Update_" + l, run: () => updatenumber(l) }),
+  );
+  lottos.forEach((l) =>
+    tasks.push({ name: "Combine_" + l, run: () => combineData(l) }),
+  );
+  lottos.forEach((l) =>
+    tasks.push({ name: "Miss_" + l, run: () => genMissData(l) }),
+  );
 
-  result = combineData("L638");
-  Logger.log("已合併L638" + result.message);
+  tasks.push({
+    name: "PreloadCache",
+    run: () => {
+      preloadPrediction1Cache();
+      return { status: "complete" };
+    },
+  });
+  tasks.push({
+    name: "Archive",
+    run: () => {
+      maintenance_ArchiveOldRecords();
+      return { status: "complete" };
+    },
+  });
+  tasks.push({
+    name: "Cleanup",
+    run: () => {
+      autoCleanupErrorLog(30);
+      return { status: "complete" };
+    },
+  });
 
-  result = combineData("LSix");
-  Logger.log("已合併LSix" + result.message);
+  Logger.log("開始執行每日更新，當前步驟索引: " + state.step);
 
-  genMissData("L539");
-  Logger.log("已生成L539遺漏值");
-  genMissData("L649");
-  Logger.log("已生成L649遺漏值");
-  genMissData("L638");
-  Logger.log("已生成L638遺漏值");
-  genMissData("LSix");
-  Logger.log("已生成LSix遺漏值");
+  for (let i = state.step; i < tasks.length; i++) {
+    // 檢查整體執行時間
+    if (isNearTimeout()) {
+      saveProgress(stateKey, { step: i });
+      Logger.log("超時保護觸發：已暫停於步驟 " + tasks[i].name);
+      return {
+        status: "continue",
+        message: "系統即將超時，已存檔並待下次觸發續傳。",
+      };
+    }
 
-  // --- 核心優化：執行快取預載，減少預測時的等待時間 ---
-  preloadPrediction1Cache();
+    let task = tasks[i];
+    Logger.log("正在執行: " + task.name);
 
-  // --- 維護任務：自動存檔 90 天前的已學習紀錄 ---
-  maintenance_ArchiveOldRecords();
+    let result = task.run();
 
-  // --- 維護任務：自動清理 30 天前的舊日誌 ---
-  autoCleanupErrorLog(30);
+    // 如果子任務回傳需要續傳，則停止目前序列
+    if (result && result.status === "continue") {
+      saveProgress(stateKey, { step: i });
+      Logger.log("子任務 " + task.name + " 要求續傳：" + result.message);
+      return result;
+    }
 
-  return { status: "complete", message: "每日更新任務已全數執行完畢" };
+    // 步驟完成，更新索引
+    state.step = i + 1;
+    saveProgress(stateKey, state);
+
+    // 核心修正：如果是 UI 觸發，則每個任務完成後回傳一次狀態給前端更新進度條。
+    // 若是背景排程觸發 (isUI 不為 true)，則在時間允許內繼續執行下一個任務。
+    if (isUI === true) {
+      return {
+        status: "continue",
+        message: `已完成任務: ${task.name}。準備執行下一個任務...`,
+      };
+    }
+  }
+
+  // 全部完成，清除流程進度
+  clearProgress(stateKey);
+  Logger.log("每日更新任務已全數執行完畢");
+  return { status: "complete", message: "全部任務已完成" };
 }
 
 function updatenumber(sheetName) {
@@ -98,18 +142,12 @@ function updatenumber(sheetName) {
   }
   Logger.log("使用 sheetName: " + sheetName + "，period 值: " + period);
 
-  //回傳抓取結果
-  // 今彩539： period,Date,L1,L2,L3,L4,L5 (drawNumberAppear)
-  // 大樂透： period,Date,L1,L2,L3,L4,L5,L6,S1 (drawNumberAppear)，S1 為特別號
-  // 威力彩： period,Date,L1,L2,L3,L4,L5,L6,S1 (drawNumberAppear)，S1 為特別號
-  // 六合彩： period,Date,L1,L2,L3,L4,L5,L6,S1 (drawNumberAppear)，S1 為特別號
+  var scrapeRes =
+    sheetName === "LSix"
+      ? scrapeDailySix(sheetName, period)
+      : scrapeDailyCash(sheetName, period);
+  var Result = scrapeRes.data || [];
 
-  var Result = [];
-  if (sheetName === "L539" || sheetName === "L649" || sheetName === "L638") {
-    Result = scrapeDailyCash(sheetName, period);
-  } else {
-    Result = scrapeDailySix(sheetName, period);
-  }
   var dataToWrite = [];
   if (Result && Result.length > 0) {
     // 這裡可以根據實際需求將 Result 寫入 Google Sheet，以下為示例程式碼
@@ -199,10 +237,17 @@ function updatenumber(sheetName) {
     sheet
       .getRange(lastRow + 1, 1, dataToWrite.length, dataToWrite[0].length)
       .setValues(dataToWrite);
+
+    Logger.log("成功寫入 " + dataToWrite.length + " 筆資料到 " + sheetName);
   }
-  Logger.log(
-    "成功寫入 " + dataToWrite.length + " 筆資料到 " + sheetName + " 工作表",
-  );
+
+  if (scrapeRes.status === "continue") {
+    return {
+      status: "continue",
+      message: sheetName + " 抓取未完，已處理至 " + scrapeRes.lastPeriod,
+    };
+  }
+
   return { status: "success", message: "工作表 " + sheetName + " 更新完成" };
 }
 
@@ -256,6 +301,11 @@ function scrapeDailyCash(sheetName, period) {
 
   var Lottoresult = [];
   for (var p = startperiod; p <= endperiod; p++) {
+    // 檢查超時
+    if (isNearTimeout()) {
+      return { status: "continue", data: Lottoresult, lastPeriod: p - 1 };
+    }
+
     // Logger.log("正在抓取期別: " + p);
     var url = url00 + url01 + "?period=" + p;
     // Logger.log("正在抓取網址: " + url);
@@ -293,7 +343,7 @@ function scrapeDailyCash(sheetName, period) {
       continue;
     }
   }
-  return Lottoresult;
+  return { status: "complete", data: Lottoresult };
 }
 
 function scrapeDailySix(sheetName, period) {
@@ -325,6 +375,11 @@ function scrapeDailySix(sheetName, period) {
 
     var match;
     while ((match = rowRegex.exec(html)) !== null) {
+      // 加入超時保護
+      if (isNearTimeout()) {
+        return { status: "continue", data: result, lastPeriod: "N/A" };
+      }
+
       var rowContent = match[1];
       var cells = [];
       var cellMatch;
@@ -372,7 +427,7 @@ function scrapeDailySix(sheetName, period) {
     Logger.log("scrapeDailySix 發生錯誤: " + e.toString());
   }
   // 回傳抓取結果 Logger.log("成功抓取 " + result.length + " 筆資料");
-  return result;
+  return { status: "complete", data: result };
 }
 
 function getendPeriod(sheetName, url00, url01, startperiod) {

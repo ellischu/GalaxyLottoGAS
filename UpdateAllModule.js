@@ -14,15 +14,30 @@ function combineData(sheetname) {
 
   const srsheet1 = mainspreadsheet.getSheetByName(sheetname);
 
+  // --- 自動偵測與修復 (Repair Logic) ---
+  let lastRow = trsheet.getLastRow();
+  // 1. 檢查標題列是否消失或損壞 (All 工作表的第一格應為 Date)
+  if (lastRow > 0 && trsheet.getRange(1, 1).getValue() !== "Date") {
+    Logger.log(`偵測到 ${sheetname} - All 工作表標題損壞，正在重置結構...`);
+    trsheet.clear();
+    lastRow = 0;
+  }
+
   // 檢查 trsheet 是否有資料，並取得最後一筆 Date 欄位資料
   // 如果沒有資料則 srsheet1 從第一筆資料開始結合
   let lastdate = null; //trsheet 的最後一筆 Date 欄位資料
-  const lastRow = trsheet.getLastRow();
   if (lastRow > 1) {
     var val = trsheet.getRange(lastRow, 1).getValue();
     // 檢查回傳的值是否可以被轉換為有效的日期物件
     if (val && !isNaN(new Date(val).getTime())) {
       lastdate = new Date(val);
+    } else {
+      // 修復：如果最後一行日期無效，移除該行並重新執行，以修復續傳邏輯
+      Logger.log(
+        `偵測到損壞的日期資料 (Row: ${lastRow})，正在移除並自動修復...`,
+      );
+      trsheet.deleteRow(lastRow);
+      return combineData(sheetname);
     }
   }
 
@@ -39,6 +54,25 @@ function combineData(sheetname) {
 
   // --- 效能優化：預先讀取 AllData 並建立索引 Map ---
   const allDataSheet = mainspreadsheet.getSheetByName("AllData");
+
+  // 2. 初始化標題 (如果表格是空的)
+  if (lastRow === 0) {
+    let headerRow = ["Date"];
+    lCols.forEach((_, i) => headerRow.push("N" + (i + 1)));
+    if (s1Col > -1) headerRow.push("S1");
+    if (sumCol > -1) headerRow.push("Sum");
+
+    // 加上來自 AllData 的擴充欄位標題
+    if (allDataSheet) {
+      const adHeaders = allDataSheet
+        .getRange(1, 1, 1, allDataSheet.getLastColumn())
+        .getValues()[0];
+      headerRow = headerRow.concat(adHeaders.slice(1));
+    }
+    trsheet.appendRow(headerRow);
+    Logger.log("已成功建立 'All' 工作表標頭。");
+  }
+
   const allDataMap = {};
   if (allDataSheet) {
     const adValues = allDataSheet.getDataRange().getValues();
@@ -96,14 +130,11 @@ function combineData(sheetname) {
     rowsToAdd.push(newRow);
 
     if (rowsToAdd.length >= batchSize || isNearTimeout()) {
-      saveProgress("Update_JOB", {
-        status: "continue",
-        currentIndex: i,
-        total: srData.length,
-      });
+      const nextIndex = i + 1; // 處理完當前索引 i，下次應從 i + 1 開始
 
-      try {
-        if (rowsToAdd.length > 0) {
+      if (rowsToAdd.length > 0) {
+        try {
+          // 1. 先執行 API 寫入操作 (主動存檔)
           trsheet
             .getRange(
               trsheet.getLastRow() + 1,
@@ -112,17 +143,31 @@ function combineData(sheetname) {
               rowsToAdd[0].length,
             )
             .setValues(rowsToAdd);
+
+          rowsToAdd = [];
+        } catch (e) {
+          return { status: "error", message: "合併表格批次寫入失敗：" + e };
         }
-      } catch (e) {
-        return { status: "error", message: "寫入試算表時發生錯誤：" + e };
       }
-      rowsToAdd = [];
+
+      // 2. 寫入成功或接近超時，立即更新續傳進度快照
+      saveProgress("Update_JOB", {
+        status: "continue",
+        currentIndex: nextIndex,
+        total: srData.length,
+      });
+
       if (isNearTimeout()) {
+        // 3. 偵測到即將超時，中斷迴圈並回傳狀態
         return {
           status: "continue",
           message:
-            "已處理 " + i + " / " + srData.length + " 筆資料，正在續傳...",
-          currentIndex: i,
+            "合併表格處理中 " +
+            nextIndex +
+            " / " +
+            srData.length +
+            "，正在續傳...",
+          currentIndex: nextIndex,
           total: srData.length,
         };
       }
@@ -147,11 +192,7 @@ function combineData(sheetname) {
 
   // 全部完成
   clearProgress("Update_JOB");
-  return {
-    status: "complete",
-    message: "全部處理完成！",
-    btntext: "確定",
-  };
+  return { status: "complete", message: "全部處理完成！", btntext: "確定" };
 }
 
 /**
@@ -205,7 +246,14 @@ function genMissData(sheetname) {
   let lastDate = null;
   let lastMissValues = []; // 儲存 M1...Mn 的前一筆狀態
   let lastSpecialMissValues = []; // 儲存 MS1...MSn (L638)
-  const trLastRow = trsheet.getLastRow();
+  let trLastRow = trsheet.getLastRow();
+
+  // --- 自動偵測與修復 (Repair Logic) ---
+  if (trLastRow > 0 && trsheet.getRange(1, 1).getValue() !== "Date") {
+    Logger.log(`偵測到 ${sheetname} - Miss 表格標題損壞，正在重置...`);
+    trsheet.clear();
+    trLastRow = 0;
+  }
 
   if (trLastRow > 1) {
     const trHeaders = trsheet
@@ -218,6 +266,11 @@ function genMissData(sheetname) {
     const dateVal = trLastRowData[trHeaders.indexOf("Date")];
     if (dateVal && !isNaN(new Date(dateVal).getTime())) {
       lastDate = new Date(dateVal);
+    } else {
+      // 修復：如果最後一行損壞，移除並遞迴重新執行
+      Logger.log("偵測到 Miss 表格末行損壞，正在執行自動修復...");
+      trsheet.deleteRow(trLastRow);
+      return genMissData(sheetname);
     }
 
     // 載入前一筆的遺漏值
@@ -314,31 +367,42 @@ function genMissData(sheetname) {
 
     // --- 效能優化：達到批次量或快要超時時寫入 ---
     if (rowsToAdd.length >= batchSize || isNearTimeout()) {
+      const nextIndex = i + 1; // 處理完當前索引 i，下次應從 i + 1 開始
+
+      if (rowsToAdd.length > 0) {
+        try {
+          // 1. 先執行 API 寫入操作 (主動存檔)
+          trsheet
+            .getRange(
+              trsheet.getLastRow() + 1,
+              1,
+              rowsToAdd.length,
+              rowsToAdd[0].length,
+            )
+            .setValues(rowsToAdd);
+
+          rowsToAdd = [];
+        } catch (e) {
+          return { status: "error", message: "遺漏表批次寫入失敗：" + e };
+        }
+      }
+
+      // 2. 寫入成功或接近超時，立即更新續傳進度快照
       saveProgress("Miss_JOB", {
         status: "continue",
         sheetname: sheetname,
-        currentIndex: i,
+        currentIndex: nextIndex,
         total: srData.length,
         lastMissValues: lastMissValues,
         lastSpecialMissValues: lastSpecialMissValues,
       });
 
-      if (rowsToAdd.length > 0) {
-        const targetRange = trsheet.getRange(
-          trsheet.getLastRow() + 1,
-          1,
-          rowsToAdd.length,
-          rowsToAdd[0].length,
-        );
-        targetRange.setValues(rowsToAdd);
-      }
-      rowsToAdd = [];
-
       if (isNearTimeout()) {
+        // 3. 偵測到即將超時，中斷迴圈並回傳狀態
         return {
           status: "continue",
-          message: "遺漏表處理中 " + i + " / " + srData.length,
-          currentIndex: i,
+          message: "遺漏表處理中 " + nextIndex + " / " + srData.length,
+          currentIndex: nextIndex,
           total: srData.length,
         };
       }
@@ -358,9 +422,156 @@ function genMissData(sheetname) {
   }
 
   clearProgress("Miss_JOB");
+  return { status: "complete", message: "全部處理完成！", btntext: "確定" };
+}
+
+/**
+ * 一鍵清理所有彩種過期快取與進度 (後端維護函式)
+ * 遍歷所有彩種，清理全局任務進度並觸發各試算表內部的過期版本管理
+ * @returns {Object} 執行報告
+ */
+function cleanupAllLotteryCaches() {
+  const lottos = ["L539", "L649", "L638", "LSix"];
+
+  // 1. 強制清理 PropertiesService 中的全局任務進度 (斷點續傳快取)
+  // 這確保了所有彩種的「合併表格」與「遺漏表」任務都會重新開始
+  try {
+    clearProgress("Update_JOB");
+    clearProgress("Miss_JOB");
+  } catch (e) {
+    Logger.log("清理全局進度標記時發生錯誤: " + e.message);
+  }
+
+  const summary = [];
+
+  // 2. 遍歷各彩種進行深層資料維護
+  lottos.forEach((lotto) => {
+    try {
+      const trObj = getTargetsheet("Sheets", lotto);
+      const ss = trObj.spreadsheet;
+
+      // 呼叫 Prediction1_Server.js 中的版本自動管理邏輯
+      // 這會移除 prct1_Property 中除最新 2 個演算法版本以外的所有過期數據
+      if (typeof managePrct1PropertyVersions === "function") {
+        managePrct1PropertyVersions(ss);
+      }
+
+      summary.push(`${lotto}: OK`);
+    } catch (e) {
+      summary.push(`${lotto}: Fail (${e.message})`);
+    }
+  });
+
   return {
-    status: "complete",
-    message: "全部處理完成！",
-    btntext: "確定",
+    status: "success",
+    message: "星系快取清理任務完成。\n結果摘要: " + summary.join(", "),
+  };
+}
+
+/**
+ * 資料庫體檢函式 (後端維護函式)
+ * 檢查各彩種 All 工作表的最後日期是否與 AllData 同步
+ * @returns {Object} 體檢報告
+ */
+function checkDatabaseHealth() {
+  const lottos = ["L539", "L649", "L638", "LSix"];
+  // 優先使用全域 mainspreadsheet 變數，若無則動態獲取
+  const mainSs =
+    typeof mainspreadsheet !== "undefined"
+      ? mainspreadsheet
+      : SpreadsheetApp.getActiveSpreadsheet();
+  const adSheet = mainSs.getSheetByName("AllData");
+
+  if (!adSheet) {
+    return { status: "error", message: "找不到主資料庫 AllData 工作表" };
+  }
+
+  // 1. 取得 AllData 最後一筆有效日期作為「基準時間」
+  const adLastRow = adSheet.getLastRow();
+  let adLastDateStr = "無資料";
+  let adLastTime = 0;
+
+  if (adLastRow > 1) {
+    const val = adSheet.getRange(adLastRow, 1).getValue();
+    if (val instanceof Date && !isNaN(val.getTime())) {
+      adLastDateStr = Utilities.formatDate(val, "Asia/Taipei", "yyyy-MM-dd");
+      adLastTime = new Date(val).setHours(0, 0, 0, 0); // 標準化比對
+    }
+  }
+
+  const reports = [];
+  const details = [];
+  let allSynced = true;
+
+  // 2. 遍歷各彩種檢查同步狀態
+  lottos.forEach((lotto) => {
+    try {
+      const trObj = getTargetsheet("Sheets", lotto);
+      const ss = trObj.spreadsheet;
+      const allSheet = ss.getSheetByName("All");
+
+      let lottoLastDateStr = "工作表不存在";
+      let status = "❌ 缺失";
+      let canFix = false;
+
+      if (allSheet) {
+        const lastRow = allSheet.getLastRow();
+        if (lastRow > 1) {
+          const val = allSheet.getRange(lastRow, 1).getValue();
+          if (val instanceof Date && !isNaN(val.getTime())) {
+            lottoLastDateStr = Utilities.formatDate(
+              val,
+              "Asia/Taipei",
+              "yyyy-MM-dd",
+            );
+            const lottoLastTime = new Date(val).setHours(0, 0, 0, 0);
+
+            if (lottoLastTime === adLastTime) {
+              status = "✅ 同步";
+            } else if (lottoLastTime < adLastTime) {
+              status = "⚠️ 落後";
+              allSynced = false;
+            } else {
+              status = "🚀 超前";
+            }
+          } else {
+            lottoLastDateStr = "格式錯誤";
+            status = "🛠 損壞";
+            allSynced = false;
+          }
+        } else {
+          lottoLastDateStr = "空表";
+          status = "⚪ 待更新";
+          allSynced = false;
+        }
+      }
+
+      // 判定是否需要修復：只要不是「同步」且不是「超前」的異常狀態皆可修復
+      canFix = status !== "✅ 同步" && status !== "🚀 超前";
+
+      reports.push(`${lotto}: ${status} (${lottoLastDateStr})`);
+      details.push({
+        id: lotto,
+        status: status,
+        date: lottoLastDateStr,
+        canFix: canFix,
+      });
+    } catch (e) {
+      reports.push(`${lotto}: ❌ 錯誤 (${e.message})`);
+      // 發生錯誤的彩種也標記為可修復
+      details.push({ id: lotto, status: "❌ 錯誤", date: "N/A", canFix: true });
+      allSynced = false;
+    }
+  });
+
+  const finalMsg =
+    `【星系資料庫體檢報告】\n主資料來源 (AllData): ${adLastDateStr}\n--------------------------\n` +
+    reports.join("\n");
+
+  return {
+    status: allSynced ? "success" : "warning",
+    message: finalMsg,
+    allSynced: allSynced,
+    details: details,
   };
 }
