@@ -58,19 +58,32 @@
       </div>
 
       <!-- 新增：系統健康度監測面板 -->
-      <div id="systemHealthPanel" class="card border-0 shadow-sm mb-4 bg-body-tertiary" style="display:none;">
+      <div
+        id="systemHealthPanel"
+        class="card border-0 shadow-sm mb-4 bg-body-tertiary"
+        style="display: none"
+      >
         <div class="card-body p-3">
           <div class="row text-center">
             <div class="col-4 border-end">
-              <div class="small text-muted mb-1"><i class="fas fa-memory me-1"></i>快取組件</div>
+              <div class="small text-muted mb-1">
+                <i class="fas fa-memory me-1"></i>快取組件
+              </div>
               <div id="statCacheCount" class="fw-bold text-primary">--</div>
             </div>
             <div class="col-4 border-end">
-              <div class="small text-muted mb-1"><i class="fas fa-archive me-1"></i>歷史存檔</div>
+              <div class="small text-muted mb-1">
+                <i class="fas fa-archive me-1"></i>歷史存檔
+              </div>
               <div id="statArchiveCount" class="fw-bold text-success">--</div>
             </div>
             <div class="col-4">
-              <div id="statVersion" class="badge bg-secondary-subtle text-secondary mt-2">v1.3</div>
+              <div
+                id="statVersion"
+                class="badge bg-secondary-subtle text-secondary mt-2"
+              >
+                v1.3
+              </div>
             </div>
           </div>
         </div>
@@ -103,7 +116,6 @@
        * 使用 IIFE 封裝 jQuery 邏輯，避免 $ 命名衝突
        */
       (function ($) {
-
         // 獲取 Script URL 供跳轉使用
         google.script.run
           .withSuccessHandler(function (url) {
@@ -119,7 +131,7 @@
             .withSuccessHandler(window.renderData)
             .withFailureHandler(AppUI.showCommonError.bind(AppUI))
             .getLastRecords();
-            
+
           // 載入系統健康統計
           fetchSystemHealth();
         });
@@ -247,16 +259,6 @@
                 '<div class="d-flex flex-wrap justify-content-center border-top pt-3 mt-3">' +
                 ballsHtml +
                 "</div>" +
-                '<div id="ai-preview-' +
-                key +
-                '" class="mt-3 p-2 bg-info-subtle rounded border border-info-subtle" style="font-size: 0.8rem;">' +
-                '<div class="fw-bold text-info mb-1"><i class="fas fa-robot me-1"></i>AI 戰略預覽</div>' +
-                '<div class="ai-recommendation fw-bold mb-1 loading-shimmer" style="width: 85%;"></div>' +
-                '<div class="d-flex gap-2">' +
-                '<span class="ai-focus badge loading-shimmer" style="width: 50px;"></span>' +
-                '<span class="ai-risk badge loading-shimmer" style="width: 50px;"></span>' +
-                "</div>" +
-                "</div>" +
                 '<div class="d-flex justify-content-between align-items-center mt-3 border-top pt-2">' +
                 '<div class="d-flex gap-2 gap-sm-3">' +
                 '<a href="' +
@@ -286,11 +288,6 @@
               $app.append(cardHtml);
             }
           });
-
-          // 渲染完成後，非同步獲取各彩種最後一期的 AI 策略摘要
-          order.forEach(function (key) {
-            if (data[key]) window.fetchAISummary(key, data[key]["Date"]);
-          });
         };
 
         /**
@@ -298,7 +295,7 @@
          */
         function fetchSystemHealth() {
           google.script.run
-            .withSuccessHandler(function(stats) {
+            .withSuccessHandler(function (stats) {
               if (!stats) return;
               $("#statCacheCount").text(stats.cacheCount + " 組");
               $("#statArchiveCount").text(stats.archiveCount + " 筆");
@@ -345,43 +342,6 @@
           var lineUrl =
             "https://line.me/R/msg/text/?" + encodeURIComponent(msg);
           window.open(lineUrl, "_blank");
-        };
-
-        /**
-         * 非同步獲取指定彩種的 AI 策略摘要預覽
-         */
-        window.fetchAISummary = function (key, date) {
-          var dateStr = date.toString().split("T")[0];
-          google.script.run
-            .withSuccessHandler(function (res) {
-              var $preview = $("#ai-preview-" + key);
-              if (res && res.status === "complete" && res.aiStrategy) {
-                // 移除微光佔位效果
-                $preview
-                  .find(".loading-shimmer")
-                  .removeClass("loading-shimmer")
-                  .css("width", "");
-                // 擷取第一行建議並過濾 HTML 標籤
-                var shortRec = res.aiStrategy.recommendation
-                  .split("\n")[0]
-                  .replace(/<[^>]+>/g, "");
-                $preview.find(".ai-recommendation").text(shortRec);
-                $preview
-                  .find(".ai-focus")
-                  .addClass("bg-info text-white")
-                  .text(res.aiStrategy.focus);
-                $preview
-                  .find(".ai-risk")
-                  .addClass("bg-secondary text-white")
-                  .text("風險: " + res.aiStrategy.risk);
-              } else {
-                $preview.fadeOut();
-              }
-            })
-            .withFailureHandler(function () {
-              $("#ai-preview-" + key).fadeOut();
-            })
-            .getPrediction(key, dateStr, true);
         };
 
         /**
@@ -473,10 +433,7 @@
 
         window.viewTrend = function (lotto) {
           // 將彩種資訊存入暫存，讓預測頁面載入時自動選取
-          var backup = {
-            lotto: lotto,
-            isReloaded: true,
-          };
+          var backup = { lotto: lotto, isReloaded: true };
           localStorage.setItem("sys_backup_settings", JSON.stringify(backup));
           openPageUrl("Predict");
         };

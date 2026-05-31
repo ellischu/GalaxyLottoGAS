@@ -143,7 +143,7 @@
           >
             <h6 class="text-secondary mb-3">托牌分析參數</h6>
             <div class="row g-3">
-              <div class="col-6">
+              <div class="col-md-3 col-6">
                 <label class="form-label small">星數選擇</label>
                 <select id="SecNextNums" class="form-select">
                   <option value="1">1 星</option>
@@ -152,7 +152,7 @@
                   <option value="4">4 星</option>
                 </select>
               </div>
-              <div class="col-6">
+              <div class="col-md-3 col-6">
                 <label class="form-label small">間隔期數</label>
                 <select id="SecNextStep" class="form-select">
                   <option value="1">1 期</option>
@@ -161,6 +161,23 @@
                   <option value="4">4 期</option>
                   <option value="5">5 期</option>
                 </select>
+              </div>
+              <div id="ColNextCombo" class="col-md-6 col-12">
+                <label class="form-label small">托牌組合項目</label>
+                <select
+                  id="SecNextCombo"
+                  class="form-select border-info shadow-sm"
+                >
+                  <option value="all">請先選擇日期或開啟托牌模式...</option>
+                </select>
+              </div>
+              <!-- 特別號選單 (僅在 L638 時顯示) -->
+              <div id="ColNextSpe" class="col-md-2 col-4" style="display: none">
+                <label class="form-label small">特別號</label>
+                <select
+                  id="SecNextSpe"
+                  class="form-select border-info shadow-sm"
+                ></select>
               </div>
             </div>
           </div>

@@ -107,6 +107,31 @@ function getDatePreview(lotto, dateStr) {
 }
 
 /**
+ * 獲取托牌組合清單，包含欄位比對邏輯
+ */
+function getNextComboOptions(params) {
+  try {
+    const targetDate = new Date(params.date.replace(/-/g, "/"));
+    let conditions = {};
+
+    if (params.fieldMode && params.fields && params.fields.length > 0) {
+      const fieldDetail = getFieldModeDetail(targetDate, params.fields);
+      conditions = fieldDetail.conditions;
+    }
+
+    return getNextNumDetail(
+      params.lotto,
+      targetDate,
+      params.nextNums,
+      params.nextStep,
+      conditions,
+    );
+  } catch (e) {
+    return { strNextNums: "", StrNextNumSpe: "" };
+  }
+}
+
+/**
  * 處理查詢請求並返回 Activity 頁面 URL
  */
 function prepareActivityQuery(params) {
@@ -118,19 +143,10 @@ function prepareActivityQuery(params) {
 
     // 優化：僅在開啟欄位模式 (fieldMode) 時才呼叫 getAllData 取得環境數值
     if (params.fieldMode) {
-      const rowData = getAllData(targetDate, true);
-      if (!rowData) throw new Error("找不到該日期的環境參數資料 (AllData)");
-
-      if (params.fields && params.fields.length > 0) {
-        compares = params.fields.join("#");
-        detail = params.fields
-          .map((f) => (rowData[f] !== undefined ? String(rowData[f]) : ""))
-          .join("#");
-
-        params.fields.forEach((f) => {
-          if (rowData[f] !== undefined) conditions[f] = rowData[f];
-        });
-      }
+      const fieldDetail = getFieldModeDetail(targetDate, params.fields);
+      compares = fieldDetail.compares;
+      detail = fieldDetail.detail;
+      conditions = fieldDetail.conditions;
     }
 
     // 1. 構造方法參數並獲取序號
@@ -151,15 +167,21 @@ function prepareActivityQuery(params) {
     };
 
     if (params.nextMode) {
-      const nextNumData = getNextNum(
-        params.lotto,
-        targetDate,
-        params.nextNums,
-        params.nextStep,
-        conditions
-      );
-      methodObj.strNextNums = nextNumData.strNextNums;
-      methodObj.StrNextNumSpe = nextNumData.StrNextNumSpe;
+      // 如果前端有傳回具體的組合且不是 "all"，則直接使用 UI 選定的值
+      if (params.strNextNums && params.strNextNums !== "all") {
+        methodObj.strNextNums = params.strNextNums;
+        methodObj.StrNextNumSpe = params.StrNextNumSpe || "";
+      } else {
+        const nextNumData = getNextNumDetail(
+          params.lotto,
+          targetDate,
+          params.nextNums,
+          params.nextStep,
+          conditions,
+        );
+        methodObj.strNextNums = nextNumData.strNextNums;
+        methodObj.StrNextNumSpe = nextNumData.StrNextNumSpe;
+      }
     }
     const methodSN = getMethodSN(methodObj);
     const isDebugMode = true;
@@ -203,26 +225,16 @@ function prepareActivityQuery(params) {
 function getPreviewData(params) {
   try {
     const targetDate = new Date(params.date.replace(/-/g, "/"));
-    let envData = null;
     let detail = "";
     let compares = "";
     let conditions = {};
 
     // 1. 統一獲取環境參數 (僅在開啟欄位模式時執行一次，避免重複讀取 AllData)
     if (params.fieldMode) {
-      envData = getAllData(targetDate, true);
-      if (!envData) throw new Error("找不到該日期的環境參數資料 (AllData)");
-
-      if (params.fields && params.fields.length > 0) {
-        compares = params.fields.join("#");
-        detail = params.fields
-          .map((f) => (envData[f] !== undefined ? String(envData[f]) : ""))
-          .join("#");
-
-        params.fields.forEach((f) => {
-          if (envData[f] !== undefined) conditions[f] = envData[f];
-        });
-      }
+      const fieldDetail = getFieldModeDetail(targetDate, params.fields);
+      compares = fieldDetail.compares;
+      detail = fieldDetail.detail;
+      conditions = fieldDetail.conditions;
     }
 
     const methodObj = {
@@ -242,51 +254,44 @@ function getPreviewData(params) {
     };
 
     if (params.nextMode) {
-      const nextNumData = getNextNum(
-        params.lotto,
-        targetDate,
-        params.nextNums,
-        params.nextStep,
-        conditions
-      );
-      methodObj.strNextNums = nextNumData.strNextNums;
-      methodObj.StrNextNumSpe = nextNumData.StrNextNumSpe;
+      // 預覽時同樣優先使用 UI 選定的組合與特別號
+      if (params.strNextNums && params.strNextNums !== "all") {
+        methodObj.strNextNums = params.strNextNums;
+        methodObj.StrNextNumSpe = params.StrNextNumSpe || "";
+      } else {
+        const nextNumData = getNextNumDetail(
+          params.lotto,
+          targetDate,
+          params.nextNums,
+          params.nextStep,
+          conditions,
+        );
+        methodObj.strNextNums = nextNumData.strNextNums;
+        methodObj.StrNextNumSpe = nextNumData.StrNextNumSpe;
+      }
     }
     const methodSN = getMethodSN(methodObj); // 同樣調用此邏輯以供測試
     const isDebugMode = true;
 
-    // 2. 開啟目標彩種試算表的 All 工作表
+    // 2. 調用公用函式獲取資料 (預覽固定取 20 筆)
+    const resultRowsRaw = getDataBase(
+      params.lotto,
+      params.date,
+      methodObj,
+      "DESC",
+      20,
+    );
+
+    // 3. 獲取標題列用於前端表格顯示
     const targetObj = getTargetsheet("Sheets", params.lotto);
     const sheet = targetObj.spreadsheet.getSheetByName("All");
-    if (!sheet) throw new Error(`找不到 ${params.lotto} 試算表中的 All 工作表`);
-
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return { status: "success", headers: [], rows: [] };
-
-    const headers = data[0];
-    const rows = data.slice(1);
+    const headers = sheet
+      .getRange(1, 1, 1, sheet.getLastColumn())
+      .getValues()[0];
     const dateIdx = headers.indexOf("Date");
 
-    // 3. 過濾資料
-    const filtered = rows.filter((row) => {
-      const rowDate = new Date(row[dateIdx]);
-      // 小於 Date (不含)
-      if (rowDate >= targetDate) return false;
-
-      // 檢查欄位條件
-      for (let field in conditions) {
-        const colIdx = headers.indexOf(field);
-        if (colIdx === -1) continue;
-        // 轉字串比對
-        if (String(row[colIdx]) !== String(conditions[field])) return false;
-      }
-      return true;
-    });
-
-    // 4. 依日期降序排序並取前 20 筆
-    filtered.sort((a, b) => new Date(b[dateIdx]) - new Date(a[dateIdx]));
-    const resultRows = filtered.slice(0, 20).map((row) => {
-      // 格式化日期顯示
+    // 4. 格式化結果 (將日期物件轉為字串供前端顯示)
+    const resultRows = resultRowsRaw.map((row) => {
       if (row[dateIdx] instanceof Date) {
         row[dateIdx] = Utilities.formatDate(
           row[dateIdx],

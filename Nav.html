@@ -62,14 +62,14 @@
           >MP</span
         >
       </div>
-    <button
-      class="btn btn-link p-0 text-white ms-1 border-0"
-      onclick="window.toggleTheme()"
-      title="切換深淺模式"
-      style="line-height: 1"
-    >
-      <i id="navThemeIcon" class="fas fa-moon" style="font-size: 14px"></i>
-    </button>
+      <button
+        class="btn btn-link p-0 text-white ms-1 border-0"
+        onclick="window.toggleTheme()"
+        title="切換深淺模式"
+        style="line-height: 1"
+      >
+        <i id="navThemeIcon" class="fas fa-moon" style="font-size: 14px"></i>
+      </button>
 
       <button
         class="btn btn-link p-0 text-white-50 ms-1 border-0"
@@ -322,6 +322,8 @@
         </a>
       </li>
 
+      <hr class="my-2" />
+
       <li class="nav-item">
         <a
           class="nav-link text-success"
@@ -332,8 +334,6 @@
           <i class="fas fa-sync-alt me-2"></i>資料維護
         </a>
       </li>
-
-      <hr class="my-2" />
 
       <li class="nav-item">
         <a
@@ -346,26 +346,7 @@
         </a>
       </li>
 
-      <li class="nav-item">
-        <a
-          class="nav-link text-primary fw-bold"
-          id="navRefreshUI"
-          href="javascript:void(0)"
-          onclick="handleRefreshUI()"
-        >
-          <i class="fas fa-sync-alt me-2"></i>更新界面 (清除快取)
-        </a>
-      </li>
-      <li class="nav-item">
-        <a
-          class="nav-link text-warning"
-          id="navRefreshMapping"
-          href="javascript:void(0)"
-          onclick="handleRefreshMapping()"
-        >
-          <i class="fas fa-sync me-2"></i>刷新對照表
-        </a>
-      </li>
+      <hr class="my-2" />
 
       <li class="nav-item">
         <a
@@ -400,6 +381,30 @@
         </a>
       </li>
 
+      <hr class="my-2" />
+
+      <li class="nav-item">
+        <a
+          class="nav-link text-warning"
+          id="navRefreshMapping"
+          href="javascript:void(0)"
+          onclick="handleRefreshMapping()"
+        >
+          <i class="fas fa-sync me-2"></i>刷新對照表
+        </a>
+      </li>
+
+      <li class="nav-item">
+        <a
+          class="nav-link text-primary fw-bold"
+          id="navRefreshUI"
+          href="javascript:void(0)"
+          onclick="handleRefreshUI()"
+        >
+          <i class="fas fa-sync-alt me-2"></i>更新界面 (清除快取)
+        </a>
+      </li>
+
       <li class="nav-item">
         <a
           class="nav-link fw-bold text-warning"
@@ -420,7 +425,7 @@
   window.applyTheme = function (theme) {
     document.documentElement.setAttribute("data-bs-theme", theme);
     localStorage.setItem("theme", theme);
-    
+
     // 更新 Nav 上的圖示
     const $navIcon = $("#navThemeIcon");
     if (theme === "dark") {
@@ -431,7 +436,8 @@
   };
 
   window.toggleTheme = function () {
-    const current = document.documentElement.getAttribute("data-bs-theme") || "light";
+    const current =
+      document.documentElement.getAttribute("data-bs-theme") || "light";
     const next = current === "dark" ? "light" : "dark";
     window.applyTheme(next);
   };
@@ -474,7 +480,8 @@
           } else if (res.status === "complete") {
             // 全部完成
             AppUI.success("更新成功", res.message, 3000).then(function () {
-              if (typeof checkSystemStatus === "function") checkSystemStatus(true);
+              if (typeof checkSystemStatus === "function")
+                checkSystemStatus(true);
             });
           } else {
             AppUI.showCommonError(res);
@@ -775,9 +782,13 @@
       // 初始化連線模式選擇
       const savedMode = localStorage.getItem("connection_mode") || "auto";
       $("#connectionModeSelect").val(savedMode);
-      
+
       // 初始化全域主題 (優先讀取 localStorage，若無則跟隨系統)
-      const currentTheme = localStorage.getItem("theme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      const currentTheme =
+        localStorage.getItem("theme") ||
+        (window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light");
       window.applyTheme(currentTheme);
 
       detectAndApplyMode();

@@ -98,6 +98,8 @@ function combineData(sheetname) {
     currentIndex = progress.currentIndex || 1;
   }
 
+  // 預先取得起始行號，避免在迴圈內頻繁呼叫 getLastRow() 導致 API 頻率限制
+  let writeRow = trsheet.getLastRow() + 1;
   for (var i = currentIndex; i < srData.length; i++) {
     var row = srData[i];
     var d = row[dateCol];
@@ -136,15 +138,13 @@ function combineData(sheetname) {
         try {
           // 1. 先執行 API 寫入操作 (主動存檔)
           trsheet
-            .getRange(
-              trsheet.getLastRow() + 1,
-              1,
-              rowsToAdd.length,
-              rowsToAdd[0].length,
-            )
+            .getRange(writeRow, 1, rowsToAdd.length, rowsToAdd[0].length)
             .setValues(rowsToAdd);
 
+          writeRow += rowsToAdd.length;
           rowsToAdd = [];
+          // 強制同步試算表緩衝，確保資料狀態與後續的進度保存一致
+          SpreadsheetApp.flush();
         } catch (e) {
           return { status: "error", message: "合併表格批次寫入失敗：" + e };
         }
@@ -157,8 +157,9 @@ function combineData(sheetname) {
         total: srData.length,
       });
 
-      if (isNearTimeout()) {
-        // 3. 偵測到即將超時，中斷迴圈並回傳狀態
+      // 3. 偵測到即將超時或執行時間已久(15秒)，中斷迴圈返回前端更新進度，以維持 UI 響應
+      const elapsed = new Date().getTime() - startTime;
+      if (elapsed > 15000 || isNearTimeout()) {
         return {
           status: "continue",
           message:
@@ -178,13 +179,9 @@ function combineData(sheetname) {
   if (rowsToAdd.length > 0) {
     try {
       trsheet
-        .getRange(
-          trsheet.getLastRow() + 1,
-          1,
-          rowsToAdd.length,
-          rowsToAdd[0].length,
-        )
+        .getRange(writeRow, 1, rowsToAdd.length, rowsToAdd[0].length)
         .setValues(rowsToAdd);
+      SpreadsheetApp.flush();
     } catch (e) {
       return { status: "error", message: "最後寫入失敗：" + e };
     }
@@ -310,6 +307,7 @@ function genMissData(sheetname) {
     lastSpecialMissValues = progress.lastSpecialMissValues || [];
   }
 
+  let writeRow = trsheet.getLastRow() + 1;
   for (var i = currentIndex; i < srData.length; i++) {
     var row = srData[i];
     var d = row[dateCol];
@@ -373,15 +371,12 @@ function genMissData(sheetname) {
         try {
           // 1. 先執行 API 寫入操作 (主動存檔)
           trsheet
-            .getRange(
-              trsheet.getLastRow() + 1,
-              1,
-              rowsToAdd.length,
-              rowsToAdd[0].length,
-            )
+            .getRange(writeRow, 1, rowsToAdd.length, rowsToAdd[0].length)
             .setValues(rowsToAdd);
 
+          writeRow += rowsToAdd.length;
           rowsToAdd = [];
+          SpreadsheetApp.flush();
         } catch (e) {
           return { status: "error", message: "遺漏表批次寫入失敗：" + e };
         }
@@ -397,8 +392,9 @@ function genMissData(sheetname) {
         lastSpecialMissValues: lastSpecialMissValues,
       });
 
-      if (isNearTimeout()) {
-        // 3. 偵測到即將超時，中斷迴圈並回傳狀態
+      // 3. 偵測到即將超時或執行時間已久(15秒)，中斷迴圈返回前端更新進度，以維持 UI 響應
+      const elapsed = new Date().getTime() - startTime;
+      if (elapsed > 15000 || isNearTimeout()) {
         return {
           status: "continue",
           message: "遺漏表處理中 " + nextIndex + " / " + srData.length,
@@ -412,13 +408,9 @@ function genMissData(sheetname) {
   // 寫入剩餘資料並清除進度
   if (rowsToAdd.length > 0) {
     trsheet
-      .getRange(
-        trsheet.getLastRow() + 1,
-        1,
-        rowsToAdd.length,
-        rowsToAdd[0].length,
-      )
+      .getRange(writeRow, 1, rowsToAdd.length, rowsToAdd[0].length)
       .setValues(rowsToAdd);
+    SpreadsheetApp.flush();
   }
 
   clearProgress("Miss_JOB");
@@ -480,24 +472,6 @@ function checkDatabaseHealth() {
     typeof mainspreadsheet !== "undefined"
       ? mainspreadsheet
       : SpreadsheetApp.getActiveSpreadsheet();
-  const adSheet = mainSs.getSheetByName("AllData");
-
-  if (!adSheet) {
-    return { status: "error", message: "找不到主資料庫 AllData 工作表" };
-  }
-
-  // 1. 取得 AllData 最後一筆有效日期作為「基準時間」
-  const adLastRow = adSheet.getLastRow();
-  let adLastDateStr = "無資料";
-  let adLastTime = 0;
-
-  if (adLastRow > 1) {
-    const val = adSheet.getRange(adLastRow, 1).getValue();
-    if (val instanceof Date && !isNaN(val.getTime())) {
-      adLastDateStr = Utilities.formatDate(val, "Asia/Taipei", "yyyy-MM-dd");
-      adLastTime = new Date(val).setHours(0, 0, 0, 0); // 標準化比對
-    }
-  }
 
   const reports = [];
   const details = [];
@@ -506,6 +480,25 @@ function checkDatabaseHealth() {
   // 2. 遍歷各彩種檢查同步狀態
   lottos.forEach((lotto) => {
     try {
+      // 1. 取得主試算表中的來源工作表 (原始資料)
+      const srcSheet = mainSs.getSheetByName(lotto);
+      let srcLastTime = 0;
+      let srcLastDateStr = "來源無資料";
+
+      if (srcSheet) {
+        const srcHeaders = srcSheet.getRange(1, 1, 1, srcSheet.getLastColumn()).getValues()[0];
+        const dateColIdx = srcHeaders.indexOf("Date");
+        const srcLastRow = srcSheet.getLastRow();
+        if (srcLastRow > 1 && dateColIdx !== -1) {
+          const val = srcSheet.getRange(srcLastRow, dateColIdx + 1).getValue();
+          if (val instanceof Date && !isNaN(val.getTime())) {
+            srcLastDateStr = Utilities.formatDate(val, "Asia/Taipei", "yyyy-MM-dd");
+            srcLastTime = new Date(val).setHours(0, 0, 0, 0);
+          }
+        }
+      }
+
+      // 2. 取得彩種試算表中的合併工作表 (All)
       const trObj = getTargetsheet("Sheets", lotto);
       const ss = trObj.spreadsheet;
       const allSheet = ss.getSheetByName("All");
@@ -526,9 +519,9 @@ function checkDatabaseHealth() {
             );
             const lottoLastTime = new Date(val).setHours(0, 0, 0, 0);
 
-            if (lottoLastTime === adLastTime) {
+            if (lottoLastTime === srcLastTime && srcLastTime !== 0) {
               status = "✅ 同步";
-            } else if (lottoLastTime < adLastTime) {
+            } else if (lottoLastTime < srcLastTime) {
               status = "⚠️ 落後";
               allSynced = false;
             } else {
@@ -549,15 +542,15 @@ function checkDatabaseHealth() {
       // 判定是否需要修復：只要不是「同步」且不是「超前」的異常狀態皆可修復
       canFix = status !== "✅ 同步" && status !== "🚀 超前";
 
-      reports.push(`${lotto}: ${status} (${lottoLastDateStr})`);
+      reports.push(`${lotto}: ${status} (來源:${srcLastDateStr} / 合併:${lottoLastDateStr})`);
       details.push({
         id: lotto,
         status: status,
-        date: lottoLastDateStr,
+        date: `來源:${srcLastDateStr} | 合併:${lottoLastDateStr}`,
         canFix: canFix,
       });
     } catch (e) {
-      reports.push(`${lotto}: ❌ 錯誤 (${e.message})`);
+      reports.push(`${lotto}: ❌ 體檢失敗 (${e.message})`);
       // 發生錯誤的彩種也標記為可修復
       details.push({ id: lotto, status: "❌ 錯誤", date: "N/A", canFix: true });
       allSynced = false;
@@ -565,7 +558,7 @@ function checkDatabaseHealth() {
   });
 
   const finalMsg =
-    `【星系資料庫體檢報告】\n主資料來源 (AllData): ${adLastDateStr}\n--------------------------\n` +
+    `【星系資料庫維護體檢】\n基準：主表原始資料 vs 星系合併表格\n--------------------------\n` +
     reports.join("\n");
 
   return {

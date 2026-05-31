@@ -166,6 +166,8 @@
         let isUpdatingAll = false;
         let updateQueue = [];
         let failedTasks = [];
+        let totalBatchTasks = 0;
+        let completedBatchTasks = 0;
         let batchTaskDurations = [];
         let currentTaskStartTime = null;
         const allLotteries = ["L539", "L649", "L638", "LSix"];
@@ -177,10 +179,12 @@
         };
 
         $(document).ready(function () {
-          $("#btnUpdate").click(handleUpdate);
-          $("#btnStop").click(stopUpdate);
-          $("#btnCheckHealth").click(handleCheckDatabaseHealth);
-          $("#btnClearProgress").click(handleClearProgress);
+          // 使用 window. 前綴確保引用到下方定義在 window 上的函式
+          $("#btnUpdate").click(function(e) { window.handleUpdate(e); });
+          $("#btnStop").click(function(e) { window.stopUpdate(e); });
+          $("#btnCheckHealth").click(function(e) { window.handleCheckDatabaseHealth(e); });
+          $("#btnClearProgress").click(function(e) { window.handleClearProgress(e); });
+          $("#btnUpdateAll").click(function(e) { window.handleUpdateAllLotteries(e); });
           sessionStorage.removeItem("UpdateStatus");
 
           // 不再於頁面載入時清除進度，保留斷點續傳的可能性
@@ -221,9 +225,6 @@
           });
         };
 
-        // 新增處理一鍵更新所有彩種的函式
-        $("#btnUpdateAll").click(handleUpdateAllLotteries);
-
         window.handleUpdateAllLotteries = function (e) {
           if (e) e.preventDefault();
 
@@ -236,16 +237,21 @@
               updateQueue = [];
               failedTasks = [];
               batchTaskDurations = [];
+              completedBatchTasks = 0;
+
               // 批次啟動前先清除所有相關進度快取
               google.script.run.clearProgress("Update_JOB");
               google.script.run.clearProgress("Miss_JOB");
 
               allLotteries.forEach((lotto) => {
-                updateQueue.push({ lotto: lotto, type: "Cmb" });
-                updateQueue.push({ lotto: lotto, type: "Miss" });
+                updateQueue.push({ lotto: lotto, type: "Cmb", retry: 0 });
+                updateQueue.push({ lotto: lotto, type: "Miss", retry: 0 });
               });
+              totalBatchTasks = updateQueue.length;
+
               sessionStorage.setItem("UpdateStatus", "continue");
               window.freeUI();
+              $("#progressArea").show(); // 顯示進度條區域
               startNextQueuedUpdate();
             }
           });
@@ -284,7 +290,7 @@
                 }
               });
             } else {
-              AppUI.success("所有彩種更新完成！").then(() => {
+              AppUI.success("所有彩種更新完成！", "資料庫已同步至最新狀態。").then(() => {
                 isUpdatingAll = false;
                 window.resetUI();
               });
@@ -315,13 +321,20 @@
 
           currentTaskStartTime = Date.now();
 
+          // 關鍵修正：若為重試任務，沿用首次啟動時間以包含所有嘗試耗時與等待延時
+          if (nextTask.firstStartTime) currentTaskStartTime = nextTask.firstStartTime;
+          else nextTask.firstStartTime = currentTaskStartTime;
+
+          const retryLabel = nextTask.retry > 0 ? ` (第 ${nextTask.retry} 次重試)` : "";
+          const basePercent = isUpdatingAll ? Math.round((completedBatchTasks / totalBatchTasks) * 100) : 0;
+
           updateProgressBar(
-            0,
+            basePercent,
             100,
             "初始化...",
-            `一鍵更新：${lottoName} (${typeName})`,
+            `一鍵更新：${lottoName} (${typeName})${retryLabel}`,
           );
-          callUpdateProcess(nextTask.type, nextTask.lotto, true); // 傳遞 true 表示為批次更新
+          callUpdateProcess(nextTask.type, nextTask.lotto, true, nextTask.retry); // 傳遞目前的重試計數
         }
 
         /**
@@ -332,19 +345,22 @@
           updateQueue = failedTasks.map((t) => ({
             lotto: t.lotto,
             type: t.type,
+            retry: 0,
           }));
+          totalBatchTasks = updateQueue.length;
+          completedBatchTasks = 0;
           failedTasks = []; // 重置失敗清單
           isUpdatingAll = true;
-          window.freeUI();
+          window.freeUI(); // 使用 freeUI 保持進度條顯示，不應 reset
           startNextQueuedUpdate();
         };
 
         // 更新處理進程的通用函式，增加 isBatchUpdate 參數
-        window.callUpdateProcess = function (type, lotto, isBatchUpdate) {
+        window.callUpdateProcess = function (type, lotto, isBatchUpdate, retry = 0) {
           const UpdateStatus = sessionStorage.getItem("UpdateStatus");
           const jobKey = type === "Cmb" ? "Update_JOB" : "Miss_JOB";
 
-          if (UpdateStatus == "stop") {
+          if (UpdateStatus === "stop") {
             AppUI.error("處理停止", "任務已由使用者手動終止").then(() => {
               sessionStorage.removeItem("UpdateStatus");
               isUpdatingAll = false; // 確保批次更新狀態被重置
@@ -361,16 +377,29 @@
 
           const runner = google.script.run
             .withSuccessHandler(function (res) {
+              if (!res) {
+                console.error("Server returned null response");
+                return;
+              }
               if (res.status === "continue") {
-                let percent = Math.round((res.currentIndex / res.total) * 100);
-                updateProgressBar(percent, 100, res.message);
+                let taskPercent = (res.currentIndex / res.total);
+                let displayPercent;
+                if (isBatchUpdate) {
+                  displayPercent = Math.round(((completedBatchTasks + taskPercent) / totalBatchTasks) * 100);
+                } else {
+                  displayPercent = Math.round(taskPercent * 100);
+                }
+                updateProgressBar(displayPercent, 100, res.message || "正在處理...");
                 setTimeout(
-                  () => callUpdateProcess(type, lotto, isBatchUpdate),
+                  () => callUpdateProcess(type, lotto, isBatchUpdate, retry),
                   2000,
                 ); // 繼續傳遞 isBatchUpdate 狀態
               } else if (res.status === "complete") {
-                updateProgressBar(100, 100, res.message);
                 if (isBatchUpdate) {
+                  completedBatchTasks++;
+                  let overallPercent = Math.round((completedBatchTasks / totalBatchTasks) * 100);
+                  updateProgressBar(overallPercent, 100, res.message || "單項完成");
+
                   // 紀錄該任務耗時
                   if (currentTaskStartTime) {
                     batchTaskDurations.push(Date.now() - currentTaskStartTime);
@@ -378,6 +407,7 @@
                   // 如果是批次更新的一部分，則不顯示成功訊息，直接進行下一個任務
                   startNextQueuedUpdate();
                 } else {
+                  updateProgressBar(100, 100, res.message || "處理完成");
                   // 否則，顯示成功訊息並重置 UI
                   AppUI.success("處理完成", res.message).then(() => {
                     sessionStorage.removeItem("UpdateStatus");
@@ -385,23 +415,31 @@
                   });
                 }
               } else if (res.status === "error") {
-                if (isBatchUpdate) {
+                if (isBatchUpdate && retry < 2) {
+                  // 增加重試機制：將任務塞回佇列開頭並延時重試
+                  updateQueue.unshift({
+                    lotto: lotto,
+                    type: type,
+                    retry: retry + 1,
+                    firstStartTime: currentTaskStartTime,
+                  });
+                  updateProgressBar(0, 100, `任務異常，3秒後進行第 ${retry + 1} 次自動重試...`);
+                  setTimeout(startNextQueuedUpdate, 3000);
+                } else if (isBatchUpdate) {
                   // 失敗也列入時間計算，以維護預估穩定性
                   if (currentTaskStartTime) {
                     batchTaskDurations.push(Date.now() - currentTaskStartTime);
                   }
-                  failedTasks.push({
-                    lotto: lotto,
-                    type: type,
-                    msg: res.message,
-                  });
-                  console.warn(
-                    `[Batch] 任務失敗: ${lotto} ${type}`,
-                    res.message,
+                  completedBatchTasks++;
+                  failedTasks.push({ lotto: lotto, type: type, msg: res.message || "未知錯誤" });
+                  AppUI.toast(
+                    `${lottoNames[lotto] || lotto} 更新失敗，已跳過`,
+                    "error", // 將警告圖示改為錯誤圖示，更明確表示失敗
+                    2000,
                   );
                   startNextQueuedUpdate(); // 跳過並繼續下一個
                 } else {
-                  AppUI.error("處理失敗", res.message).then(() => {
+                  AppUI.error("處理失敗", res.message || "未知錯誤").then(() => {
                     isUpdatingAll = false;
                     window.resetUI();
                   });
@@ -409,11 +447,22 @@
               }
             })
             .withFailureHandler(function (err) {
-              if (isBatchUpdate) {
+              if (isBatchUpdate && retry < 2) {
+                // 針對網路超時等連線錯誤進行重試
+                updateQueue.unshift({
+                  lotto: lotto,
+                  type: type,
+                  retry: retry + 1,
+                  firstStartTime: currentTaskStartTime,
+                });
+                updateProgressBar(0, 100, `連線中斷，將於 3 秒後自動重試...`);
+                setTimeout(startNextQueuedUpdate, 3000);
+              } else if (isBatchUpdate) {
                 // 超時或連線中斷也列入計算
                 if (currentTaskStartTime) {
                   batchTaskDurations.push(Date.now() - currentTaskStartTime);
                 }
+                completedBatchTasks++;
                 // 若發生超時 (Timeout)，不清除後端進度，僅紀錄並跳過
                 const errorMsg = err.message || "系統超時或連線中斷";
                 failedTasks.push({ lotto: lotto, type: type, msg: errorMsg });

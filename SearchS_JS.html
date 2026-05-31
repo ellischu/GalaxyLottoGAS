@@ -5,13 +5,16 @@
   $(document).ready(function () {
     // 1. 介面初始化
     initPage();
+    window._lastPreviewData = null; // 暫存預覽資料供切換過濾
 
     // 2. 開關聯動與滑動效果
     $("#chkField").on("change", function () {
       $("#AreaField").slideToggle(this.checked);
+      updateNextCombos();
     });
     $("#chkNext").on("change", function () {
       $("#AreaNext").slideToggle(this.checked);
+      updateNextCombos();
     });
     $("#chkRange").on("change", function () {
       $("#AreaRange").slideToggle(this.checked);
@@ -22,8 +25,17 @@
 
     // 3. 資料預覽更新監聽
     $("#INDate, #SecLotto").on("change", function () {
+      const isL638 = $("#SecLotto").val() === "L638";
+      $("#ColNextSpe").toggle(isL638);
+      $("#ColNextCombo")
+        .toggleClass("col-md-6", !isL638)
+        .toggleClass("col-md-4", isL638);
       loadPreviewData();
+      updateNextCombos();
     });
+    $(
+      "#SecNextNums, #SecNextStep, #SecField1, #SecField2, #SecField3, #SecField4",
+    ).on("change", updateNextCombos);
 
     // 4. 提交查詢
     $("#btnQuery").on("click", function () {
@@ -32,6 +44,12 @@
 
     // 5. 預覽資料
     $("#btnPreview").on("click", function () {
+      showDataPreview();
+    });
+
+    // 6. 組合選擇變更
+    $("#SecNextCombo, #SecNextSpe").on("change", function () {
+      // 當選中的組合或特別號改變時，應重新觸發預覽以取得該組合對應的正確歷史結果
       showDataPreview();
     });
   });
@@ -92,6 +110,73 @@
       .getDatePreview(lotto, date);
   }
 
+  /**
+   * 動態獲取托牌組合並填充下拉選單
+   */
+  function updateNextCombos() {
+    const isNext = $("#chkNext").is(":checked");
+    if (!isNext) return;
+
+    const $comboSelect = $("#SecNextCombo"),
+      $speSelect = $("#SecNextSpe");
+    const params = {
+      lotto: $("#SecLotto").val(),
+      date: $("#INDate").val(),
+      fieldMode: $("#chkField").is(":checked"),
+      fields: [
+        $("#SecField1").val(),
+        $("#SecField2").val(),
+        $("#SecField3").val(),
+        $("#SecField4").val(),
+      ].filter((v) => v),
+      nextNums: parseInt($("#SecNextNums").val()) || 1,
+      nextStep: parseInt($("#SecNextStep").val()) || 1,
+    };
+
+    if (!params.date) return;
+
+    $comboSelect.html("<option>計算組合中...</option>").prop("disabled", true);
+    $speSelect.prop("disabled", true);
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        $comboSelect.prop("disabled", false);
+        if (!res || !res.strNextNums) {
+          $comboSelect.html('<option value="all">此條件下無匹配組合</option>');
+          return;
+        }
+
+        const combinations = res.strNextNums.split("|");
+        const spe = res.StrNextNumSpe;
+        let html = "";
+
+        combinations.forEach((combo) => {
+          // 將 # 轉為逗號顯示，組合則保留 # 格式供過濾邏輯使用
+          let label = combo.replace(/#/g, ", ");
+          html += `<option value="${combo}">${label}</option>`;
+        });
+
+        $comboSelect.html(html);
+
+        // 填充特別號選單 (若有)
+        if (spe) {
+          $speSelect
+            .html(`<option value="${spe}">${spe}</option>`)
+            .prop("disabled", false);
+        } else {
+          $speSelect
+            .html('<option value="">--</option>')
+            .prop("disabled", true);
+        }
+      })
+      .withFailureHandler(function () {
+        $comboSelect
+          .html('<option value="all">獲取失敗</option>')
+          .prop("disabled", false);
+      })
+      .getNextComboOptions(params);
+  }
+
   function startGalaxySearch() {
     const nextMode = $("#chkNext").is(":checked");
     const rangeMode = $("#chkRange").is(":checked");
@@ -113,6 +198,8 @@
       nextMode: nextMode,
       nextNums: nextMode ? parseInt($("#SecNextNums").val()) || 0 : 0,
       nextStep: nextMode ? parseInt($("#SecNextStep").val()) || 0 : 0,
+      strNextNums: nextMode ? $("#SecNextCombo").val() : "",
+      StrNextNumSpe: nextMode ? $("#SecNextSpe").val() : "",
       dataLimit: rangeMode ? parseInt($("#InDataLimit").val()) || 0 : 0,
       dataOffset: rangeMode ? parseInt($("#InDataOffset").val()) || 0 : 0,
       searchLimit: rangeMode ? parseInt($("#InSearchLimit").val()) || 0 : 0,
@@ -157,6 +244,8 @@
       nextMode: nextMode,
       nextNums: nextMode ? parseInt($("#SecNextNums").val()) || 0 : 0,
       nextStep: nextMode ? parseInt($("#SecNextStep").val()) || 0 : 0,
+      strNextNums: nextMode ? $("#SecNextCombo").val() : "",
+      StrNextNumSpe: nextMode ? $("#SecNextSpe").val() : "",
       dataLimit: rangeMode ? parseInt($("#InDataLimit").val()) || 0 : 0,
       dataOffset: rangeMode ? parseInt($("#InDataOffset").val()) || 0 : 0,
       searchLimit: rangeMode ? parseInt($("#InSearchLimit").val()) || 0 : 0,
@@ -212,7 +301,8 @@
           );
         }
 
-        renderPreviewTable(res.headers, res.rows);
+        window._lastPreviewData = res; // 存入全域快取
+        renderPreviewTable(res.headers, res.rows, res.methodObj);
       })
       .withFailureHandler(function (err) {
         $tableContainer.html(
@@ -224,7 +314,7 @@
       .getPreviewData(params);
   }
 
-  function renderPreviewTable(headers, rows) {
+  function renderPreviewTable(headers, rows, methodObj) {
     const $container = $("#AreaTable");
     if (!rows || rows.length === 0) {
       $container.html(
@@ -246,8 +336,77 @@
       "Sum",
     ];
 
-    let html = '<div class="section-title">歷史數據預覽 (最近 20 筆)</div>';
-    html += '<div class="table-responsive shadow-sm rounded-3 border">';
+    let html =
+      '<div class="d-flex justify-content-between align-items-center mb-2">';
+    html += '<div class="section-title mt-0">歷史數據預覽 (最近 20 筆)</div>';
+
+    // 改為顯示目前選中的組合標籤
+    if (methodObj && methodObj.NextNumsMode && methodObj.strNextNums) {
+      const activeCombo = $("#SecNextCombo option:selected").text();
+      const activeSpe = $("#SecNextSpe").val();
+      let label = `<i class="bi bi-funnel-fill"></i> 目前選項: ${activeCombo}`;
+      if (activeSpe) label += ` [特別號: ${activeSpe}]`;
+      html += `<div class="badge bg-info text-dark shadow-sm p-2">${label}</div>`;
+    }
+    html += "</div>";
+
+    html += '<div id="PreviewTableWrapper">';
+    // 移除前端 filterRowsLocally，因為伺服器端已經根據 SecNextCombo 回傳了過濾後的結果
+    const activeFilter = $("#SecNextCombo").val() || "all";
+    html += renderPreviewTableBody(headers, rows, displayFields, activeFilter);
+    html += "</div>";
+
+    $container.html(html);
+
+    // 自動捲動到結果區
+    $("html, body").animate({ scrollTop: $container.offset().top - 20 }, 500);
+  }
+
+  /**
+   * 根據過濾條件篩選行 (前端過濾)
+   */
+  function filterRowsLocally(headers, rows, filterVal, spe) {
+    // 在托牌模式下，表格顯示的是「結果期」，不需要在前端再次過濾「觸發號碼」
+    return rows;
+
+    const nIndices = [1, 2, 3, 4, 5, 6]
+      .map((i) => headers.indexOf("N" + i))
+      .filter((idx) => idx > -1);
+    const s1Idx = headers.indexOf("S1");
+    const targetNums = filterVal.split("#"); // 修改為 # 以匹配 getNextNumDetail 的產出
+
+    return rows.filter((row) => {
+      const rowNums = nIndices.map((idx) => String(row[idx]));
+      // 如果不是威力彩，S1 通常也包含在號碼池中
+      if (s1Idx > -1 && !spe) {
+        rowNums.push(String(row[s1Idx]));
+      }
+
+      const isMatch = targetNums.every((num) => rowNums.includes(num));
+      if (!isMatch) return false;
+
+      // 如果有特別號限制 (威力彩模式)
+      if (spe && s1Idx > -1) {
+        return String(row[s1Idx]) === String(spe);
+      }
+      return true;
+    });
+  }
+
+  /**
+   * 渲染表格主體 HTML
+   */
+  function renderPreviewTableBody(
+    headers,
+    rows,
+    displayFields,
+    activeFilter = "all",
+  ) {
+    if (!rows || rows.length === 0) {
+      return '<div class="alert alert-warning text-center my-2">目前篩選條件下無匹配紀錄。</div>';
+    }
+
+    let html = '<div class="table-responsive shadow-sm rounded-3 border">';
     html +=
       '<table class="table table-sm table-hover table-striped bg-white mb-0" style="font-size:0.8rem;">';
 
@@ -263,18 +422,29 @@
 
     // Body
     html += "<tbody>";
+    const targetNums = activeFilter !== "all" ? activeFilter.split("#") : [];
+
     rows.forEach((row) => {
       html += "<tr>";
       displayFields.forEach((f) => {
         const idx = headers.indexOf(f);
         if (idx > -1) {
           const val = row[idx];
+          const valStr = String(val);
           const isNum = f.startsWith("N") || f === "S1";
           const isSum = f === "Sum";
 
+          // 判斷是否為目前選中的托牌號碼
+          const isMatch = targetNums.includes(valStr);
+
           let cellContent = val;
           if (isNum && val && val !== 0) {
-            const ballClass = f === "S1" ? "bg-info" : "bg-primary";
+            let ballClass = f === "S1" ? "bg-info" : "bg-primary";
+            if (activeFilter !== "all" && !isMatch) {
+              ballClass = "bg-secondary opacity-50"; // 非目標號碼淡化
+            } else if (isMatch) {
+              ballClass = f === "S1" ? "bg-warning text-dark" : "bg-danger"; // 目標號碼高亮
+            }
             cellContent = `<span class="badge ${ballClass} rounded-pill" style="width:26px; height:26px; line-height:18px;">${val}</span>`;
           } else if (isSum) {
             cellContent = `<strong>${val}</strong>`;
@@ -286,11 +456,7 @@
       html += "</tr>";
     });
     html += "</tbody></table></div>";
-
-    $container.html(html);
-
-    // 自動捲動到結果區
-    $("html, body").animate({ scrollTop: $container.offset().top - 20 }, 500);
+    return html;
   }
 
   function getLocalTitle(fieldName) {

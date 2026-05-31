@@ -16,14 +16,14 @@ function doGet(e) {
 function getCacheVersion(salt = "") {
   const props = PropertiesService.getScriptProperties();
   let verKey = "APP_VERSION";
-  
+
   if (salt.startsWith("A")) verKey = "V1_VERSION";
   else if (salt.startsWith("P")) verKey = "GALAXY_VERSION";
   else if (salt.includes("MAP")) verKey = "MAP_VERSION";
 
   let baseVersion = props.getProperty(verKey);
   if (!baseVersion) {
-    baseVersion = (verKey === "APP_VERSION") ? "v1.3.0" : "1.0.0";
+    baseVersion = verKey === "APP_VERSION" ? "v1.3.0" : "1.0.0";
     props.setProperty(verKey, baseVersion);
   }
   return salt ? baseVersion + "_" + salt : baseVersion;
@@ -112,11 +112,7 @@ function getTargetsheet(sheetName, targetName) {
   }
   var file = DriveApp.getFileById(fileId);
   var ssheet = SpreadsheetApp.open(file);
-  return {
-    url: res,
-    id: fileId,
-    spreadsheet: ssheet,
-  };
+  return { url: res, id: fileId, spreadsheet: ssheet };
 }
 
 /**
@@ -149,7 +145,7 @@ function getAllData(date, withHeaders = false) {
     if (rowTimeStr === targetTimeStr) {
       if (withHeaders) {
         var resultObj = {};
-        headers.forEach(function(header, index) {
+        headers.forEach(function (header, index) {
           resultObj[header] = data[i][index];
         });
         return resultObj;
@@ -381,22 +377,25 @@ function clearAllCache(isMajor = false) {
   const lock = LockService.getScriptLock();
   const props = PropertiesService.getScriptProperties();
   const currentVersion = props.getProperty("APP_VERSION") || "v1.3.0";
-  
+
   // 使用更強健的語義化版本遞增邏輯
-  const newVersion = incrementSemVer(currentVersion, isMajor ? 'major' : 'minor');
+  const newVersion = incrementSemVer(
+    currentVersion,
+    isMajor ? "major" : "minor",
+  );
 
   try {
     lock.waitLock(5000);
     props.setProperty("APP_VERSION", newVersion);
-    
+
     // 清理 CacheService 中的所有舊快取 (強制 Bust Cache)
     const cache = CacheService.getScriptCache();
     cache.remove("APP_VERSION"); // 移除版本號快取，強制下次重新從屬性讀取
-    
+
     return {
       status: "success",
       newVersion: newVersion,
-      message: "全域版本已更新，所有通用快取已失效。"
+      message: "全域版本已更新，所有通用快取已失效。",
     };
   } catch (e) {
     return { status: "error", message: "版本更新失敗: " + e.toString() };
@@ -411,7 +410,10 @@ function clearAllCache(isMajor = false) {
  */
 function forceSetGlobalVersion(versionStr) {
   if (!versionStr.startsWith("v")) versionStr = "v" + versionStr;
-  PropertiesService.getScriptProperties().setProperty("APP_VERSION", versionStr);
+  PropertiesService.getScriptProperties().setProperty(
+    "APP_VERSION",
+    versionStr,
+  );
   return "全域版本已強制設定為: " + versionStr;
 }
 
@@ -422,7 +424,7 @@ function getCacheStatus() {
   try {
     const cache = CacheService.getScriptCache();
     const props = PropertiesService.getScriptProperties();
-    
+
     const checkSystem = (prefix, salt) => {
       const ver = getCacheVersion(salt);
       const ts = cache.get(ver + "_TS");
@@ -431,14 +433,14 @@ function getCacheStatus() {
         const elapsed = Math.floor((Date.now() - Number(ts)) / 1000);
         remaining = Math.max(0, 21600 - elapsed);
       }
-      return { version: ver.split('_')[0], ok: true, remaining: remaining };
+      return { version: ver.split("_")[0], ok: true, remaining: remaining };
     };
 
     return {
       v1: checkSystem("V1", "A"),
       galaxy: checkSystem("GALAXY", "P"),
       map: checkSystem("MAP", "MAP"),
-      global: props.getProperty("APP_VERSION") || "v1.3"
+      global: props.getProperty("APP_VERSION") || "v1.3",
     };
   } catch (e) {
     return { ok: false, message: e.toString() };
@@ -452,7 +454,7 @@ function incrementSystemVersion(system) {
   const props = PropertiesService.getScriptProperties();
   const verKey = system + "_VERSION";
   let ver = props.getProperty(verKey) || "1.0.0";
-  const newVer = incrementSemVer(ver, 'patch');
+  const newVer = incrementSemVer(ver, "patch");
   props.setProperty(verKey, newVer);
   return newVer;
 }
@@ -464,29 +466,34 @@ function resetAllSystems() {
   try {
     const scriptProps = PropertiesService.getScriptProperties();
     const userProps = PropertiesService.getUserProperties();
-    
+
     // 1. 呼叫全域快取清理 (遞增 APP_VERSION 以 Bust 靜態模板快取)
     clearAllCache(false);
 
     // 2. 清理系統級雜訊屬性 (排除 V1, Galaxy, Map 相關)
     const sKeys = scriptProps.getKeys();
-    sKeys.forEach(k => {
-      const isGeneric = !k.includes("V1_") && !k.includes("GALAXY_") && !k.includes("MAP_");
+    sKeys.forEach((k) => {
+      const isGeneric =
+        !k.includes("V1_") && !k.includes("GALAXY_") && !k.includes("MAP_");
       // 清理任務進度與錯誤計數
-      if (isGeneric && (k.includes("_JOB") || k.includes("ERR_") || k.includes("PROG_"))) {
+      if (
+        isGeneric &&
+        (k.includes("_JOB") || k.includes("ERR_") || k.includes("PROG_"))
+      ) {
         scriptProps.deleteProperty(k);
       }
     });
 
     // 3. 清理 UserProperties 中的通用快取 (排除權重 WEIGHTS_)
     const uKeys = userProps.getKeys();
-    uKeys.forEach(k => {
-      const isSystemLogic = k.startsWith("WEIGHTS_") || k.startsWith("A1") || k.startsWith("P1");
+    uKeys.forEach((k) => {
+      const isSystemLogic =
+        k.startsWith("WEIGHTS_") || k.startsWith("A1") || k.startsWith("P1");
       if (!isSystemLogic) {
         userProps.deleteProperty(k);
       }
     });
-    
+
     // 4. 清理 CacheService (全數失效，因為 APP_VERSION 已變)
     CacheService.getScriptCache().removeAll(["APP_VERSION"]);
 
@@ -494,8 +501,12 @@ function resetAllSystems() {
     if (typeof maintenance_PruneSystemProperties === "function") {
       maintenance_PruneSystemProperties();
     }
-    
-    return { status: "success", message: "系統核心快取已重置，並完成冗餘屬性清理，已保留預測權重與對照表設定。" };
+
+    return {
+      status: "success",
+      message:
+        "系統核心快取已重置，並完成冗餘屬性清理，已保留預測權重與對照表設定。",
+    };
   } catch (e) {
     return { status: "error", message: e.message };
   }
@@ -509,7 +520,7 @@ function getResetPreview() {
   const props = PropertiesService.getScriptProperties();
   const current = props.getProperty("APP_VERSION") || "v1.0.0";
   // 配合 resetAllSystems 呼叫 clearAllCache(false) 的邏輯，改為預覽 Minor 遞增
-  const next = incrementSemVer(current, 'minor');
+  const next = incrementSemVer(current, "minor");
   return { current: current, next: next };
 }
 
@@ -519,26 +530,29 @@ function getResetPreview() {
  * @param {string} type 遞增類型: 'major', 'minor', 'patch'
  * @returns {string} 遞增後的新版本
  */
-function incrementSemVer(version, type = 'patch') {
+function incrementSemVer(version, type = "patch") {
   const isVPrefixed = /^v/i.test(version);
-  let cleanVer = version.replace(/^v/i, '');
-  let parts = cleanVer.split('.').map(n => parseInt(n, 10) || 0);
-  
+  let cleanVer = version.replace(/^v/i, "");
+  let parts = cleanVer.split(".").map((n) => parseInt(n, 10) || 0);
+
   // 確保符合 Major.Minor.Patch 結構，若不足則補 0
   while (parts.length < 3) parts.push(0);
-  
+
   let [major, minor, patch] = parts;
-  
-  if (type === 'major') {
-    major++; minor = 0; patch = 0;
-  } else if (type === 'minor') {
-    minor++; patch = 0;
+
+  if (type === "major") {
+    major++;
+    minor = 0;
+    patch = 0;
+  } else if (type === "minor") {
+    minor++;
+    patch = 0;
   } else {
     patch++;
   }
-  
+
   const newVer = `${major}.${minor}.${patch}`;
-  return isVPrefixed ? 'v' + newVer : newVer;
+  return isVPrefixed ? "v" + newVer : newVer;
 }
 
 /**
@@ -692,6 +706,411 @@ function getMethodSN(methodObj) {
 }
 
 /**
+ * 根據方法序號 (lngMethodSN) 取得對應的條件物件。
+ * @param {number} lngMethodSN 方法序號
+ * @returns {object|null} 條件物件，若找不到則回傳 null
+ */
+function getMethodObj(lngMethodSN) {
+  const sheetName = "Method";
+  const cache = CacheService.getScriptCache();
+  const appVersion = getCacheVersion();
+  const cacheKey = appVersion + "_METHOD_OBJ_" + lngMethodSN;
+
+  // 1. 嘗試從快取讀取
+  let cachedObj = cache.get(cacheKey);
+  if (cachedObj) {
+    return JSON.parse(cachedObj);
+  }
+
+  const sheet = mainspreadsheet.getSheetByName(sheetName);
+  if (!sheet) return null;
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const lngMethodSNColIdx = headers.indexOf("lngMethodSN");
+
+  if (lngMethodSNColIdx === -1) return null;
+
+  // 定義屬性順序 (必須與 getMethodSN 內部定義完全一致)
+  const orderedPropsForMethod = [
+    "strCompareType",
+    "FieldMode",
+    "strCompares",
+    "strComparesDetail",
+    "NextNumsMode",
+    "intNextNums",
+    "intNextStep",
+    "strNextNums",
+    "StrNextNumSpe",
+    "intDataLimit",
+    "intDataOffset",
+    "intSearchLimit",
+    "intSearchOffset",
+  ];
+
+  // 2. 搜尋序號並還原物件
+  for (let i = 1; i < data.length; i++) {
+    if (
+      parseInt(data[i][lngMethodSNColIdx], 10) === parseInt(lngMethodSN, 10)
+    ) {
+      const methodObj = {};
+      orderedPropsForMethod.forEach((prop, idx) => {
+        // 欄位從 index 1 開始 (index 0 是 lngMethodSN)
+        methodObj[prop] = data[i][idx + 1];
+      });
+
+      // 3. 存入快取並回傳 (6 小時)
+      cache.put(cacheKey, JSON.stringify(methodObj), 21600);
+      return methodObj;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 根據指定日期與欄位名稱清單，提取環境參數的字串詳情與條件物件。
+ * 用於 SearchS 參數處理及預覽。
+ *
+ * @param {Date|string} targetDate 基準日期
+ * @param {Array<string>} fields 欄位清單 (例如 ["日九星", "日天干"])
+ * @returns {object} 包含 compares (欄位#字串), detail (值#字串), conditions (鍵值對)
+ */
+function getFieldModeDetail(targetDate, fields) {
+  let compares = "";
+  let detail = "";
+  let conditions = {};
+
+  if (fields && fields.length > 0) {
+    const envData = getAllData(targetDate, true);
+    if (!envData) throw new Error("找不到該日期的環境參數資料 (AllData)");
+
+    compares = fields.join("#");
+    detail = fields
+      .map((f) => (envData[f] !== undefined ? String(envData[f]) : ""))
+      .join("#");
+
+    fields.forEach((f) => {
+      if (envData[f] !== undefined) {
+        conditions[f] = envData[f];
+      }
+    });
+  }
+
+  return { compares, detail, conditions };
+}
+
+/**
+ * 根據彩種、日期、托牌星數和間隔期數，計算托牌號碼組合。
+ * @param {string} lotto 彩種 (e.g., "L539", "L649", "L638", "LSix")
+ * @param {Date|string} date 預測日期 (支援 Date 物件或日期字串)
+ * @param {number} intNextNums 托牌星數 (k)
+ * @param {number} intNextStep 間隔期數
+ * @param {object} conditions 比對條件 (Step 1 產生的環境參數)
+ * @returns {{strNextNums: string, StrNextNumSpe: string}} 托牌號碼字串和特別號字串
+ */
+function getNextNumDetail(
+  lotto,
+  date,
+  intNextNums,
+  intNextStep,
+  conditions = {},
+) {
+  let strNextNums = "";
+  let StrNextNumSpe = "";
+
+  if (!lotto || !date || intNextNums <= 0 || intNextStep <= 0) {
+    return { strNextNums, StrNextNumSpe };
+  }
+
+  // 確保日期為 Date 物件，google.script.run 不支援直接傳遞 Date 物件
+  const targetDate =
+    date instanceof Date ? date : new Date(String(date).replace(/-/g, "/"));
+  if (isNaN(targetDate.getTime())) return { strNextNums, StrNextNumSpe };
+
+  try {
+    const trObj = getTargetsheet("Sheets", lotto);
+    const sheet = trObj.spreadsheet.getSheetByName("All");
+    if (!sheet) {
+      throw new Error(`找不到 ${lotto} 試算表中的 All 工作表`);
+    }
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      return { strNextNums, StrNextNumSpe };
+    }
+
+    const headers = data[0];
+    const dateColIdx = headers.indexOf("Date");
+
+    // 過濾出早於預測日期且符合條件的資料 (Step 2 邏輯)
+    const historicalData = data.slice(1).filter((row) => {
+      const rowDate = new Date(row[dateColIdx]);
+      if (rowDate.getTime() >= targetDate.getTime()) return false;
+
+      // 檢查欄位比對條件
+      for (let field in conditions) {
+        const colIdx = headers.indexOf(field);
+        if (colIdx === -1) continue;
+        // 轉字串比對
+        if (String(row[colIdx]) !== String(conditions[field])) return false;
+      }
+      return true;
+    });
+
+    // 確保按日期 DESC 排序，以便後續邏輯準確抓取「距離預測日最近的第 N 期」
+    historicalData.sort((a, b) => new Date(b[dateColIdx]).getTime() - new Date(a[dateColIdx]).getTime());
+
+    // 取得特定的第 intNextStep 期的資料 (1 代表最近一期，對應索引 0)
+    const targetIdx = intNextStep - 1;
+    if (targetIdx < 0) {
+      return { strNextNums, StrNextNumSpe };
+    }
+    const row = historicalData[targetIdx];
+
+    const s1ColIdx = headers.indexOf("S1");
+    const numbers = [];
+    const maxN = (lotto === "L539") ? 5 : 6;
+
+    if (lotto === "L638") {
+      // L638: 主球 N1~N6, 特別號 S1 獨立
+      for (let i = 1; i <= maxN; i++) {
+        const nIdx = headers.indexOf(`N${i}`);
+        const num = nIdx !== -1 ? Number(row[nIdx]) : 0;
+        if (!isNaN(num) && num > 0) numbers.push(num);
+      }
+      if (s1ColIdx !== -1) {
+        StrNextNumSpe = String(row[s1ColIdx] || "");
+      }
+    } else {
+      // 非 L638: L539 取 N1-N5; L649/LSix 取 N1-N6 + S1 作為大號池
+      for (let i = 1; i <= maxN; i++) {
+        const nIdx = headers.indexOf(`N${i}`);
+        const num = nIdx !== -1 ? Number(row[nIdx]) : 0;
+        if (!isNaN(num) && num > 0) numbers.push(num);
+      }
+      if (lotto !== "L539" && lotto !== "L638" && s1ColIdx !== -1) {
+        const s1Num = Number(row[s1ColIdx]);
+        if (!isNaN(s1Num) && s1Num > 0) numbers.push(s1Num);
+      }
+    }
+
+    if (numbers.length > 0) {
+      const allCombinations = combinations(numbers, intNextNums).map(
+        (combo) => {
+          return combo.sort((a, b) => a - b).join("#");
+        },
+      );
+      strNextNums = allCombinations.join("|");
+    }
+
+    return { strNextNums, StrNextNumSpe };
+  } catch (e) {
+    Logger.log(`[getNextNum Error] ${e.message}`);
+    return { strNextNums: "", StrNextNumSpe: "" };
+  }
+}
+
+/**
+ * 核心資料提取函式：根據彩種、日期與方法條件提取歷史資料
+ * @param {string} lotto - 彩種 (L539, L649, L638, LSix)
+ * @param {Date|string} date - 基準日期 (只取小於此日期的資料)
+ * @param {number|object} methodRef - 方法序號或物件
+ * @param {string} sort - 最終結果排序 (DESC/ASC)
+ * @param {number} limit - 最終回傳筆數 (-1 為不限制)
+ */
+function getDataBase(lotto, date, methodRef, sort = "DESC", limit) {
+  // 1. 解析方法物件
+  let methodObj = null;
+  if (typeof methodRef === "number" || (!isNaN(methodRef) && typeof methodRef !== "object")) {
+    methodObj = getMethodObj(Number(methodRef));
+  } else {
+    methodObj = methodRef;
+  }
+  if (!methodObj) return [];
+
+  const targetDate = new Date(String(date).replace(/-/g, "/"));
+  const trObj = getTargetsheet("Sheets", lotto);
+  const sheet = trObj.spreadsheet.getSheetByName("All");
+  if (!sheet) return [];
+
+  const rawData = sheet.getDataRange().getValues();
+  if (rawData.length <= 1) return [];
+
+  const headers = rawData[0].map(h => String(h || "").trim());
+  const dateIdx = headers.indexOf("Date");
+
+  // 1. 處理 FieldMode (環境條件過濾)
+  // 先提取 < date 的資料，並以 ASC 排序
+  let filteredData = rawData.slice(1)
+    .filter(row => row[dateIdx] && new Date(row[dateIdx]) < targetDate)
+    .sort((a, b) => new Date(a[dateIdx]) - new Date(b[dateIdx]));
+
+  if (methodObj.FieldMode && methodObj.strCompares && methodObj.strComparesDetail) {
+    const fields = String(methodObj.strCompares).split("#");
+    const values = String(methodObj.strComparesDetail).split("#");
+    const fieldConditions = fields.map((f, i) => ({
+      idx: headers.indexOf(f.trim()),
+      val: String(values[i] || "").trim()
+    })).filter(c => c.idx !== -1);
+
+    filteredData = filteredData.filter(row => {
+      const isAnd = methodObj.strCompareType !== "OR";
+      let matchCount = 0;
+      fieldConditions.forEach(c => {
+        if (String(row[c.idx]).trim() === c.val) matchCount++;
+      });
+      return isAnd ? (matchCount === fieldConditions.length) : (matchCount > 0);
+    });
+  }
+
+  // 2. 處理 NextNumsMode (托牌邏輯：利用 Step 1 的結果進行位移檢查)
+  // 注意：此處依據要求，不使用原始資料時間軸，而是從 filteredData 中往前推 intNextStep 筆。
+  if (methodObj.NextNumsMode && methodObj.intNextStep > 0 && methodObj.strNextNums) {
+    const step = parseInt(methodObj.intNextStep, 10);
+    const spe = String(methodObj.StrNextNumSpe || "").trim();
+    const nIndices = [1, 2, 3, 4, 5, 6].map(i => headers.indexOf("N" + i)).filter(idx => idx !== -1);
+    const s1Idx = headers.indexOf("S1");
+
+    // 解析托牌組合 (支援多組組合，如 8#25|10#12)
+    const comboGroups = String(methodObj.strNextNums).split("|").map(g => 
+      g.split("#").map(n => String(n).trim()).filter(n => n !== "")
+    ).filter(g => g.length > 0);
+
+    const nextNumResults = [];
+    for (let i = 0; i < filteredData.length; i++) {
+      const triggerIdx = i - step;
+      if (triggerIdx < 0) continue;
+
+      const triggerRow = filteredData[triggerIdx];
+      const triggerNums = nIndices.map(idx => String(triggerRow[idx]).trim());
+      
+      // 非 L638 時，S1 通常納入一般號碼池進行組合比對 (如 L539 無 S1)
+      if (lotto !== "L638" && s1Idx !== -1) {
+        const s1Val = String(triggerRow[s1Idx]).trim();
+        if (s1Val !== "" && s1Val !== "0") triggerNums.push(s1Val);
+      }
+
+      // 檢查主球組合是否匹配 (任一組合符合即可)
+      const comboMatch = comboGroups.some(group => group.every(n => triggerNums.includes(String(n))));
+      if (!comboMatch) continue;
+
+      // L638 模式下，額外檢查第二區(特別號)是否符合 StrNextNumSpe
+      if (lotto === "L638" && spe !== "" && s1Idx !== -1) {
+        if (String(triggerRow[s1Idx]).trim() !== spe) continue;
+      }
+
+      nextNumResults.push(filteredData[i]);
+    }
+    filteredData = nextNumResults;
+  }
+
+  // 3. 處理 intDataLimit, intDataOffset (分頁限制)
+  const dOffset = parseInt(methodObj.intDataOffset, 10) || 0;
+  const dLimit = (methodObj.intDataLimit && parseInt(methodObj.intDataLimit, 10) !== -1) ? parseInt(methodObj.intDataLimit, 10) : 0;
+  if (dLimit > 0) {
+    filteredData = filteredData.slice(dOffset, dOffset + dLimit);
+  } else if (dOffset > 0) {
+    filteredData = filteredData.slice(dOffset);
+  }
+
+  // 4. 處理 intSearchLimit, intSearchOffset (搜尋範圍限制)
+  const sOffset = parseInt(methodObj.intSearchOffset, 10) || 0;
+  const sLimit = (methodObj.intSearchLimit && parseInt(methodObj.intSearchLimit, 10) !== -1) ? parseInt(methodObj.intSearchLimit, 10) : 0;
+  if (sLimit > 0) {
+    filteredData = filteredData.slice(sOffset, sOffset + sLimit);
+  } else if (sOffset > 0) {
+    filteredData = filteredData.slice(sOffset);
+  }
+
+  // 5. 執行最終排序
+  if (sort === "DESC") {
+    filteredData.sort((a, b) => new Date(b[dateIdx]) - new Date(a[dateIdx]));
+  } else {
+    filteredData.sort((a, b) => new Date(a[dateIdx]) - new Date(b[dateIdx]));
+  }
+
+  // 6. 最終回傳筆數輸出 (依據傳入參數 limit)
+  const finalLimit = (limit !== undefined && limit !== null) ? parseInt(limit, 10) : -1;
+  if (finalLimit === -1) {
+    return filteredData;
+  }
+  return filteredData.slice(0, finalLimit);
+}
+
+function getDataBaseBySQL(lotto, date, methodRef) {
+  const trObj = getTargetsheet("Sheets", lotto);
+  const dateStr = Utilities.formatDate(new Date(date), "GMT", "yyyy-MM-dd");
+
+  // 基礎過濾：日期小於基準日，且依日期降序
+  let sql = `SELECT * WHERE A < date '${dateStr}'`;
+
+  // 如果有 FieldMode (欄位比對)
+  // 注意：這裡需要維護一個 欄位名稱 -> 字母 (A, B, C) 的對照表
+  if (methodRef.FieldMode && methodRef.strComparesDetail) {
+    // 範例：假設比對的是「年天干」(J欄)
+    sql += ` AND J = '${methodRef.strComparesDetail}'`;
+  }
+
+  sql += ` ORDER BY A DESC`;
+
+  // 分頁處理
+  if (methodRef.intDataLimit > 0) {
+    sql += ` LIMIT ${methodRef.intDataLimit}`;
+  }
+  if (methodRef.intDataOffset > 0) {
+    sql += ` OFFSET ${methodRef.intDataOffset}`;
+  }
+
+  return executeSQL(trObj.id, "All", sql);
+}
+
+/**
+ * 使用 Google Visualization API (SQL-like) 查詢試算表資料
+ * @param {string} spreadsheetId 試算表 ID
+ * @param {string} sheetName 工作表名稱
+ * @param {string} sql SQL 查詢語句 (例如: "SELECT * WHERE A < date '2024-05-20' ORDER BY A DESC")
+ * @returns {Array<Array>} 資料陣列 (不含標題)
+ */
+function executeSQL(spreadsheetId, sheetName, sql) {
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&tq=${encodeURIComponent(sql)}`;
+
+  const params = {
+    headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true,
+  };
+
+  const response = UrlFetchApp.fetch(url, params);
+  if (response.getResponseCode() !== 200) {
+    throw new Error("SQL 查詢失敗: " + response.getContentText());
+  }
+
+  let text = response.getContentText();
+  // Google 會在 JSON 前面加上一段保護字串，需要截掉
+  const jsonStr = text.match(
+    /google\.visualization\.Query\.setResponse\((.*)\);/,
+  )[1];
+  const json = JSON.parse(jsonStr);
+
+  if (json.status === "error") {
+    throw new Error("SQL 語法錯誤: " + JSON.stringify(json.errors));
+  }
+
+  // 將 GViz 格式轉換回標準的二維陣列 [ [row1_col1, row1_col2], ... ]
+  return json.table.rows.map((row) => {
+    return row.c.map((cell) => {
+      if (!cell) return null;
+      // 處理 GViz 特有的日期格式 Date(2024,4,20) -> 注意月份是 0-indexed
+      if (typeof cell.v === "string" && cell.v.startsWith("Date(")) {
+        const parts = cell.v.match(/\d+/g).map(Number);
+        return new Date(parts[0], parts[1], parts[2]);
+      }
+      return cell.v;
+    });
+  });
+}
+
+/**
  * 輔助函式：產生陣列的所有組合 (C(n, k))
  * @param {Array<any>} arr 原始陣列
  * @param {number} k 組合長度
@@ -715,101 +1134,6 @@ function combinations(arr, k) {
   }
   backtrack(0, []);
   return result;
-}
-
-/**
- * 根據彩種、日期、托牌星數和間隔期數，計算托牌號碼組合。
- * @param {string} lotto 彩種 (e.g., "L539", "L649", "L638", "LSix")
- * @param {Date} date 預測日期
- * @param {number} intNextNums 托牌星數 (k)
- * @param {number} intNextStep 間隔期數
- * @param {object} conditions 比對條件 (Step 1 產生的環境參數)
- * @returns {{strNextNums: string, StrNextNumSpe: string}} 托牌號碼字串和特別號字串
- */
-function getNextNum(lotto, date, intNextNums, intNextStep, conditions = {}) {
-  let strNextNums = "";
-  let StrNextNumSpe = "";
-
-  if (!lotto || !date || intNextNums <= 0 || intNextStep <= 0) {
-    return { strNextNums, StrNextNumSpe };
-  }
-
-  try {
-    const trObj = getTargetsheet("Sheets", lotto);
-    const sheet = trObj.spreadsheet.getSheetByName("All");
-    if (!sheet) {
-      throw new Error(`找不到 ${lotto} 試算表中的 All 工作表`);
-    }
-
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) {
-      return { strNextNums, StrNextNumSpe };
-    }
-
-    const headers = data[0];
-    const dateColIdx = headers.indexOf("Date");
-
-    // 過濾出早於預測日期且符合條件的資料 (Step 2 邏輯)
-    const historicalData = data.slice(1).filter((row) => {
-      const rowDate = new Date(row[dateColIdx]);
-      if (rowDate.getTime() >= date.getTime()) return false;
-
-      // 檢查欄位比對條件
-      for (let field in conditions) {
-        const colIdx = headers.indexOf(field);
-        if (colIdx === -1) continue;
-        // 轉字串比對
-        if (String(row[colIdx]) !== String(conditions[field])) return false;
-      }
-      return true;
-    });
-
-    // 取得特定的第 intNextStep 期的資料 (1 代表最近一期，2 代表前二期...)
-    const targetIdx = historicalData.length - intNextStep;
-    if (targetIdx < 0) {
-      return { strNextNums, StrNextNumSpe };
-    }
-    const row = historicalData[targetIdx];
-
-    const s1ColIdx = headers.indexOf("S1");
-    const numbers = [];
-
-    if (lotto === "L638") {
-      // Lotto == L638: 所得 N1~N6 的資料，排列組合 C(6, intNextNums)，StrNextNumSpe == S1
-      for (let i = 1; i <= 6; i++) {
-        const nIdx = headers.indexOf(`N${i}`);
-        const num = nIdx !== -1 ? Number(row[nIdx]) : 0;
-        if (!isNaN(num) && num > 0) numbers.push(num);
-      }
-      if (s1ColIdx !== -1) {
-        StrNextNumSpe = String(row[s1ColIdx] || "");
-      }
-    } else {
-      // Lotto != L638: 所得 N1~N5, S1 的資料 (以L539為例)，排列組合 C(5, intNextNums)，StrNextNumSpe == ""
-      // L539 只會抓到 N1~N5；L649/LSix 會抓到 N1~N5 和 S1
-      for (let i = 1; i <= 5; i++) {
-        const nIdx = headers.indexOf(`N${i}`);
-        const num = nIdx !== -1 ? Number(row[nIdx]) : 0;
-        if (!isNaN(num) && num > 0) numbers.push(num);
-      }
-      if (lotto !== "L539" && s1ColIdx !== -1) {
-        const s1Num = Number(row[s1ColIdx]);
-        if (!isNaN(s1Num) && s1Num > 0) numbers.push(s1Num);
-      }
-    }
-
-    if (numbers.length > 0) {
-      const allCombinations = combinations(numbers, intNextNums).map((combo) => {
-        return combo.sort((a, b) => a - b).join(";");
-      });
-      strNextNums = allCombinations.join("#");
-    }
-
-    return { strNextNums, StrNextNumSpe };
-  } catch (e) {
-    Logger.log(`[getNextNum Error] ${e.message}`);
-    return { strNextNums: "", StrNextNumSpe: "" };
-  }
 }
 
 /**
@@ -909,10 +1233,7 @@ function getErrorLogs() {
     }
   }
 
-  return {
-    errorCount: parseInt(count),
-    lastError: lastError,
-  };
+  return { errorCount: parseInt(count), lastError: lastError };
 }
 
 /**
@@ -937,7 +1258,9 @@ function getPropertySheetValue(
   // 1. 優先嘗試讀取特定 Key 的快取 (支援單一物件最高 100KB)
   // 核心修正：如果 sheetName 是 prct1_Property，必須強制指定 targetSs
   if (sheetName === "prct1_Property" && !targetSs) {
-    throw new Error(`'prct1_Property' must be accessed with a specific target spreadsheet (targetSs argument is required).`);
+    throw new Error(
+      `'prct1_Property' must be accessed with a specific target spreadsheet (targetSs argument is required).`,
+    );
   }
 
   const specificCacheKey = `SHEET_PROP_${ss.getId()}_${sName}_${key}`;
@@ -1015,7 +1338,9 @@ function setPropertySheetValue(sheetName, key, value, targetSs = null) {
   if (!sheet) {
     // 核心修正：如果 sheetName 是 prct1_Property，必須強制指定 targetSs
     if (sName === "prct1_Property" && !targetSs) {
-      throw new Error(`'prct1_Property' must be written to a specific target spreadsheet (targetSs argument is required).`);
+      throw new Error(
+        `'prct1_Property' must be written to a specific target spreadsheet (targetSs argument is required).`,
+      );
     }
 
     sheet = ss.insertSheet(sName);
@@ -1281,7 +1606,14 @@ function logSystemError(module, error, context = {}) {
 
     if (!sheet) {
       sheet = mainspreadsheet.insertSheet("ErrorLog");
-      sheet.appendRow(["時間", "版本", "模組", "錯誤訊息", "堆疊軌跡", "上下文數據"]);
+      sheet.appendRow([
+        "時間",
+        "版本",
+        "模組",
+        "錯誤訊息",
+        "堆疊軌跡",
+        "上下文數據",
+      ]);
       sheet.setFrozenRows(1);
     }
 
@@ -1316,14 +1648,14 @@ function logSystemError(module, error, context = {}) {
 function autoCleanupErrorLog(daysToKeep = 30) {
   const sheet = mainspreadsheet.getSheetByName("ErrorLog");
   if (!sheet) return;
-  
+
   const rows = sheet.getLastRow();
   if (rows <= 1) return;
-  
+
   const data = sheet.getRange(2, 1, rows - 1, 1).getValues();
   const now = new Date().getTime();
   const maxAge = daysToKeep * 24 * 60 * 60 * 1000;
-  
+
   let deleteCount = 0;
   // 從後往前刪除，避免索引偏移
   for (let i = data.length - 1; i >= 0; i--) {
@@ -1333,7 +1665,7 @@ function autoCleanupErrorLog(daysToKeep = 30) {
       deleteCount++;
     }
   }
-  
+
   if (deleteCount > 0) {
     Logger.log(`[Cleanup] 已清理 ${deleteCount} 筆過期日誌。`);
   }
