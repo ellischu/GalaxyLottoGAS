@@ -2,15 +2,15 @@
 
 ## 系統環境
 
-- [系統環境](DocGalaxy計劃文件.md#系統環境)
+- [系統環境](DocGalaxy計劃文件.md#1-系統環境與架構)
 
 ## 相關資料庫
 
-- [GalaxyLotto 試算表](DocSpreadsheet.md#galaxylotto-試算表)
-  - [AllData 工作表](DocSpreadsheet.md#alldata-工作表)
-- [L539L649L638LSix 試算表](DocSpreadsheet.md#l539l649l638lsix-試算表)
-  - [All 工作表](DocSpreadsheet.md#all-工作表)
-  - [Miss 工作表](DocSpreadsheet.md#miss-工作表)
+- [GalaxyLotto 試算表](GalaxyLotto試算表.md)  
+  - [AllData 工作表](GalaxyLotto_AllData工作表.md)
+- [L539L649L638LSix 試算表](L539L649L638LSix試算表.md)
+  - [All 工作表](共同工作表_all工作表.md)
+  - [Miss 工作表](共同工作表_miss工作表.md)  
   - [predic1_Settings 工作表](DocSpreadsheet.md#predic1_settings-工作表)
     : 存放設定值(如果不存在工作表需建立)
   - [predic1_Property 工作表](DocSpreadsheet.md#predic1_property-工作表)

@@ -1,78 +1,96 @@
-// main.js
-
+// main.js - Google Apps Script Backend Logic (已修正語法錯誤)
 const DataManager = {
-  fetchAndConnect: function() {
-    // 使用 Google Apps Script 套件連接到 Google Sheets
-    return SpreadsheetApp.getActiveSpreadsheet();
+  fetchAndConnect: function () {
+    // 使用 Google Apps Script API 連接到 Google Sheets
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    try {
+      return ss;
+    } catch (e) {
+      throw new Error("Failed to access spreadsheet");
+    }
   },
 
-  getBatchData: function(lastDate, batchSize) {
-    const sheet = this.fetchAndConnect().getSheetByName("原始開獎工作表");
-    const dataRange = sheet.getDataRange();
-    const values = dataRange.getValues();
+  getBatchData: function (lastDate, batchSize) {
+    if (!lastDate || !batchSize) {
+      Logger.log("Missing parameters in getBatchData");
+      return [];
+    }
 
-    // 假設 values 是一個二维数组，其中第一列是日期
-    return values.filter(row => row[0] > lastDate).slice(0, batchSize);
-  }
+    const ss = this.fetchAndConnect();
+    const sheet = ss.getSheetByName("原始開獎工作表");
+    if (!sheet) {
+      throw new Error('Sheet "原始開獎工作表" not found');
+    }
+
+    // 獲取所有數據，避免在迴圈內反覆呼叫 API
+    const values = sheet.getDataRange().getValues();
+    const lastDateObj = new Date(lastDate);
+
+    // 過濾條件：日期大於指定日期且在批次範圍內
+    let resultData = [];
+    for (let i = 0; i < values.length - 1; i++) {
+      if (!values[i][0]) continue; // 跳過空行
+
+      const currentDate = new Date(values[i][0]);
+
+      if (currentDate > lastDateObj && resultData.length < batchSize) {
+        try {
+          resultData.push({
+            date: values[i][0],
+            n1: parseInt(values[i][1]) || "",
+            n2: parseInt(values[i][2]) || "",
+            n3: parseInt(values[i][3]) || "",
+            n4: parseInt(values[i][4]) || "",
+            n5: parseInt(values[i][5]) || "",
+            s1: values[i][6] || "",
+          });
+        } catch (e) {
+          Logger.log(`Data parsing error at row ${i}:`, e);
+          continue; // 跳過無法解析的列
+        }
+      }
+    }
+
+    return resultData.reverse(); // 倒序，從新到舊
+  },
+
+  resetProgress: function () {
+    const ss = this.fetchAndConnect();
+    const sheet = ss.getSheetByName("原始開獎工作表");
+    try {
+      if (sheet) {
+        // 假設進度存儲在 Z1
+        sheet.getRange("Z1").clearContent();
+        Logger.log("Progress has been reset.");
+      }
+    } catch (e) {
+      Logger.log("Reset failed: " + e.message);
+    }
+  },
+
+  getLastProcessTime: function () {
+    try {
+      const ss = this.fetchAndConnect();
+      const sheet = ss.getSheetByName("原始開獎工作表");
+      if (!sheet) return "";
+
+      // 獲取最後一列的資料
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) return "";
+
+      // 假設日期記錄在第一欄 (A列)
+      const lastDate = sheet.getRange(lastRow, 1).getValue();
+      if (lastDate instanceof Date) {
+        return Utilities.formatDate(
+          lastDate,
+          "Asia/Taipei",
+          "yyyy-MM-dd HH:mm:ss",
+        );
+      }
+      return String(lastDate);
+    } catch (e) {
+      Logger.log("Error getting last process time: " + e.message);
+      return "";
+    }
+  },
 };
-
-const DataTransformer = {
-  transformData: function(rawBatchData, envParams) {
-    const transformedData = rawBatchData.map(row => {
-      // 在這裡實現業務邏輯轉換
-      return {
-        Date: row[0],
-        N1: row[1],
-        N2: row[2],
-        N3: row[3],
-        N4: row[4],
-        N5: row[5],
-        S1: row[6],
-        Sum: row[7]
-      };
-    });
-
-    // 合併原始數據和環境參數
-    return transformedData.map(data => ({
-      ...data,
-      ...envParams
-    }));
-  }
-};
-
-const DataSink = {
-  writeToSheet: function(dataBatch, sheetName, startRow) {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-    sheet.getRange(startRow, 1, dataBatch.length, Object.keys(dataBatch[0]).length).setValues(
-      dataBatch.map(obj => Object.values(obj))
-    );
-  }
-};
-
-function mainProcess(lastDate, batchSize) {
-  try {
-    const rawData = DataManager.getBatchData(lastDate, batchSize);
-    if (rawData.length === 0) return;
-
-    // 假設從別處獲取環境參數
-    const envParams = {
-      param1: 'value1',
-      param2: 'value2'
-    };
-
-    const transformedData = DataTransformer.transformData(rawData, envParams);
-    
-    DataSink.writeToSheet(transformedData, "All 工作表", 1);
-
-    // 断點續傳邏輯（示例）
-    Logger.log(`Processed data till date: ${transformedData[transformedData.length - 1].Date}`);
-  } catch (error) {
-    Logger.log('Error occurred:', error);
-    throw new Error('Processing failed');
-  }
-}
-
-// 主程序入口
-function doGet() {
-  mainProcess('2023-01-01', 100); // 設定初始日期和批次大小
-}
