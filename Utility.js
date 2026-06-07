@@ -1590,12 +1590,14 @@ function clearServerPropertiesManually() {
 }
 
 /**
- * 全域錯誤追蹤系統
- * @param {string} module 模組名稱
- * @param {Error} error 錯誤物件
+ * 全域日誌紀錄系統
+ * @param {string} module 函數名稱
+ * @param {string|Error} message 訊息內容
+ * @param {string} messageType 訊息類別 (INFO, ERROR, WARNING) 預設 INFO
+ * @param {string} description 訊息說明 (可選)
  * @param {Object} context 執行上下文 (可選)
  */
-function logSystemError(module, error, context = {}) {
+function logSystemError(module, message, messageType = "INFO", description = "", context = {}) {
   const lock = LockService.getScriptLock();
   try {
     // 獲取鎖定，最多等待 10 秒，避免併發建立工作表或寫入衝突
@@ -1608,27 +1610,25 @@ function logSystemError(module, error, context = {}) {
       sheet = mainspreadsheet.insertSheet("ErrorLog");
       sheet.appendRow([
         "時間",
-        "版本",
-        "模組",
-        "錯誤訊息",
-        "堆疊軌跡",
-        "上下文數據",
+        "訊息類別",
+        "函數名稱",
+        "訊息說明",
+        "訊息內容",
+        "模組版本",
       ]);
       sheet.setFrozenRows(1);
     }
 
-    const errMsg = error && error.message ? error.message : String(error);
-    const errStack = error && error.stack ? error.stack : "N/A";
-    // 確保 Context 包含版本資訊
-    const fullContext = Object.assign({ appVersion: appVer }, context);
+    // 萃取訊息內容 (支持 Error 物件或字串)
+    const msgContent = message && message.message ? message.message : String(message);
 
     sheet.appendRow([
       new Date(),
-      appVer,
+      messageType,
       module,
-      errMsg,
-      errStack,
-      JSON.stringify(fullContext),
+      description,
+      msgContent,
+      appVer,
     ]);
 
     // 強制執行寫入，確保日誌確實存檔

@@ -630,7 +630,7 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
       }
       const verInfo = ` [Ver: ${currentAppVer} | Algo: ${PRCT1_ALGO_VERSION}]`;
       // 強化：將詳細錯誤記錄至伺服器日誌
-      logSystemError("Prediction1_Server", err, {
+      logSystemError("Prediction1_Server", err.toString(), "ERROR", "", {
         lotto: lotto,
         algoVer: PRCT1_ALGO_VERSION,
         appVer: currentAppVer,

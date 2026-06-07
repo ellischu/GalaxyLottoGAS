@@ -943,7 +943,7 @@ function autoAdjustAstrologyWeights(lotto, ss, useTrend) {
     );
     // 如果 Utility.js 中的 logSystemError 函式存在，則記錄錯誤
     if (typeof logSystemError === "function") {
-      logSystemError("Predict_Server.js", e, {
+      logSystemError("Predict_Server.js", e.toString(), "ERROR", "", {
         function: "autoAdjustAstrologyWeights",
         lotto: lotto,
       });

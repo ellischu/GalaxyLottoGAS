@@ -53,13 +53,12 @@ function dailyupdate(isUI) {
     },
   });
 
-  Logger.log("開始執行每日更新，當前步驟索引: " + state.step);
 
   for (let i = state.step; i < tasks.length; i++) {
     // 檢查整體執行時間
     if (isNearTimeout()) {
       saveProgress(stateKey, { step: i });
-      Logger.log("超時保護觸發：已暫停於步驟 " + tasks[i].name);
+      logSystemError("dailyupdate", "超時保護觸發：已暫停於步驟 " + tasks[i].name, "WARNING");
       return {
         status: "continue",
         message: "系統即將超時，已存檔並待下次觸發續傳。",
@@ -67,14 +66,14 @@ function dailyupdate(isUI) {
     }
 
     let task = tasks[i];
-    Logger.log("正在執行: " + task.name);
+    logSystemError("dailyupdate", "正在執行: " + task.name);
 
     let result = task.run();
 
     // 如果子任務回傳需要續傳，則停止目前序列
     if (result && result.status === "continue") {
       saveProgress(stateKey, { step: i });
-      Logger.log("子任務 " + task.name + " 要求續傳：" + result.message);
+      logSystemError("dailyupdate", "子任務 " + task.name + " 要求續傳：" + result.message);
       return result;
     }
 
@@ -94,7 +93,7 @@ function dailyupdate(isUI) {
 
   // 全部完成，清除流程進度
   clearProgress(stateKey);
-  Logger.log("每日更新任務已全數執行完畢");
+  logSystemError("dailyupdate", "每日更新任務已全數執行完畢");
   return { status: "complete", message: "全部任務已完成" };
 }
 
@@ -109,7 +108,9 @@ function updatenumber(sheetName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
-    Logger.log("找不到工作表: " + sheetName);
+    logSystemError("updatenumber", "找不到工作表: " + sheetName, "ERROR", "", {
+      sheetName: sheetName,
+    });
     return;
   }
 
@@ -137,10 +138,12 @@ function updatenumber(sheetName) {
     if (periodCol) {
       period = sheet.getRange(lastRow, periodCol).getValue();
     } else {
-      Logger.log("警告: 找不到 'period' 欄位，使用預設值 " + period);
+      logSystemError("updatenumber", "找不到 'period' 欄位，使用預設值 " + period, "WARNING", "", {
+        sheetName: sheetName,
+      });
     }
   }
-  Logger.log("使用 sheetName: " + sheetName + "，period 值: " + period);
+  logSystemError("updatenumber", "使用 sheetName: " + sheetName + "，period 值: " + period);
 
   var scrapeRes =
     sheetName === "LSix"
@@ -238,7 +241,7 @@ function updatenumber(sheetName) {
       .getRange(lastRow + 1, 1, dataToWrite.length, dataToWrite[0].length)
       .setValues(dataToWrite);
 
-    Logger.log("成功寫入 " + dataToWrite.length + " 筆資料到 " + sheetName);
+    logSystemError("updatenumber", "成功寫入 " + dataToWrite.length + " 筆資料到 " + sheetName);
   }
 
   if (scrapeRes.status === "continue") {
@@ -283,7 +286,9 @@ function scrapeDailyCash(sheetName, period) {
   } else if (sheetName === "LSix") {
     url01 = "lotto649Result";
   } else {
-    Logger.log("未知的 sheetName: " + sheetName);
+    logSystemError("scrapeDailyCash", "未知的 sheetName: " + sheetName, "ERROR", "", {
+      sheetName: sheetName,
+    });
     return;
   }
 
@@ -295,7 +300,8 @@ function scrapeDailyCash(sheetName, period) {
     endperiod = startperiod + 1; // 如果無法獲取 API 最後期別，則預設抓取 100 期
   }
 
-  Logger.log(
+  logSystemError(
+    "scrapeDailyCash",
     "開始抓取資料，起始期別: " + startperiod + "，API 最後期別: " + endperiod,
   );
 
@@ -339,7 +345,9 @@ function scrapeDailyCash(sheetName, period) {
 
     Utilities.sleep(200); // 避免請求過快
     if (!Lottoresult || Lottoresult.length === 0) {
-      Logger.log("未找到資料，期別: " + p);
+      logSystemError("scrapeDailyCash", "未找到資料，期別: " + p, "WARNING", "", {
+        period: p,
+      });
       continue;
     }
   }
@@ -424,7 +432,9 @@ function scrapeDailySix(sheetName, period) {
       return parseInt(a.period, 10) - parseInt(b.period, 10);
     });
   } catch (e) {
-    Logger.log("scrapeDailySix 發生錯誤: " + e.toString());
+    logSystemError("scrapeDailySix", "scrapeDailySix 發生錯誤: " + e.toString(), "ERROR", "", {
+      sheetName: sheetName,
+    });
   }
   // 回傳抓取結果 Logger.log("成功抓取 " + result.length + " 筆資料");
   return { status: "complete", data: result };
@@ -442,7 +452,9 @@ function getendPeriod(sheetName, url00, url01, startperiod) {
       d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2);
     var url = url00 + url01 + "?period&month=" + queryMonth;
 
-    Logger.log("正在抓取網址: " + url);
+    logSystemError("getendPeriod", "正在抓取網址: " + url, "INFO", "", {
+      queryMonth: queryMonth,
+    });
 
     var response = UrlFetchApp.fetch(url, {
       headers: {
@@ -481,18 +493,27 @@ function getendPeriod(sheetName, url00, url01, startperiod) {
         Lottoresult = Lottoresult.concat(json.content.superLotto638Res);
       }
     } else {
-      Logger.log(
-        "抓取失敗 (" + queryMonth + ")，狀態碼: " + response.getResponseCode(),
+      logSystemError(
+        "getendPeriod",
+        "抳取失敗 (" + queryMonth + ")，狀態碼: " + response.getResponseCode(),
+        "ERROR",
+        "",
+        { responseCode: response.getResponseCode(), queryMonth: queryMonth },
       );
     }
     Utilities.sleep(200); // 避免請求過快
 
     if (!Lottoresult || Lottoresult.length === 0) {
-      Logger.log("未找到資料");
+      logSystemError("getendPeriod", "未找到資料", "WARNING", "", {
+        queryMonth: queryMonth,
+      });
       return;
     }
   } catch (e) {
-    Logger.log("發生錯誤: " + e.toString());
+    logSystemError("getendPeriod", "發生錯誤: " + e.toString(), "ERROR", "", {
+      sheetName: sheetName,
+      queryMonth: queryMonth,
+    });
   }
   // 回傳最大的period值，若無資料則回傳原始的 startperiod
   if (Lottoresult.length > 0) {

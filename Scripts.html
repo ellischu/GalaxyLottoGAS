@@ -204,10 +204,7 @@
 
       // --- 核心新增：自動將錯誤詳情發送到後端 ErrorLog 工作表 ---
       try {
-        google.script.run.logSystemError("Frontend_AppUI", {
-          message: "[" + title + "] " + (text || "無詳細內容"),
-          stack: (debugInfo && debugInfo.stack) ? debugInfo.stack : "N/A"
-        }, {
+        google.script.run.logSystemError("Frontend_AppUI", "[" + title + "] " + (text || "無詳細內容"), "ERROR", (debugInfo && debugInfo.stack) ? debugInfo.stack : "", {
           lotto: window._lastErrorLotto || "N/A",
           timestamp: new Date().toISOString()
         });
