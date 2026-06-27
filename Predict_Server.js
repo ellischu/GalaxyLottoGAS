@@ -36,13 +36,12 @@ function getAIWeightSettings(lottoType, useTrend = true) {
     const ss = trObj.spreadsheet;
     let propertySheet = ss.getSheetByName(`predic1_Property`); // 修正：改用 let 以允許重新賦值
 
-    Logger.log(`[Environment Check] ${lottoType} property sheet missing or cache expired. Syncing...`);
+    logSystemError("getAIWeightSettings", lottoType + " property sheet missing or cache expired. Syncing...", "WARNING", "屬性表失效，需要銳新");
+
 
     if (!propertySheet) {
       // 如果工作表不存在，則建立一個預設的
-      Logger.log(
-        `Property sheet for ${lottoType} not found. Creating default.`,
-      );
+      logSystemError("getAIWeightSettings", `Property sheet for ${lottoType} not found. Creating default.`, "WARNING", "權重工作表不存在");
       const newSheet = ss.insertSheet(`predic1_Property`);
       // 寫入預設標頭和一些預設值
       newSheet.getRange("A1:B1").setValues([["Parameter", "Value"]]);
@@ -94,13 +93,11 @@ function getAIWeightSettings(lottoType, useTrend = true) {
 
     // 將讀取到的權重存入 PropertiesService 快取
     userProperties.setProperty(cacheKey, JSON.stringify(weights));
-    Logger.log(
-      `[Cache Set] AI Weights for ${lottoType} saved to PropertiesService.`,
-    );
+    logSystemError("getAIWeightSettings", `AI Weights for ${lottoType} saved to cache.`, "INFO", "快取已建立");
 
     return weights;
   } catch (e) {
-    Logger.log(`Error in getAIWeightSettings for ${lottoType}: ` + e);
+    logSystemError("getAIWeightSettings", e.toString(), "ERROR", "讀取權重失敗", { lottoType: lottoType });
     throw new Error(`Failed to load AI weights for ${lottoType}: ${e.message}`);
   } finally {
     lock.releaseLock();
@@ -156,9 +153,7 @@ function setAIWeightSettings(lottoType, newWeights, useTrend = true) {
 
     // 試算表更新成功後才寫入 PropertiesService 快取，確保資料來源一致
     userProperties.setProperty(cacheKey, JSON.stringify(newWeights));
-    Logger.log(
-      `[Cache Update] AI Weights for ${lottoType} updated in PropertiesService.`,
-    );
+    logSystemError("setAIWeightSettings", `AI Weights for ${lottoType} updated in cache.`, "INFO", "快取已更新");
 
     // --- 高效能清理歷史命中快取 (避免 deleteRow 迴圈導致超時與頻繁交易失敗) ---
     let settingsSheet = ss.getSheetByName("predic1_Settings");
@@ -182,6 +177,7 @@ function setAIWeightSettings(lottoType, newWeights, useTrend = true) {
 
     Logger.log(`[Sheet Update] AI Weights for ${lottoType} updated in sheet.`);
   } catch (e) {
+    logSystemError("setAIWeightSettings", e.toString(), "ERROR", `更新 ${lottoType} 權重設定失敗`);
     Logger.log(`Error in setAIWeightSettings for ${lottoType}: ` + e);
     throw new Error(
       `Failed to update AI weights for ${lottoType}: ${e.message}`,
@@ -204,6 +200,7 @@ function clearAIWeightCache(lottoType) {
       `[Cache Clear] AI Weights cache for ${lottoType} cleared from PropertiesService.`,
     );
   } catch (e) {
+    logSystemError("clearAIWeightCache", e.toString(), "ERROR", `清除 ${lottoType} 權重快取失敗`);
     Logger.log(`Error clearing AI weights cache for ${lottoType}: ` + e);
     throw new Error(
       `Failed to clear AI weights cache for ${lottoType}: ${e.message}`,
@@ -270,7 +267,7 @@ function maintenance_PurgeOldHistoryVersions() {
         Logger.log(`[${lotto}] 清理完成！移除了 ${removedCount} 筆冗餘紀錄。`);
       }
     } catch (e) {
-      Logger.log(`[${lotto}] 維護失敗: ` + e.message);
+        logSystemError("maintenance_PurgeOldHistoryVersions", e.toString(), "ERROR", `[${lotto}] 版本清理與去重失敗`);
     }
   });
 }
@@ -336,7 +333,7 @@ function maintenance_ArchiveOldRecords() {
         Logger.log(`[${lotto}] 已將 ${rowsToArchive.length} 筆舊紀錄移至備份表。`);
       }
     } catch (e) {
-      Logger.log(`[${lotto}] 存檔維護失敗: ` + e.message);
+      logSystemError("maintenance_ArchiveOldRecords", e.toString(), "ERROR", `[${lotto}] 歷史紀錄存檔失敗`);
     }
   });
 }
@@ -363,10 +360,7 @@ function getLottoSettings(lottoType, settingName) {
     cache.put(cacheKey, JSON.stringify(settings), 3600); // 快取 1 小時
     return settings;
   } catch (e) {
-    Logger.log(
-      `Error in getLottoSettings for ${lottoType}, ${settingName}:`,
-      e,
-    );
+    logSystemError("getLottoSettings", e.toString(), "ERROR", `取得彩種設定失敗: ${lottoType}/${settingName}`);
     throw new Error(`Failed to load settings for ${lottoType}: ${e.message}`);
   }
 }
@@ -417,6 +411,7 @@ function getPrediction(lotto, dateStr, useTrend, topN = 10) {
     setPredictProgress(lotto, 100, "預測完成");
     return res;
   } catch (e) {
+    logSystemError("getPrediction", e.toString(), "ERROR", `彩種 ${lotto} 執行預測失敗`, { date: dateStr });
     Logger.log(`[getGalaxyPrediction Error] ` + e);
     return { status: "error", message: e.message };
   }
@@ -663,6 +658,7 @@ function get60PeriodHistoryStats(lotto, topN, targetDateStr, useTrend = true) {
 
     return results;
   } catch (e) {
+    logSystemError("get60PeriodHistoryStats", e.toString(), "ERROR", `彩種 ${lotto} 歷史回測失敗`);
     Logger.log(`[DEBUG] Error in get60PeriodHistoryStats: ` + e);
     return [];
   }

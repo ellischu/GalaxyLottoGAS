@@ -18,7 +18,7 @@ function combineData(sheetname) {
   let lastRow = trsheet.getLastRow();
   // 1. 檢查標題列是否消失或損壞 (All 工作表的第一格應為 Date)
   if (lastRow > 0 && trsheet.getRange(1, 1).getValue() !== "Date") {
-    Logger.log(`偵測到 ${sheetname} - All 工作表標題損壞，正在重置結構...`);
+    logSystemError("combineData", `偵測到 ${sheetname} - All 工作表標題損壞，正在重置結構...`, "WARNING");
     trsheet.clear();
     lastRow = 0;
   }
@@ -33,9 +33,7 @@ function combineData(sheetname) {
       lastdate = new Date(val);
     } else {
       // 修復：如果最後一行日期無效，移除該行並重新執行，以修復續傳邏輯
-      Logger.log(
-        `偵測到損壞的日期資料 (Row: ${lastRow})，正在移除並自動修復...`,
-      );
+      logSystemError("combineData", `偵測到損壞的日期資料 (Row: ${lastRow})，正在自動修復...`, "WARNING");
       trsheet.deleteRow(lastRow);
       return combineData(sheetname);
     }
@@ -146,6 +144,7 @@ function combineData(sheetname) {
           // 強制同步試算表緩衝，確保資料狀態與後續的進度保存一致
           SpreadsheetApp.flush();
         } catch (e) {
+          logSystemError("combineData", e.toString(), "ERROR", `${sheetname} 批次寫入失敗`, { writeRow: writeRow });
           return { status: "error", message: "合併表格批次寫入失敗：" + e };
         }
       }
@@ -183,6 +182,7 @@ function combineData(sheetname) {
         .setValues(rowsToAdd);
       SpreadsheetApp.flush();
     } catch (e) {
+      logSystemError("combineData", e.toString(), "ERROR", `${sheetname} 最後殘留資料寫入失敗`);
       return { status: "error", message: "最後寫入失敗：" + e };
     }
   }
@@ -247,7 +247,7 @@ function genMissData(sheetname) {
 
   // --- 自動偵測與修復 (Repair Logic) ---
   if (trLastRow > 0 && trsheet.getRange(1, 1).getValue() !== "Date") {
-    Logger.log(`偵測到 ${sheetname} - Miss 表格標題損壞，正在重置...`);
+    logSystemError("genMissData", `偵測到 ${sheetname} - Miss 表格標題損壞，正在重置...`, "WARNING");
     trsheet.clear();
     trLastRow = 0;
   }
@@ -265,7 +265,7 @@ function genMissData(sheetname) {
       lastDate = new Date(dateVal);
     } else {
       // 修復：如果最後一行損壞，移除並遞迴重新執行
-      Logger.log("偵測到 Miss 表格末行損壞，正在執行自動修復...");
+      logSystemError("genMissData", "偵測到 Miss 表格末行損壞，正在自動修復...", "WARNING");
       trsheet.deleteRow(trLastRow);
       return genMissData(sheetname);
     }
@@ -378,6 +378,7 @@ function genMissData(sheetname) {
           rowsToAdd = [];
           SpreadsheetApp.flush();
         } catch (e) {
+          logSystemError("genMissData", e.toString(), "ERROR", `${sheetname} 遺漏表批次寫入失敗`);
           return { status: "error", message: "遺漏表批次寫入失敗：" + e };
         }
       }
@@ -412,6 +413,7 @@ function genMissData(sheetname) {
       .setValues(rowsToAdd);
     SpreadsheetApp.flush();
   }
+  logSystemError("genMissData", `${sheetname} 遺漏表更新成功`, "INFO");
 
   clearProgress("Miss_JOB");
   return { status: "complete", message: "全部處理完成！", btntext: "確定" };

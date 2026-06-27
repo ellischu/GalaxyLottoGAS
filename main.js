@@ -6,19 +6,21 @@ const DataManager = {
     try {
       return ss;
     } catch (e) {
+      logSystemError("fetchAndConnect", e.toString(), "ERROR", "試算表連接失敗");
       throw new Error("Failed to access spreadsheet");
     }
   },
 
   getBatchData: function (lastDate, batchSize) {
     if (!lastDate || !batchSize) {
-      Logger.log("Missing parameters in getBatchData");
+      logSystemError("getBatchData", "缺少必要參數: lastDate=" + lastDate + ", batchSize=" + batchSize, "WARNING", "參數驗證失敗");
       return [];
     }
 
     const ss = this.fetchAndConnect();
     const sheet = ss.getSheetByName("原始開獎工作表");
     if (!sheet) {
+      logSystemError("getBatchData", "找不到工作表: 原始開獎工作表", "ERROR", "必需的工作表不存在");
       throw new Error('Sheet "原始開獎工作表" not found');
     }
 
@@ -45,7 +47,7 @@ const DataManager = {
             s1: values[i][6] || "",
           });
         } catch (e) {
-          Logger.log(`Data parsing error at row ${i}:`, e);
+          logSystemError("getBatchData", "資料解析錯誤: " + e.toString(), "WARNING", "第 " + i + " 列資料解析失敗", { row: i });
           continue; // 跳過無法解析的列
         }
       }
@@ -61,10 +63,10 @@ const DataManager = {
       if (sheet) {
         // 假設進度存儲在 Z1
         sheet.getRange("Z1").clearContent();
-        Logger.log("Progress has been reset.");
+        logSystemError("resetProgress", "進度已重設", "INFO", "進度重設完成");
       }
     } catch (e) {
-      Logger.log("Reset failed: " + e.message);
+      logSystemError("resetProgress", e.toString(), "ERROR", "重設進度失敗");
     }
   },
 
@@ -89,7 +91,7 @@ const DataManager = {
       }
       return String(lastDate);
     } catch (e) {
-      Logger.log("Error getting last process time: " + e.message);
+      logSystemError("getLastProcessTime", e.toString(), "WARNING", "取得最後處理時間失敗");
       return "";
     }
   },

@@ -49,7 +49,7 @@ function combineData_Legacy(sheetname) {
     var d = row[dateCol];
     if (lastdate && d <= lastdate) continue;
 
-    Logger.log("date: " + d + ", index: " + i);
+    logSystemError("combineData_Legacy", "date: " + d + ", index: " + i, "INFO", "正在処理歴弹數檓");
     var nums = lCols.map((idx) => row[idx]).sort((a, b) => a - b); // N1...Nn
     var s1 = s1Col > -1 ? row[s1Col] : null;
     var sum = sumCol > -1 ? row[sumCol] : null;
@@ -87,6 +87,7 @@ function combineData_Legacy(sheetname) {
             .setValues(rowsToAdd);
         }
       } catch (e) {
+        logSystemError("combineData_Legacy", e.toString(), "ERROR", "寫入試算表失敗", { sheetname: sheetname, index: i });
         return { status: "error", message: "寫入試算表時發生錯誤：" + e };
       }
       rowsToAdd = [];
@@ -111,6 +112,7 @@ function combineData_Legacy(sheetname) {
         )
         .setValues(rowsToAdd);
     } catch (e) {
+      logSystemError("combineData_Legacy", e.toString(), "ERROR", "最後寫入失敗", { sheetname: sheetname });
       return { status: "error", message: "最後寫入失敗：" + e };
     }
   }
@@ -131,6 +133,7 @@ function genMissData_Legacy(sheetname) {
   const srsheet = trspreadsheet.getSheetByName("All");
 
   if (!srsheet) {
+    logSystemError("genMissData_Legacy", "找不到 'All' 工作表", "ERROR", "失敗表源工作表不存在", { sheetname: sheetname });
     return {
       status: "error",
       message: "找不到 'All' 工作表，請先執行合併表格更新。",

@@ -1,0 +1,17 @@
+**/**
+!appsscript.json
+!**/*.js
+!**/*.html
+!**/*.gs
+node_modules/**
+.clasp.json
+.clasprc.json
+clasp-auth.js
+clasp-fix.js
+package.json
+package-lock.json
+.gitignore
+.git/**
+jsconfig.json
+docs/**
+.claude/**

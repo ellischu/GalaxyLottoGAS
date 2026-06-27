@@ -8,9 +8,15 @@
   "description": "",
   "main": "dailywork.js",
   "devDependencies": {
+    "@google/clasp": "^3.3.0",
     "@types/google-apps-script": "^2.0.8"
   },
   "scripts": {
+    "push": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js push",
+    "pull": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js pull",
+    "status": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js status",
+    "deploy": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js deploy",
+    "versions": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js versions",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

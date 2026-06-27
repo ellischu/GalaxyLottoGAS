@@ -105,14 +105,19 @@ function getTarget(sheetName, targetName) {
  * @returns 結構 url,id,spreadsheet
  */
 function getTargetsheet(sheetName, targetName) {
-  var res = getTarget(sheetName, targetName);
-  var fileId = getIdFromUrl(res);
-  if (!fileId || typeof fileId !== "string") {
-    throw new Error("無法從 URL 解析出有效的 ID: " + res);
+  try {
+    var res = getTarget(sheetName, targetName);
+    var fileId = getIdFromUrl(res);
+    if (!fileId || typeof fileId !== "string") {
+      throw new Error("無法從 URL 解析出有效的 ID: " + res);
+    }
+    var file = DriveApp.getFileById(fileId);
+    var ssheet = SpreadsheetApp.open(file);
+    return { url: res, id: fileId, spreadsheet: ssheet };
+  } catch (e) {
+    logSystemError("getTargetsheet", e.toString(), "ERROR", `開啟 ${targetName} 失敗`);
+    throw e;
   }
-  var file = DriveApp.getFileById(fileId);
-  var ssheet = SpreadsheetApp.open(file);
-  return { url: res, id: fileId, spreadsheet: ssheet };
 }
 
 /**
@@ -194,9 +199,7 @@ function getFieldMapping() {
           const val = String(data[i][nameIdx] || "").trim();
           if (key) {
             if (mapping[key]) {
-              Logger.log(
-                `[FieldName 衝突預警] 偵測到重複的 ID: "${key}"。原名稱 "${mapping[key]}" 將被取代為 "${val}"。`,
-              );
+              logSystemError("getFieldMapping", `偵測到重複的 ID: "${key}"。原名稱 "${mapping[key]}" 將被取代為 "${val}"。`, "WARNING", "FieldName 衝突預警");
             }
             mapping[key] = val;
           }
@@ -1527,24 +1530,7 @@ function transformAllDataToC() {
     }
     // 儲存當前索引以供續傳
     saveProgress("TransformAllData_JOB", { currentIndex: i });
-
-    // 紀錄詳細錯誤到 ErrorLog 工作表
-    try {
-      let logSheet = mainspreadsheet.getSheetByName("ErrorLog");
-      if (!logSheet) {
-        logSheet = mainspreadsheet.insertSheet("ErrorLog");
-        logSheet.appendRow(["時間", "函式", "錯誤訊息", "處理列索引", "備註"]);
-      }
-      logSheet.appendRow([
-        new Date(),
-        "transformAllDataToC",
-        err.toString(),
-        i,
-        "轉換過程中發生異常，已儲存進度點",
-      ]);
-    } catch (logErr) {
-      Logger.log("寫入 ErrorLog 工作表失敗: " + logErr.toString());
-    }
+    logSystemError("transformAllDataToC", err.toString(), "ERROR", "轉換過程發生異常，已儲存進度點", { index: i });
 
     return {
       status: "error",

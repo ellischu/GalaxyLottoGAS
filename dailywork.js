@@ -311,10 +311,8 @@ function scrapeDailyCash(sheetName, period) {
     if (isNearTimeout()) {
       return { status: "continue", data: Lottoresult, lastPeriod: p - 1 };
     }
-
-    // Logger.log("正在抓取期別: " + p);
+    
     var url = url00 + url01 + "?period=" + p;
-    // Logger.log("正在抓取網址: " + url);
 
     var response = UrlFetchApp.fetch(url, {
       headers: {
@@ -396,9 +394,7 @@ function scrapeDailySix(sheetName, period) {
       while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
         // 去除 HTML 標籤並修剪空白
         cells.push(cellMatch[1].replace(/<[^>]+>/g, "").trim());
-        //Logger.log("抓取到儲存格內容: " + cells[cells.length - 1]);
       }
-      //Logger.log("抓取到列內容，儲存格數量: " + cells.length);
       // 判斷是否為有效資料列
       // 欄位順序: 期號(0): 026022, 開獎日期(1): 2026-02-26, 開獎號碼(2) 06,19,38,15,42,13,34
 
@@ -406,7 +402,7 @@ function scrapeDailySix(sheetName, period) {
         var p = cells[0];
         // 將 period 轉成字串並補零到 6 位數
         p = String(p).padStart(6, "0");
-        //Logger.log("正在處理期號: " + p);
+
         // 簡單驗證期號是否為數字
         if (/^\d+$/.test(p)) {
           // 只抓取比目前 sheet 中最後一期更新的資料
@@ -436,8 +432,7 @@ function scrapeDailySix(sheetName, period) {
       sheetName: sheetName,
     });
   }
-  // 回傳抓取結果 Logger.log("成功抓取 " + result.length + " 筆資料");
-  return { status: "complete", data: result };
+    return { status: "complete", data: result };
 }
 
 function getendPeriod(sheetName, url00, url01, startperiod) {

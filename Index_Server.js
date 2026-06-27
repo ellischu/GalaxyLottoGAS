@@ -33,12 +33,13 @@ function getSystemHealthStats() {
         }
       } catch (e) {
         // 忽略個別彩種讀取失敗，確保整體面板仍能顯示
+        logSystemError("getSystemHealthStats", e.toString(), "WARNING", `讀取 ${lotto} 存檔筆數失敗`);
       }
     });
 
     return stats;
   } catch (e) {
-    Logger.log("getSystemHealthStats Error: " + e.message);
+    logSystemError("getSystemHealthStats", e.message, "ERROR", "系統健康度統計失敗");
     return null;
   }
 }
@@ -83,7 +84,7 @@ function maintenance_PruneSystemProperties() {
   }
 
   if (pruneCount > 0) {
-    Logger.log(`[System Prune] 成功清理 ${pruneCount} 筆冗餘系統屬性。`);
+    logSystemError("maintenance_PruneSystemProperties", `已清理 ${pruneCount} 筆冗餘系統屬性`, "INFO", "系統屬性維護完成");
   }
   
   return {

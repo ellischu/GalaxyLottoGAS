@@ -21,6 +21,7 @@ function getFieldList() {
         name: getActivityDisplayTitle(h), // 使用新函式進行名稱對應
       }));
   } catch (e) {
+    logSystemError("getFieldList", e.toString(), "ERROR", "取得環境參數欄位清單失敗");
     return [];
   }
 }
@@ -102,6 +103,7 @@ function getDatePreview(lotto, dateStr) {
       dayStar: getVal("日九星") || "無",
     };
   } catch (e) {
+    logSystemError("getDatePreview", e.toString(), "ERROR", `取得日期預覽失敗`, { date: dateStr });
     return null;
   }
 }
@@ -127,6 +129,7 @@ function getNextComboOptions(params) {
       conditions,
     );
   } catch (e) {
+    logSystemError("getNextComboOptions", e.toString(), "ERROR", "計算托牌組合失敗");
     return { strNextNums: "", StrNextNumSpe: "" };
   }
 }
@@ -214,6 +217,7 @@ function prepareActivityQuery(params) {
       methodObj: null, // 查詢時不再回傳除錯資訊
     };
   } catch (e) {
+    logSystemError("prepareActivityQuery", e.toString(), "ERROR", "準備活動查詢失敗");
     return { status: "error", message: e.toString() };
   }
 }
@@ -310,6 +314,7 @@ function getPreviewData(params) {
       methodObj: isDebugMode ? methodObj : null,
     };
   } catch (e) {
+    logSystemError("getPreviewData", e.toString(), "ERROR", "取得預覽資料失敗");
     return { status: "error", message: e.toString() };
   }
 }

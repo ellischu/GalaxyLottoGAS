@@ -725,6 +725,7 @@ function preloadPrediction1Cache() {
         `[Cache Preload] 成功為 ${lotto} 預載 W${windowSize} 快取 (${lastDrawDate})`,
       );
     } catch (e) {
+      logSystemError("preloadPrediction1Cache", e.message, "ERROR", `${lotto} 預載失敗`);
       Logger.log(`[Cache Preload Error] ${lotto} 預載失敗: ${e.message}`);
     }
   });
@@ -2405,6 +2406,7 @@ function autoAdjustBaseWeights(settingsSheet, lotto, ss) {
     );
     Logger.log(`[AutoLearn] ${lotto} 基礎權重已自動微調並存入試算表。`);
   } catch (e) {
+    logSystemError("autoAdjustBaseWeights", e.message, "ERROR", `${lotto} 權重更新失敗`);
     Logger.log(`[AutoLearn Error] ${lotto} 權重寫入失敗: ` + e.message);
   }
 }
