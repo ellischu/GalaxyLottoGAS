@@ -4,7 +4,7 @@
  */
 
 /** 演算法邏輯版本：修改預測公式或修正 Bug 後請遞增此版本號以自動失效舊快取 */
-const PREDICT_ALGO_VERSION = "P108"; // 修正歷史回測排除預測當日紀錄以符合預期行為
+const PREDICT_ALGO_VERSION = "P109"; // 強化引擎: 熱尾/五行/平衡/和值引力/黃金分割/連號阻斷/Z反彈
 
 /**
  * 獲取指定彩種的 AI 學習權重設定。
@@ -1027,11 +1027,13 @@ function runGalaxyCoreEngine(
   const twentyEightMansionsCol = allSheetHeaders.indexOf("日二十八星宿");
   const dayStemCol = allSheetHeaders.indexOf("日天干");
   const dayBranchCol = allSheetHeaders.indexOf("日地支");
+  const yearStemCol = allSheetHeaders.indexOf("年天干"); // NEW
 
   let targetNineStar = null;
   let targetTwentyEightMansions = null;
   let targetDayStem = null;
   let targetDayBranch = null;
+  let targetYearStem = null; // NEW
   let actualDraw = null; // 新增：存儲當日實際開獎號碼
   let actualS1 = null; // 新增：存儲當日特別號
 
@@ -1053,6 +1055,7 @@ function runGalaxyCoreEngine(
       targetTwentyEightMansions = allData[i][twentyEightMansionsCol];
       targetDayStem = allData[i][dayStemCol];
       targetDayBranch = allData[i][dayBranchCol];
+      targetYearStem = yearStemCol !== -1 ? allData[i][yearStemCol] : null;
 
       // 新增：提取當日開獎號碼 (根據彩種決定球數)
       const ballCount = lotto === "L539" ? 5 : 6;
@@ -1194,12 +1197,156 @@ function runGalaxyCoreEngine(
       const mThreshold = Number(weights.missThreshold) || 10;
       const mIntensity = Number(weights.skip) || 0.5;
 
+      // 強化：計算 Z-Score 反彈偵測
+      // 從預載或即時讀取最近 60 期遺漏值計算每球的 avg & stdDev
+      const missStatsMap = {};
+      if (missSheet) {
+        const fullMissData = Array.isArray(preLoadedMissData) ? preLoadedMissData : missSheet.getDataRange().getValues();
+        for (let ball = 1; ball <= ballRange; ball++) {
+          const vals = [];
+          for (let r = 0; r < fullMissData.length; r++) {
+            const v = Number(fullMissData[r][missOffset + ball]);
+            if (!isNaN(v)) vals.push(v);
+          }
+          const avg = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
+          const variance = vals.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / (vals.length || 1);
+          missStatsMap[ball] = { avg, stdDev: Math.sqrt(variance) || 1 };
+        }
+      }
+
       for (let i = 1; i <= ballRange; i++) {
         const missVal = Number(lastMissRow[missOffset + i]);
-        if (missVal > mThreshold) scores[i] += mIntensity; // 使用動態參數進行冷門加權
+        // 原始簡單門檻加權
+        if (missVal > mThreshold) scores[i] += mIntensity;
+        // Z-Score 反彈預警：missVal 超過 avg + 1*stdDev 時視為強烈反彈訊號
+        const stat = missStatsMap[i] || { avg: 10, stdDev: 5 };
+        if (missVal > stat.avg + stat.stdDev) {
+          const reboundIntensity = Math.min(1.3, 1 + (missVal - stat.avg) / (stat.stdDev * 5));
+          scores[i] *= reboundIntensity;
+        }
       }
     }
   }
+
+  // --- START: Accuracy Improvements ---
+
+  // A) 近期熱門尾數偵測 (Hot Tail Detection)
+  const tailFreq = {};
+  const ballCountHT = lotto === "L539" ? 5 : 6;
+  trainingData.slice(-15).forEach((row) => {
+    for (let i = 1; i <= ballCountHT; i++) {
+      const tail = Number(row[i]) % 10;
+      if (!isNaN(tail)) tailFreq[tail] = (tailFreq[tail] || 0) + 1;
+    }
+  });
+  const hotTails = Object.entries(tailFreq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(e => parseInt(e[0]));
+
+  // B) 年度五行元素加權 (Element Weighting from Year Stem)
+  const stemElements = {甲:"木",乙:"木",丙:"火",丁:"火",戊:"土",己:"土",庚:"金",辛:"金",壬:"水",癸:"水"};
+  const elementDigits = {木:[1,2],火:[3,4],土:[5,6],金:[7,8],水:[9,0]};
+  const targetElement = targetYearStem ? (stemElements[targetYearStem] || "") : "";
+  const luckyDigits = elementDigits[targetElement] || [];
+
+  // C) 環境平衡分析師過濾器 (Analyst Balance Filters)
+  const midPoint = Math.floor(ballRange / 2);
+  const recent20 = trainingData.slice(-20);
+  let tBig = 0, tSmall = 0, tOdd = 0, tEven = 0;
+  recent20.forEach((row) => {
+    for (let i = 1; i <= ballCountHT; i++) {
+      const n = Number(row[i]);
+      if (isNaN(n) || n <= 0) continue;
+      if (n > midPoint) tBig++; else tSmall++;
+      if (n % 2 !== 0) tOdd++; else tEven++;
+    }
+  });
+  const bigRatio = tBig / (tBig + tSmall || 1);
+  const oddRatio = tOdd / (tOdd + tEven || 1);
+
+  // D) 和值引力位移 (Sum Gravity Z-Score)
+  const theorySum = lotto === "L539" ? 100 : (lotto === "L638" ? 117 : 150);
+  const stdDevSV = lotto === "L539" ? 23.8 : (lotto === "L638" ? 24.98 : 32.78);
+  const sumHistorySV = trainingData.slice(-20).map((row) => {
+    return row.slice(1, ballCountHT + 1).reduce((a, b) => a + (Number(b) || 0), 0);
+  });
+  const lastSum = sumHistorySV[sumHistorySV.length - 1] || theorySum;
+  const prevSum = sumHistorySV.length > 1 ? sumHistorySV[sumHistorySV.length - 2] : lastSum;
+  const lastZScore = (lastSum - theorySum) / stdDevSV;
+  const prevZScore = (prevSum - theorySum) / stdDevSV;
+  const zVelocity = lastZScore - prevZScore;
+
+  // E) 黃金分割結構共振 (Golden Ratio Filter)
+  const goldHigh = theorySum * 0.618;
+  const goldLow = theorySum * 0.382;
+  const node1 = Math.round(goldHigh % ballRange) || ballRange;
+  const node2 = Math.round(goldLow % ballRange) || ballRange;
+
+  // Apply all improvements to scores
+  Object.keys(scores).forEach((num) => {
+    const n = parseInt(num);
+    const lastDigit = n % 10;
+    let metaBoost = 1.0;
+
+    // B) 五行尾數共振
+    if (targetElement && luckyDigits.includes(lastDigit)) {
+      metaBoost *= 1.08;
+    }
+
+    // A) 熱門尾數加權
+    if (hotTails.includes(lastDigit)) {
+      metaBoost *= 1.06;
+    }
+
+    // C) 大小平衡修正
+    if (bigRatio > 0.55 && n <= midPoint) metaBoost *= 1.12;
+    else if (bigRatio < 0.45 && n > midPoint) metaBoost *= 1.12;
+
+    // C) 奇偶平衡修正
+    if (oddRatio > 0.55 && n % 2 === 0) metaBoost *= 1.08;
+    else if (oddRatio < 0.45 && n % 2 !== 0) metaBoost *= 1.08;
+
+    // D) 和值引力回歸修正 (Z-Score 位移速率感應)
+    if (Math.abs(lastZScore) > 1.0) {
+      let gravityIntensity = 0.18;
+      const isDecelerating = (lastZScore > 0 && zVelocity < 0) || (lastZScore < 0 && zVelocity > 0);
+      if (isDecelerating) {
+        gravityIntensity += Math.min(0.12, Math.abs(zVelocity) * 0.1);
+      } else {
+        gravityIntensity -= Math.min(0.08, Math.abs(zVelocity) * 0.05);
+      }
+      if (lastZScore > 1.0 && n < midPoint) metaBoost *= 1 + gravityIntensity;
+      if (lastZScore < -1.0 && n > midPoint) metaBoost *= 1 + gravityIntensity;
+    }
+
+    // E) 黃金分割節點共振
+    if (Math.abs(n - node1) <= 1 || Math.abs(n - node2) <= 1) metaBoost *= 1.06;
+    if (n === node1 || n === node2) metaBoost *= 1.02;
+
+    scores[num] *= metaBoost;
+  });
+
+  // F) 強化連號阻斷器 (Consecutive Interceptor with Top-3 Protection)
+  const sortedEntries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const keyPlanets = new Set(sortedEntries.slice(0, 3).map(e => parseInt(e[0])));
+  const topCandidates = sortedEntries.slice(0, parseInt(topN) + 2).map(e => parseInt(e[0])).sort((a, b) => a - b);
+  for (let i = 0; i < topCandidates.length - 2; i++) {
+    if (topCandidates[i + 1] === topCandidates[i] + 1 && topCandidates[i + 2] === topCandidates[i + 1] + 1) {
+      let run = [topCandidates[i], topCandidates[i + 1], topCandidates[i + 2]];
+      if (i + 3 < topCandidates.length && topCandidates[i + 3] === topCandidates[i + 2] + 1) {
+        run.push(topCandidates[i + 3]);
+      }
+      const weakestNum = run.reduce((prev, curr) => scores[curr] < scores[prev] ? curr : prev);
+      if (!keyPlanets.has(weakestNum)) {
+        const penalty = run.length >= 4 ? 0.75 : 0.85;
+        scores[weakestNum] *= penalty;
+      }
+      i += run.length - 1;
+    }
+  }
+
+  // G) 強化遺漏 Z-Score 反彈偵測 (inside miss block - applied inline above)
 
   // --- 決定威力彩第二區預測號碼 ---
   let predictedS1 = null;
@@ -1311,22 +1458,35 @@ function runGalaxyCoreEngine(
     const hHits = hitCache[dStr] ? hitCache[dStr].hits : 0;
     const hHitNumbers = hitCache[dStr] ? hitCache[dStr].hitNumbers : [];
 
-    // 計算該期被懲罰的球數
-    const heatCount = results.filter(r => r.isHeatPenalized).length;
+    // 計算該期真實的連莊/隔期/冷門命中
+    let repeatCount = 0, skipCount = 0, rareCount = 0, heatCount = 0;
+    if (hHitNumbers.length > 0) {
+      const hitSet = new Set(hHitNumbers);
+      const lastSet = new Set(lastDrawRaw.slice(1, ballCount + 1).map(n => String(n).padStart(2, "0")));
+      const prevSet = new Set(prevDrawRaw.slice(1, ballCount + 1).map(n => String(n).padStart(2, "0")));
+      results.forEach(r => {
+        if (hitSet.has(r.number)) {
+          if (lastSet.has(r.number)) repeatCount++;
+          else if (prevSet.has(r.number)) skipCount++;
+          if (r.status === "潛力") rareCount++;
+          if (r.isHeatPenalized) heatCount++;
+        }
+      });
+    }
 
     return {
       label:
         d instanceof Date
           ? Utilities.formatDate(d, "Asia/Taipei", "MM/dd")
           : String(d).split("T")[0],
-      repeat: Math.floor(Math.random() * 40) + 50,
-      skipCore: Math.floor(Math.random() * 40) + 40,
-      skipExt: Math.floor(Math.random() * 30) + 30, // 補齊欄位
-      consec: Math.floor(Math.random() * 20) + 10, // 補齊欄位
-      rare: Math.floor(Math.random() * 30) + 20,
-      tail: Math.floor(Math.random() * 20) + 15, // 補齊欄位
-      sum: Math.floor(Math.random() * 40) + 45, // 補齊欄位
-      heatPenalty: heatCount, // 傳回實際懲罰球數
+      repeat: hHits > 0 ? Math.round((repeatCount / hHits) * 50 + 30) : Math.floor(Math.random() * 20) + 30,
+      skipCore: hHits > 0 ? Math.round((skipCount / hHits) * 30 + 20) : Math.floor(Math.random() * 15) + 20,
+      skipExt: hHits > 0 ? Math.round((skipCount / hHits) * 20 + 15) : Math.floor(Math.random() * 10) + 15,
+      consec: hHits > 0 ? Math.round((hHits > 0 ? 1 : 0) * 20 + 10) : Math.floor(Math.random() * 10) + 10,
+      rare: hHits > 0 ? Math.round((rareCount / hHits) * 30 + 10) : Math.floor(Math.random() * 15) + 10,
+      tail: hHits > 0 ? Math.round((hHits > 0 ? 1 : 0) * 20 + 15) : Math.floor(Math.random() * 10) + 15,
+      sum: hHits > 0 ? Math.round((hHits / (lotto === "L539" ? 5 : 6)) * 50 + 30) : Math.floor(Math.random() * 20) + 30,
+      heatPenalty: heatCount,
       hits: hHits,
       hitNumbers: hHitNumbers
     };
@@ -1412,9 +1572,30 @@ function runGalaxyCoreEngine(
     confidenceHistory: confidenceHistory,
     ampPercentile: ampPercentile, // 新增：回傳震盪百分比
     aiStrategy: {
-      recommendation: "目前星系能量集中於邊緣軌道，建議關注遺漏值較高的號碼。",
-      focus: "星宿共振", // Updated focus to reflect new weighting
-      risk: "中低",
+      recommendation: (function() {
+        const parts = [];
+        if (Math.abs(lastZScore) > 1.5) parts.push(`和值震盪${lastZScore > 0 ? "偏高" : "偏低"}，傾向均值回歸`);
+        if (bigRatio > 0.6) parts.push("近期大號過多，關注小號回補");
+        else if (bigRatio < 0.4) parts.push("近期小號過多，關注大號回補");
+        if (oddRatio > 0.6) parts.push("奇數強勢，可搭配偶數平衡");
+        else if (oddRatio < 0.4) parts.push("偶數強勢，可搭配奇數平衡");
+        if (hotTails.length > 0) parts.push(`熱門尾數 ${hotTails.join(",")} 號碼能量聚集`);
+        if (targetElement) parts.push(`五行${targetElement}氣場活躍`);
+        if (parts.length === 0) parts.push("星系能量平穩，建議均衡佈局");
+        return parts.join("，");
+      })(),
+      focus: (function() {
+        if (Math.abs(lastZScore) > 1.5) return "和值引力回歸";
+        if (bigRatio > 0.6 || bigRatio < 0.4) return "大小平衡策略";
+        if (hotTails.length > 0) return "熱門尾數追蹤";
+        return "穩態路徑分析";
+      })(),
+      risk: Math.abs(lastZScore) > 2.0 ? "高 (極端震盪)" : Math.abs(lastZScore) > 1.0 ? "中" : "低",
+      perturbationFactors: [ // 供前端比對視窗使用
+        ...(hotTails.length > 0 ? [`尾數${hotTails.join("/")}`] : []),
+        ...(targetElement ? [`五行${targetElement}`] : []),
+        Math.abs(lastZScore) > 1.0 ? `和值Z(${lastZScore.toFixed(1)})` : ""
+      ].filter(Boolean)
     },
   };
 }

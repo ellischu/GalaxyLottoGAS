@@ -15,6 +15,9 @@ https://api.taiwanlottery.com/TLCAPIWeB/Lottery/Daily539Result?period=115000001
  * @param {boolean} isUI 是否為 UI 模式 (UI 模式會每步回傳以更新進度條)
  */
 function dailyupdate(isUI) {
+  // 每次進入重設計時器，確保續傳仍有完整 290 秒
+  startTime = new Date().getTime();
+
   const stateKey = "DAILY_UPDATE_FLOW_STATE";
   let state = getProgress(stateKey) || { step: 0 };
   const lottos = ["L539", "L649", "L638", "LSix"];
@@ -255,101 +258,107 @@ function updatenumber(sheetName) {
 }
 
 function scrapeDailyCash(sheetName, period) {
-  // sheetName L539 = "今彩539";
-  // sheetName L649 = "大樂透";
-  // sheetName L638 = "威力彩";
-  // sheetName L3D = "3星彩";
-  // sheetName L4D = "4星彩";
-  // shsstName LSix = "六合彩";
-
-  // API 網址
   var url00 = "https://api.taiwanlottery.com/TLCAPIWeB/Lottery/";
 
-  //：lotto649Result
-  //今彩539：Daily539Result
-  //威力彩：SuperLotto638Result
-  //3星彩：3DResult
-  //4星彩：4DResult
-
-  // 根據 sheetName 決定要使用的 API 網址後綴，並組合成完整的 API 網址
   var url01 = "";
-  if (sheetName === "L539") {
-    url01 = "Daily539Result";
-  } else if (sheetName === "L649") {
-    url01 = "lotto649Result";
-  } else if (sheetName === "L638") {
-    url01 = "SuperLotto638Result";
-  } else if (sheetName === "L3D") {
-    url01 = "3DResult";
-  } else if (sheetName === "L4D") {
-    url01 = "4DResult";
-  } else if (sheetName === "LSix") {
-    url01 = "lotto649Result";
-  } else {
-    logSystemError("scrapeDailyCash", "未知的 sheetName: " + sheetName, "ERROR", "", {
-      sheetName: sheetName,
-    });
+  if (sheetName === "L539") url01 = "Daily539Result";
+  else if (sheetName === "L649") url01 = "lotto649Result";
+  else if (sheetName === "L638") url01 = "SuperLotto638Result";
+  else if (sheetName === "LSix") url01 = "lotto649Result";
+  else if (sheetName === "L3D") url01 = "3DResult";
+  else if (sheetName === "L4D") url01 = "4DResult";
+  else {
+    logSystemError("scrapeDailyCash", "未知的 sheetName: " + sheetName, "ERROR", "", { sheetName: sheetName });
     return;
   }
 
-  // 資料中最後一期期別，預設為 115000001，若 sheet 中已有資料則使用最後一行的 period 值
-  var startperiod = parseInt(period) + 1; // 從下一期開始抓取
-  //獲取API最後一期期別
-  var endperiod = getendPeriod(sheetName, url00, url01, startperiod);
-  if (!endperiod) {
-    endperiod = startperiod + 1; // 如果無法獲取 API 最後期別，則預設抓取 100 期
+  var startperiod = parseInt(period) + 1;
+
+  // 批次月查詢：取代逐期迴圈，1-2 次 HTTP 即完成
+  var Lottoresult = fetchMonthlyBatch(sheetName, url00, url01, startperiod);
+
+  if (!Lottoresult || Lottoresult.length === 0) {
+    return { status: "complete", data: [] };
   }
 
-  logSystemError(
-    "scrapeDailyCash",
-    "開始抓取資料，起始期別: " + startperiod + "，API 最後期別: " + endperiod,
-  );
+  if (isNearTimeout()) {
+    return { status: "continue", data: Lottoresult, lastPeriod: Lottoresult[Lottoresult.length - 1].period };
+  }
 
-  var Lottoresult = [];
-  for (var p = startperiod; p <= endperiod; p++) {
-    // 檢查超時
-    if (isNearTimeout()) {
-      return { status: "continue", data: Lottoresult, lastPeriod: p - 1 };
-    }
-    
-    var url = url00 + url01 + "?period=" + p;
+  return { status: "complete", data: Lottoresult };
+}
+
+/**
+ * 批次抓取台灣彩券月資料 (取代逐期抓取)
+ * 自動從 startperiod 所屬月份抓到當月，最多 6 個月避免過度請求
+ */
+function fetchMonthlyBatch(sheetName, url00, url01, startperiod) {
+  var allResults = [];
+
+  // 計算 startperiod 所屬月份
+  var startYear = Math.floor(startperiod / 1000000);
+  var startMonth = Math.floor((startperiod % 1000000) / 10000);
+  var startDate = new Date(startYear, startMonth - 1, 1);
+
+  var now = new Date();
+  var monthsToFetch = [];
+  var cursor = new Date(startDate);
+
+  while (cursor <= now && monthsToFetch.length < 6) {
+    monthsToFetch.push(new Date(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  for (var m = 0; m < monthsToFetch.length; m++) {
+    if (isNearTimeout()) break;
+
+    var d = monthsToFetch[m];
+    var queryMonth = d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2);
+    var url = url00 + url01 + "?period&month=" + queryMonth;
 
     var response = UrlFetchApp.fetch(url, {
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/ 120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         Referer: "https://www.taiwanlottery.com/",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
       },
       muteHttpExceptions: true,
     });
 
-    var json = JSON.parse(response.getContentText());
-    if (sheetName === "L539" && json.content && json.content.daily539Res) {
-      Lottoresult = Lottoresult.concat(json.content.daily539Res);
-    } else if (
-      sheetName === "L649" &&
-      json.content &&
-      json.content.lotto649Res
-    ) {
-      Lottoresult = Lottoresult.concat(json.content.lotto649Res);
-    } else if (
-      sheetName === "L638" &&
-      json.content &&
-      json.content.superLotto638Res
-    ) {
-      Lottoresult = Lottoresult.concat(json.content.superLotto638Res);
+    if (response.getResponseCode() === 200) {
+      try {
+        var json = JSON.parse(response.getContentText());
+        var items = parseMonthlyResponse(sheetName, json);
+        if (items && items.length > 0) {
+          allResults = allResults.concat(items);
+        }
+      } catch (e) {
+        logSystemError("fetchMonthlyBatch", "解析月資料失敗: " + e.toString(), "WARNING", "", { queryMonth: queryMonth });
+      }
     }
-
-    Utilities.sleep(200); // 避免請求過快
-    if (!Lottoresult || Lottoresult.length === 0) {
-      logSystemError("scrapeDailyCash", "未找到資料，期別: " + p, "WARNING", "", {
-        period: p,
-      });
-      continue;
-    }
+    Utilities.sleep(200);
   }
-  return { status: "complete", data: Lottoresult };
+
+  // 過濾出比 startperiod 新的期別，按期號排序
+  allResults = allResults.filter(function (item) {
+    return parseInt(item.period, 10) >= startperiod;
+  }).sort(function (a, b) {
+    return parseInt(a.period, 10) - parseInt(b.period, 10);
+  });
+
+  return allResults;
+}
+
+/**
+ * 根據彩種名稱解析月 API 回傳
+ */
+function parseMonthlyResponse(sheetName, json) {
+  if (!json || !json.content) return [];
+  if (sheetName === "L539" && json.content.daily539Res) return json.content.daily539Res;
+  if (sheetName === "L649" && json.content.lotto649Res) return json.content.lotto649Res;
+  if (sheetName === "L638" && json.content.superLotto638Res) return json.content.superLotto638Res;
+  if (sheetName === "LSix" && json.content.lotto649Res) return json.content.lotto649Res;
+  return [];
 }
 
 function scrapeDailySix(sheetName, period) {
