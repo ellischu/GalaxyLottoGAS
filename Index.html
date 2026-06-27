@@ -43,7 +43,7 @@
           <button
             id="goToPredictBtn"
             class="btn btn-primary w-100 label-text text-white py-3"
-            onclick="openPageUrl('Predict')"
+            onclick="localStorage.setItem('sys_backup_settings', JSON.stringify({ autoStart: true, isReloaded: true, lotto: 'L539' })); openPageUrl('Predict')"
           >
             <i class="fas fa-magic me-2"></i> 前往 AI 智慧預測
           </button>
@@ -432,8 +432,7 @@
         }
 
         window.viewTrend = function (lotto) {
-          // 將彩種資訊存入暫存，讓預測頁面載入時自動選取
-          var backup = { lotto: lotto, isReloaded: true };
+          var backup = { lotto: lotto, isReloaded: true, autoStart: true };
           localStorage.setItem("sys_backup_settings", JSON.stringify(backup));
           openPageUrl("Predict");
         };

@@ -49,6 +49,7 @@
         localStorage.getItem("sys_backup_settings") || "{}",
       );
       if (backup.isReloaded) {
+        var needsAutoStart = backup.autoStart === true;
         if (backup.lotto) $("#lottoSelect").val(backup.lotto);
         if (backup.date) $("#predictDate").val(backup.date);
         if (backup.useTrend !== undefined)
@@ -57,6 +58,9 @@
 
         AppUI.toast("系統快取已重置", "success");
         localStorage.removeItem("sys_backup_settings");
+
+        // 從首頁「趨勢預測」跳轉過來時自動執行預測
+        if (needsAutoStart) setTimeout(handlePredict, 300);
       }
 
       // --- 核心優化：監聽主題切換並更新圖表顏色 ---

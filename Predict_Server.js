@@ -418,6 +418,33 @@ function getPrediction(lotto, dateStr, useTrend, topN = 10) {
 }
 
 /**
+ * 清理 predic1_Settings 中過期版本的快取記錄
+ */
+function cleanupStaleCacheRecords(ss) {
+  try {
+    const settingsSheet = ss.getSheetByName("predic1_Settings");
+    if (!settingsSheet) return;
+    const data = settingsSheet.getDataRange().getValues();
+    if (data.length < 2) return;
+    const currentLabel = "HIT_HISTORY_" + getCacheVersion(PREDICT_ALGO_VERSION);
+    const rowsToKeep = [data[0]];
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (typeof row[0] !== "string" || !row[0].startsWith("HIT_HISTORY_") || row[0] === currentLabel) {
+        rowsToKeep.push(row);
+      }
+    }
+    if (rowsToKeep.length < data.length) {
+      settingsSheet.clearContents();
+      settingsSheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+      SpreadsheetApp.flush();
+    }
+  } catch (e) {
+    Logger.log("[cleanupStaleCacheRecords] " + e);
+  }
+}
+
+/**
  * 獲取最近 30 期的歷史命中統計 (符合 Predict.md 規範)
  * 實作持久化快取於 predic1_Settings 中，按彩種隔離，避免重複運算
  * @param {string} lotto 彩種代碼
@@ -443,7 +470,7 @@ function get60PeriodHistoryStats(lotto, topN, targetDateStr, useTrend = true) {
     
     const nTopN = parseInt(topN) || 10;
     const ss = trObj.spreadsheet;
-    const weights = getAIWeightSettings(lotto); // 預載權重
+    const weights = getAIWeightSettings(lotto, useTrend); // 預載權重 (修正: 匹配遺漏模式)
     const allSheet = ss.getSheetByName("All");
     if (!allSheet) throw new Error("找不到 All 工作表"); // 修正：應先檢查是否存在再讀取資料
 
@@ -467,9 +494,6 @@ function get60PeriodHistoryStats(lotto, topN, targetDateStr, useTrend = true) {
       preLoadedMissData = missMap; // 將變數替換為 Map 傳遞給引擎
     }
 
-    // 取得版本化的快取標籤
-    const cacheTypeLabel = "HIT_HISTORY_" + getCacheVersion(PREDICT_ALGO_VERSION);
-
     // 1. 確保 predic1_Settings 存在並讀取現有快取
     let settingsSheet = ss.getSheetByName("predic1_Settings");
     if (!settingsSheet) {
@@ -488,6 +512,10 @@ function get60PeriodHistoryStats(lotto, topN, targetDateStr, useTrend = true) {
       SpreadsheetApp.flush();
       settingsSheet.setFrozenRows(1);
     }
+    cleanupStaleCacheRecords(ss);
+
+    // 取得版本化的快取標籤
+    const cacheTypeLabel = "HIT_HISTORY_" + getCacheVersion(PREDICT_ALGO_VERSION);
 
     const settingsData = settingsSheet.getDataRange().getValues();
     const hitCache = {};
@@ -608,7 +636,8 @@ function get60PeriodHistoryStats(lotto, topN, targetDateStr, useTrend = true) {
             weights, // 傳入預載權重
             preLoadedHeaders, // 傳入預載標頭
             useTrend ? preLoadedMissData : null, // 若關閉遺漏模式則不傳入數據
-            hitCache // 新增：直接傳入已建立的快取索引，避免引擎內重複讀取 Settings 表
+            hitCache, // 新增：直接傳入已建立的快取索引，避免引擎內重複讀取 Settings 表
+            useTrend // 傳遞遺漏模式，確保引擎內快取比對與回傳標記一致
           );
 
           if (predResult && predResult.results) {
@@ -1440,11 +1469,11 @@ function runGalaxyCoreEngine(
     const sData = settingsSheet.getDataRange().getValues();
     for (let i = 1; i < sData.length; i++) {
       const row = sData[i];
-      if (row[0] === cacheTypeLabel && row[1] === lotto && String(row[3]) === String(topN)) {
+      if (row[0] === cacheTypeLabel && row[1] === lotto && String(row[3]) === String(topN) && String(row[4]) === String(useTrend)) {
         const dKey = row[2] instanceof Date 
           ? Utilities.formatDate(row[2], "Asia/Taipei", "yyyy-MM-dd") 
           : String(row[2]);
-        hitCache[dKey] = { hits: row[4], hitNumbers: row[5] ? JSON.parse(row[5]) : [] };
+        hitCache[dKey] = { hits: row[5] || 0, hitNumbers: row[6] ? JSON.parse(row[6]) : [] };
       }
     }
     }
