@@ -8,6 +8,7 @@ node_modules/**
 .clasprc.json
 clasp-auth.js
 clasp-fix.js
+clasp-fix-v2.js
 package.json
 package-lock.json
 .gitignore

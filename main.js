@@ -1,5 +1,5 @@
 // main.js - Google Apps Script Backend Logic
-var GalaxyGalaxyDataManager = {
+var GalaxyDataManager = {
   fetchAndConnect: function () {
     // 使用 Google Apps Script API 連接到 Google Sheets
     const ss = SpreadsheetApp.getActiveSpreadsheet();
