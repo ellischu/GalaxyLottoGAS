@@ -31,7 +31,7 @@ function dailyupdate(isUI) {
     tasks.push({ name: "Combine_" + l, run: () => combineData(l) }),
   );
   lottos.forEach((l) =>
-    tasks.push({ name: "Miss_" + l, run: () => genMissData(l) }),
+    tasks.push({ name: "Miss_" + l, run: () => genMissData(l, new Date(), 1, "ASC", -1) }),
   );
 
   tasks.push({
@@ -295,12 +295,17 @@ function scrapeDailyCash(sheetName, period) {
 function fetchMonthlyBatch(sheetName, url00, url01, startperiod) {
   var allResults = [];
 
-  // 計算 startperiod 所屬月份
-  var startYear = Math.floor(startperiod / 1000000);
+  // 計算 startperiod 所屬月份 (期號前3碼為民國年，需 +1911 轉西元年)
+  var startYear = Math.floor(startperiod / 1000000) + 1911;
   var startMonth = Math.floor((startperiod % 1000000) / 10000);
+  if (startMonth < 1) startMonth = 1; // 預防預設值 115000001 造成 month=0
   var startDate = new Date(startYear, startMonth - 1, 1);
 
   var now = new Date();
+  // 每月1號時，當月可能尚無開獎資料，改查上個月
+  if (now.getDate() === 1) {
+    now.setMonth(now.getMonth() - 1);
+  }
   var monthsToFetch = [];
   var cursor = new Date(startDate);
 

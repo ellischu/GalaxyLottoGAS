@@ -15,7 +15,9 @@
     "push": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js push",
     "pull": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js pull",
     "status": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js status",
-    "deploy": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js deploy",
+    "deploy": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js push && node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js deploy -d \"GalaxyLotto Observer\" --deploymentId AKfycbzKNPXpAYKMnH07pkeqb5-scpTEcYWn-c-XLwoY-trUUBCjFtjy1yKvPEwMUDFvHUXG",
+    "deploy:ver": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js push && node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js deploy --deploymentId AKfycbzKNPXpAYKMnH07pkeqb5-scpTEcYWn-c-XLwoY-trUUBCjFtjy1yKvPEwMUDFvHUXG",
+    "open": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js open",
     "versions": "node --require ./clasp-fix.js --experimental-require-module ./node_modules/@google/clasp/build/src/index.js versions",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

@@ -7,14 +7,14 @@
 
 ## 技術棧
 
-| 層級 | 技術 |
-|------|------|
-| Runtime | Google Apps Script (V8), 6 分鐘執行限制 |
-| 前端 | jQuery 3.7, Bootstrap 5.3, SweetAlert2 11, Chart.js |
-| 後端 | GAS API: SpreadsheetApp, PropertiesService, CacheService, LockService, UrlFetchApp |
-| 部署 | @google/clasp v3.3（配合 clasp-fix.js SSL 修補） |
-| Node | axios, cheerio（爬蟲）、@types/google-apps-script（型別提示） |
-| 語言 | JavaScript (ES6+)，繁體中文 UI/註解，英文識別字 |
+| 層級    | 技術                                                                               |
+| ------- | ---------------------------------------------------------------------------------- |
+| Runtime | Google Apps Script (V8), 6 分鐘執行限制                                            |
+| 前端    | jQuery 3.7, Bootstrap 5.3, SweetAlert2 11, Chart.js                                |
+| 後端    | GAS API: SpreadsheetApp, PropertiesService, CacheService, LockService, UrlFetchApp |
+| 部署    | @google/clasp v3.3（配合 clasp-fix.js SSL 修補）                                   |
+| Node    | axios, cheerio（爬蟲）、@types/google-apps-script（型別提示）                      |
+| 語言    | JavaScript (ES6+)，繁體中文 UI/註解，英文識別字                                    |
 
 ## 檔案結構慣例
 
@@ -29,14 +29,14 @@ PageName_JS.html     — 前端 JavaScript (以 <script> 包裹, .html 副檔名
 
 ### 頁面清單
 
-| 頁面 | HTML | Server | Style | Client JS |
-|------|------|--------|-------|-----------|
-| 儀表板 | `Index.html` | `Index_Server.js` | — | — |
-| Galaxy 預測 | `Predict.html` | `Predict_Server.js` | `Predict_Style.html` | `Predict_JS.html` |
-| V1 預測 | `Prediction1.html` | `Prediction1_Server.js` | `Prediction1_Style.html` | `Prediction1_JS.html` |
-| 查詢 | `SearchS.html` | `SearchS_Server.js` | `SearchS_Style.html` | `SearchS_JS.html` |
-| 活動 | `Activity.html` | `Activity_Server.js` | `Activity_Style.html` | `Activity_JS.html` |
-| 維護 | `UpdateAll.html` | — (inline) | — | — |
+| 頁面        | HTML               | Server                  | Style                    | Client JS             |
+| ----------- | ------------------ | ----------------------- | ------------------------ | --------------------- |
+| 儀表板      | `Index.html`       | `Index_Server.js`       | —                        | —                     |
+| Galaxy 預測 | `Predict.html`     | `Predict_Server.js`     | `Predict_Style.html`     | `Predict_JS.html`     |
+| V1 預測     | `Prediction1.html` | `Prediction1_Server.js` | `Prediction1_Style.html` | `Prediction1_JS.html` |
+| 查詢        | `SearchS.html`     | `SearchS_Server.js`     | `SearchS_Style.html`     | `SearchS_JS.html`     |
+| 活動        | `Activity.html`    | `Activity_Server.js`    | `Activity_Style.html`    | `Activity_JS.html`    |
+| 維護        | `UpdateAll.html`   | — (inline)              | —                        | —                     |
 
 ### 共用元件
 
@@ -69,20 +69,20 @@ genMissData() → 計算遺漏值 → Miss 工作表
 
 ### 模組層級
 
-| 檔案 | 行數 | 用途 |
-|------|------|------|
-| `Utility.js` | ~1658 | 路由、快取、DB 存取、日誌、進度管理 |
-| `dailywork.js` | ~531 | 每日更新協調器（12 步驟） |
-| `UpdateAllModule.js` | ~572 | 新一代 combine/miss（含自我修復） |
-| `GalaxyAllModule.js` | ~324 | 舊版 combine/miss |
-| `main.js` | ~98 | 舊版資料管理 |
-| `Predict_Server.js` | ~1630 | Galaxy 預測引擎 (P109) |
-| `Prediction1_Server.js` | ~2777 | V1 預測引擎 (A147) |
-| `SearchS_Server.js` | ~320 | 查詢邏輯 |
-| `Activity_Server.js` | ~75 | 活動報表資料 |
-| `Index_Server.js` | ~94 | 系統狀態 |
-| `UpdateAll.html` | ~703 | 資料庫維護 UI |
-| `Tests.js` | ~96 | 單元測試 |
+| 檔案                    | 行數  | 用途                                |
+| ----------------------- | ----- | ----------------------------------- |
+| `Utility.js`            | ~1658 | 路由、快取、DB 存取、日誌、進度管理 |
+| `dailywork.js`          | ~531  | 每日更新協調器（12 步驟）           |
+| `UpdateAllModule.js`    | ~572  | 新一代 combine/miss（含自我修復）   |
+| `GalaxyAllModule.js`    | ~324  | 舊版 combine/miss                   |
+| `main.js`               | ~98   | 舊版資料管理                        |
+| `Predict_Server.js`     | ~1630 | Galaxy 預測引擎 (P109)              |
+| `Prediction1_Server.js` | ~2777 | V1 預測引擎 (A147)                  |
+| `SearchS_Server.js`     | ~320  | 查詢邏輯                            |
+| `Activity_Server.js`    | ~75   | 活動報表資料                        |
+| `Index_Server.js`       | ~94   | 系統狀態                            |
+| `UpdateAll.html`        | ~703  | 資料庫維護 UI                       |
+| `Tests.js`              | ~96   | 單元測試                            |
 
 ## 關鍵設計模式
 
@@ -115,6 +115,7 @@ function longRunningTask() {
 ### 3. LockService 保護
 
 用於競爭區段：
+
 - 權重更新 (`getAIWeightSettings` / `setAIWeightSettings`)
 - 錯誤日誌 (`logSystemError`)
 - 版本遞增 (`clearAllCache`)
@@ -126,6 +127,7 @@ function longRunningTask() {
 ## 試算表架構
 
 ### 主試算表
+
 - `AllData` — 每日環境/天文參數（干支、五行、紫微、28 宿）
 - `Method` — 統計與占星方法設定
 - `FieldName` / `IDName` — 對照表
@@ -133,6 +135,7 @@ function longRunningTask() {
 - `ErrorLog` — 集中式錯誤日誌
 
 ### 每彩種子試算表（L539/L649/L638/LSix）
+
 - `All` — 開獎資料 + 環境參數合併
 - `Miss` — 遺漏值
 - `FreqSec` — 頻率區間
@@ -168,13 +171,10 @@ runPredictUnitTests()
 
 ## 部署
 
-```bash
-npm run login    # clasp 登入
-npm run deploy   # clasp push + 部署
-npm run push     # 僅推送
-npm run open     # 在瀏覽器中開啟
-npm run version  # 建立新版本
-```
+- **正式版** (production): `https://script.google.com/macros/s/AKfycby-jI3_kEJFTmdNLsk_IQPQg3Y2V7DqbjC12PRjE7Atc8jiYU7fUhas7pDXOo7srh8W/exec`
+- **測試版** (staging): `https://script.google.com/macros/s/AKfycbzKNPXpAYKMnH07pkeqb5-scpTEcYWn-c-XLwoY-trUUBCjFtjy1yKvPEwMUDFvHUXG/exec`
+
+**部署規則**：`npm run deploy:gas` 預設部署到測試版。若需部署到正式版，必須先向使用者確認。
 
 ## 有用的參考
 
@@ -186,6 +186,7 @@ npm run version  # 建立新版本
 ## 文件
 
 完整文件在 `docs/` 目錄：
+
 - `CLAUDE.md` — LLM 行為指南
 - `DocGalaxy計劃文件.md` — 系統總覽與計畫
 - `DocGalaxy系統環境與架構.md` — 環境與架構

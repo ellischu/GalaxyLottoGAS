@@ -190,10 +190,10 @@ function prepareActivityQuery(params) {
     const isDebugMode = true;
 
     // 2. 生成 Web App URL
-    // 假設系統入口為 Web App，透過 query string 切換至 Activity 頁面
     const scriptUrl = ScriptApp.getService().getUrl();
+    const pageName = params.module === "MissData" ? "MissData" : "Activity";
     const queryParams = {
-      page: "Activity",
+      page: pageName,
       lotto: params.lotto,
       date: params.date,
       methodSN: methodSN,
@@ -217,7 +217,7 @@ function prepareActivityQuery(params) {
       methodObj: null, // 查詢時不再回傳除錯資訊
     };
   } catch (e) {
-    logSystemError("prepareActivityQuery", e.toString(), "ERROR", "準備活動查詢失敗");
+    logSystemError("prepareActivityQuery", e.toString(), "ERROR", "準備查詢失敗");
     return { status: "error", message: e.toString() };
   }
 }

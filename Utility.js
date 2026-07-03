@@ -322,12 +322,6 @@ function includeStyles() {
  * 用於載入 Scripts.html 等含有動態變數的檔案
  */
 function include(filename) {
-  const cache = CacheService.getScriptCache();
-  const cacheKey = getCacheVersion() + "_html_" + filename; // 使用版本號作為前綴
-  const cached = cache.get(cacheKey);
-
-  if (cached) return cached;
-
   var content = "";
   // 對於程式庫 (Lib_ 打頭) 或 樣式表，直接讀取內容不進行 template 評估，避免內容過大或包含衝突字元導致 SyntaxError
   if (filename.indexOf("Lib_") === 0 || filename === "Styles") {
@@ -336,11 +330,6 @@ function include(filename) {
     content = HtmlService.createTemplateFromFile(filename)
       .evaluate()
       .getContent();
-  }
-
-  // 快取 6 小時 (21600 秒)，注意 CacheService 有 100KB 限制，過大的檔案不存入快取以免報錯
-  if (content.length < 100000) {
-    cache.put(cacheKey, content, 21600);
   }
   return content;
 }
@@ -937,8 +926,34 @@ function getDataBase(lotto, date, methodRef, sort = "DESC", limit) {
   const sheet = trObj.spreadsheet.getSheetByName("All");
   if (!sheet) return [];
 
-  const rawData = sheet.getDataRange().getValues();
-  if (rawData.length <= 1) return [];
+  const noFilter = !methodObj.FieldMode && !methodObj.NextNumsMode && !methodObj.intDataLimit && !methodObj.intSearchLimit;
+  var readLimit = (noFilter && limit !== undefined && limit !== null && parseInt(limit, 10) > 0)
+    ? Math.max(parseInt(limit, 10), 50) * 3 + 100
+    : -1;
+
+  var rawData;
+  if (readLimit > 0) {
+    var lastRow = sheet.getLastRow();
+    var startRow = Math.max(2, lastRow - readLimit + 1);
+    rawData = sheet.getRange(startRow, 1, lastRow - startRow + 1, sheet.getLastColumn()).getValues();
+    var dateIdxTmp = -1;
+    if (rawData.length > 0) {
+      var hd = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      dateIdxTmp = hd.map(function(h) { return String(h || "").trim(); }).indexOf("Date");
+    }
+    var rawRows = [];
+    for (var ri = 0; ri < rawData.length; ri++) {
+      if (rawData[ri][dateIdxTmp] && new Date(rawData[ri][dateIdxTmp]) < targetDate) {
+        rawRows.push(rawData[ri]);
+      }
+    }
+    rawData = rawRows;
+    if (rawData.length === 0) return [];
+    rawData.unshift(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  } else {
+    rawData = sheet.getDataRange().getValues();
+    if (rawData.length <= 1) return [];
+  }
 
   const headers = rawData[0].map(h => String(h || "").trim());
   const dateIdx = headers.indexOf("Date");
@@ -1655,4 +1670,414 @@ function autoCleanupErrorLog(daysToKeep = 30) {
   if (deleteCount > 0) {
     Logger.log(`[Cleanup] 已清理 ${deleteCount} 筆過期日誌。`);
   }
+}
+
+const GAME_CONFIG = {
+  L539: { maxNum: 39, hasS1: false, maxSpecial: 0 },
+  L649: { maxNum: 49, hasS1: true, maxSpecial: 0 },
+  LSix: { maxNum: 49, hasS1: true, maxSpecial: 0 },
+  L638: { maxNum: 38, hasS1: true, maxSpecial: 8 },
+};
+
+/**
+ * 篩選後的資料長度相同 → 直接合併輸出
+ * SourceTemp 與 MissTemp 皆為 ASC 排序且日期一一對應
+ */
+function mergeMissData(sourceRows, missRows, sourceHeaders, missHeaders, dateCol) {
+  const missDateCol = missHeaders.indexOf("Date");
+  const mStartIdx = missHeaders.findIndex(h => h.startsWith("M")) || (missHeaders.length - 1);
+  const mColCount = missHeaders.length - mStartIdx;
+
+  return sourceRows.map((srcRow, i) => {
+    const missRow = missRows[i];
+    const result = srcRow.slice();
+    for (let c = 0; c < mColCount; c++) {
+      result.push(missRow[mStartIdx + c] !== undefined ? missRow[mStartIdx + c] : 0);
+    }
+    return result;
+  });
+}
+
+/**
+ * 篩選後的資料長度不同 → 補算遺漏數
+ */
+function fillMissData(sourceRows, missRows, lotto, dateCol) {
+  const config = GAME_CONFIG[lotto] || GAME_CONFIG["L539"];
+  const { maxNum, hasS1, maxSpecial } = config;
+
+  const nCols = [];
+  for (let c = 1; c <= (lotto === "L539" ? 5 : 6); c++) nCols.push(c);
+  const nStartIdx = dateCol + 1;
+
+  let prevMiss = [];
+  let prevSpecialMiss = [];
+
+  if (missRows && missRows.length > 0) {
+    const mStartIdx = nStartIdx + nCols.length + (hasS1 ? 1 : 0) + 2;
+    for (let j = 0; j < maxNum; j++) prevMiss.push(Number(missRows[missRows.length - 1][mStartIdx + j]) || 0);
+    if (maxSpecial > 0) {
+      for (let j = 0; j < maxSpecial; j++) prevSpecialMiss.push(Number(missRows[missRows.length - 1][mStartIdx + maxNum + j]) || 0);
+    }
+  }
+
+  var missDateLookup = {};
+  if (missRows && missRows.length > 0) {
+    for (var _mi = 0; _mi < missRows.length; _mi++) {
+      (function(r) {
+        var d = r[1];
+        if (d) missDateLookup[new Date(d).getTime()] = true;
+      })(missRows[_mi]);
+    }
+  }
+  var missDateCol = missRows && missRows.length > 0 ? 1 : -1;
+
+  for (var i = 0; i < sourceRows.length; i++) {
+    var srcRow = sourceRows[i];
+    var srcDate = srcRow[dateCol];
+
+    if (missRows && missDateCol > -1) {
+      if (missDateLookup[new Date(srcDate).getTime()]) continue;
+    }
+
+    const drawnNums = [];
+    for (let c = 0; c < nCols.length; c++) {
+      drawnNums.push(srcRow[nStartIdx + c]);
+    }
+    const s1Val = hasS1 ? srcRow[nStartIdx + nCols.length] : null;
+
+    let poolSet = new Set(drawnNums);
+    if (hasS1 && lotto !== "L638" && s1Val !== null) poolSet.add(s1Val);
+
+    let currentMiss = [];
+    for (let j = 1; j <= maxNum; j++) {
+      if (prevMiss.length === 0) {
+        currentMiss.push(poolSet.has(j) ? 0 : 1);
+      } else {
+        currentMiss.push(poolSet.has(j) ? 0 : (Number(prevMiss[j - 1]) || 0) + 1);
+      }
+    }
+    prevMiss = currentMiss;
+
+    let currentSpecialMiss = [];
+    if (maxSpecial > 0) {
+      for (let j = 1; j <= maxSpecial; j++) {
+        if (prevSpecialMiss.length === 0) {
+          currentSpecialMiss.push(s1Val === j ? 0 : 1);
+        } else {
+          currentSpecialMiss.push(s1Val === j ? 0 : (Number(prevSpecialMiss[j - 1]) || 0) + 1);
+        }
+      }
+      prevSpecialMiss = currentSpecialMiss;
+    }
+
+    let missRow = [0, srcRow[dateCol]];
+    for (let c = 0; c < nCols.length; c++) missRow.push(srcRow[nStartIdx + c]);
+    if (hasS1) missRow.push(s1Val);
+    missRow.push(srcRow[nStartIdx + nCols.length + (hasS1 ? 1 : 0)]);
+    missRow = missRow.concat(currentMiss);
+    if (maxSpecial > 0) missRow = missRow.concat(currentSpecialMiss);
+
+    if (missRows) missRows.push(missRow);
+    else missRows = [missRow];
+  }
+
+  const mStartIdx = missRows[0] ? (missRows[0].length - maxNum - maxSpecial) : 0;
+
+  var missDateMap = {};
+  for (var mi = 0; mi < missRows.length; mi++) {
+    (function(r) {
+      if (r[1]) missDateMap[new Date(r[1]).getTime()] = r;
+    })(missRows[mi]);
+  }
+
+  return sourceRows.map(function(srcRow) {
+    var srcDate = new Date(srcRow[dateCol]).getTime();
+    var matchedMiss = missDateMap[srcDate] || null;
+    var result = srcRow.slice();
+    if (matchedMiss) {
+      for (var c = 0; c < maxNum + maxSpecial; c++) {
+        result.push(matchedMiss[mStartIdx + c]);
+      }
+    } else {
+      for (var c = 0; c < maxNum + maxSpecial; c++) result.push(0);
+    }
+    return result;
+  });
+}
+
+/**
+ * 取得 Miss 工作表的遊戲組態
+ */
+function getGameConfig(lotto) {
+  return GAME_CONFIG[lotto] || GAME_CONFIG["L539"];
+}
+
+/**
+ * 將遺漏資料寫入 Miss 工作表（各彩種子試算表）
+ * @param {string} lotto 彩種
+ * @param {number} methodSN 方法序號
+ * @param {Array<Array>} dataRows 資料列（含 lngMethodSN 欄位）
+ * @param {Object} config 遊戲組態 { maxNum, hasS1, maxSpecial }
+ */
+function writeMissSheet(lotto, methodSN, dataRows, config) {
+  const trObj = getTargetsheet("Sheets", lotto);
+  const ss = trObj.spreadsheet;
+  let sheet = ss.getSheetByName("Miss");
+  const { maxNum, hasS1, maxSpecial } = config;
+
+  const headers = ["lngMethodSN", "Date"];
+  const nCount = (lotto === "L539" ? 5 : 6);
+  for (let j = 1; j <= nCount; j++) headers.push("N" + j);
+  if (hasS1) headers.push("S1");
+  headers.push("Sum");
+  for (let j = 1; j <= maxNum; j++) headers.push("M" + j);
+  for (let j = 1; j <= maxSpecial; j++) headers.push("MS" + j);
+
+  if (!sheet) {
+    sheet = ss.insertSheet("Miss");
+    sheet.appendRow(headers);
+    if (dataRows.length > 0) {
+      const range = sheet.getRange(2, 1, dataRows.length, dataRows[0].length);
+      range.setValues(dataRows);
+    }
+    return;
+  }
+
+  const existingData = sheet.getDataRange().getValues();
+  const existingHeaders = existingData[0].map(h => String(h || "").trim());
+  const snCol = existingHeaders.indexOf("lngMethodSN");
+  const hasOldFormat = (snCol === -1 || existingHeaders[0] !== "lngMethodSN");
+
+  if (hasOldFormat) {
+    sheet.clear();
+    sheet.appendRow(headers);
+    if (dataRows.length > 0) {
+      sheet.getRange(2, 1, dataRows.length, dataRows[0].length).setValues(dataRows);
+    }
+    return;
+  }
+
+  const keptRows = [];
+  for (let i = 1; i < existingData.length; i++) {
+    if (Number(existingData[i][snCol]) !== methodSN) {
+      keptRows.push(existingData[i]);
+    }
+  }
+
+  sheet.clear();
+  sheet.appendRow(headers);
+  let writeRow = 2;
+
+  if (keptRows.length > 0) {
+    const keptCols = keptRows[0].length;
+    sheet.getRange(writeRow, 1, keptRows.length, keptCols).setValues(keptRows);
+    writeRow += keptRows.length;
+  }
+
+  if (dataRows.length > 0) {
+    sheet.getRange(writeRow, 1, dataRows.length, dataRows[0].length).setValues(dataRows);
+  }
+}
+
+/**
+ * 產生遺漏數資料並寫入 Miss 工作表
+ * @param {string} lotto 彩種
+ * @param {Date|string} date 基準日期
+ * @param {number|Object} methodRef 方法序號(1=全資料) 或方法物件
+ * @param {string} sort 排序 DESC/ASC
+ * @param {number} limit 回傳筆數 (-1 不限制)
+ * @returns {Array<Array>} 遺漏數資料
+ */
+function genMissData(lotto, date, methodRef, sort = "DESC", limit) {
+  const isBaseData = (methodRef === 1 || methodRef === "1");
+  const methodObj = isBaseData ? {} : (typeof methodRef === "object" ? methodRef : getMethodObj(Number(methodRef)));
+  const methodSN = isBaseData ? 1 : (typeof methodRef === "object" ? getMethodSN(methodRef) : Number(methodRef));
+
+  if (!methodObj) return [];
+
+  const sourceData = getDataBase(lotto, date, methodObj, "ASC", -1);
+  if (!sourceData || sourceData.length === 0) return [];
+
+  const trObj = getTargetsheet("Sheets", lotto);
+  const allSheet = trObj.spreadsheet.getSheetByName("All");
+  const rawHeaders = allSheet.getRange(1, 1, 1, allSheet.getLastColumn()).getValues()[0]
+    .map(h => String(h || "").trim());
+
+  const dateCol = rawHeaders.indexOf("Date");
+  const nCols = rawHeaders.map((h, i) => h.match(/^N\d+$/) ? i : -1).filter(i => i !== -1);
+  const s1Col = rawHeaders.indexOf("S1");
+  const sumCol = rawHeaders.indexOf("Sum");
+
+  const config = getGameConfig(lotto);
+  const { maxNum, hasS1, maxSpecial } = config;
+
+  let prevMiss = [];
+  let prevSpecialMiss = [];
+  let missResults = [];
+
+  for (let i = 0; i < sourceData.length; i++) {
+    const row = sourceData[i];
+    const drawnNums = nCols.map(idx => row[idx]);
+    const s1Val = s1Col > -1 ? row[s1Col] : null;
+    const sumVal = sumCol > -1 ? row[sumCol] : null;
+
+    let poolSet = new Set(drawnNums);
+    if (hasS1 && lotto !== "L638" && s1Val !== null) poolSet.add(s1Val);
+
+    let currentMiss = [];
+    for (let j = 1; j <= maxNum; j++) {
+      if (prevMiss.length === 0) {
+        currentMiss.push(poolSet.has(j) ? 0 : 1);
+      } else {
+        currentMiss.push(poolSet.has(j) ? 0 : (Number(prevMiss[j - 1]) || 0) + 1);
+      }
+    }
+    prevMiss = currentMiss;
+
+    let currentSpecialMiss = [];
+    if (maxSpecial > 0) {
+      for (let j = 1; j <= maxSpecial; j++) {
+        if (prevSpecialMiss.length === 0) {
+          currentSpecialMiss.push(s1Val === j ? 0 : 1);
+        } else {
+          currentSpecialMiss.push(s1Val === j ? 0 : (Number(prevSpecialMiss[j - 1]) || 0) + 1);
+        }
+      }
+      prevSpecialMiss = currentSpecialMiss;
+    }
+
+    let newRow = [methodSN, row[dateCol]];
+    nCols.forEach(idx => newRow.push(row[idx]));
+    if (hasS1) newRow.push(s1Val);
+    if (sumVal !== null) newRow.push(sumVal);
+    newRow = newRow.concat(currentMiss);
+    if (maxSpecial > 0) newRow = newRow.concat(currentSpecialMiss);
+
+    missResults.push(newRow);
+  }
+
+  if (sort === "DESC") {
+    missResults.sort((a, b) => new Date(b[1]) - new Date(a[1]));
+  } else {
+    missResults.sort((a, b) => new Date(a[1]) - new Date(b[1]));
+  }
+
+  const finalLimit = (limit !== undefined && limit !== null) ? parseInt(limit, 10) : -1;
+  const outputData = finalLimit > 0 ? missResults.slice(0, finalLimit) : missResults;
+
+  writeMissSheet(lotto, methodSN, outputData, config);
+
+  return outputData;
+}
+
+/**
+ * 從 Miss 工作表讀取遺漏數資料
+ * @param {string} lotto 彩種
+ * @param {Date|string} date 基準日期
+ * @param {number|Object} methodRef 方法序號或物件
+ * @param {string} sort 排序 DESC/ASC
+ * @param {number} limit 回傳筆數 (-1 不限制)
+ * @returns {Array<Array>} Miss 資料
+ */
+function getMissTable(lotto, date, methodRef, sort = "DESC", limit) {
+  const methodSN = (methodRef === 1 || methodRef === "1") ? 1
+    : (typeof methodRef === "object" ? getMethodSN(methodRef) : Number(methodRef));
+
+  const trObj = getTargetsheet("Sheets", lotto);
+  const sheet = trObj.spreadsheet.getSheetByName("Miss");
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+
+  const headers = data[0].map(h => String(h || "").trim());
+  const snCol = headers.indexOf("lngMethodSN");
+  const dateCol = headers.indexOf("Date");
+  if (snCol === -1 || dateCol === -1) return [];
+
+  const targetDate = new Date(String(date).replace(/-/g, "/"));
+
+  let filtered = data.slice(1).filter(row => {
+    if (!row[dateCol]) return false;
+    return Number(row[snCol]) === methodSN && new Date(row[dateCol]) < targetDate;
+  });
+
+  if (sort === "DESC") {
+    filtered.sort((a, b) => new Date(b[dateCol]) - new Date(a[dateCol]));
+  } else {
+    filtered.sort((a, b) => new Date(a[dateCol]) - new Date(b[dateCol]));
+  }
+
+  const finalLimit = (limit !== undefined && limit !== null) ? parseInt(limit, 10) : -1;
+  return finalLimit > 0 ? filtered.slice(0, finalLimit) : filtered;
+}
+
+/**
+ * 合併 All 與 Miss 資料，依日期配對輸出
+ * @param {string} lotto 彩種
+ * @param {Date|string} date 基準日期
+ * @param {number|Object} methodRef 方法序號或物件
+ * @param {string} sort 排序 DESC/ASC
+ * @param {number} limit 回傳筆數 (-1 不限制)
+ * @returns {Object} { status, headers, rows, sourceHeaders }
+ */
+function getMissDataTable(lotto, date, methodRef, sort = "DESC", limit) {
+  const trObj = getTargetsheet("Sheets", lotto);
+  const allSheet = trObj.spreadsheet.getSheetByName("All");
+  if (!allSheet) return { status: "error", message: "找不到 All 工作表" };
+
+  const sourceHeaders = allSheet.getRange(1, 1, 1, allSheet.getLastColumn()).getValues()[0]
+    .map(h => String(h || "").trim());
+  const dateCol = sourceHeaders.indexOf("Date");
+
+  const isBaseData = (methodRef === 1 || methodRef === "1");
+  const methodObj = isBaseData ? {} : (typeof methodRef === "object" ? methodRef : getMethodObj(Number(methodRef)));
+  const methodSN = isBaseData ? 1 : (typeof methodRef === "object" ? getMethodSN(methodRef) : Number(methodRef));
+
+  if (!methodObj) return { status: "error", message: "無法解析方法參數" };
+
+  const sourceLimit = isBaseData ? Math.max(limit * 4 + 100, 300) : -1;
+  const sourceTemp = getDataBase(lotto, date, methodObj, "ASC", sourceLimit);
+  if (!sourceTemp || sourceTemp.length === 0) return { status: "error", message: "無篩選資料" };
+
+  const missTemp = getMissTable(lotto, date, methodSN, "ASC", -1);
+
+  let mergedRows;
+
+  if (sourceTemp.length === missTemp.length) {
+    const missHeaders = ["lngMethodSN", "Date"];
+    const nCount = (lotto === "L539" ? 5 : 6);
+    for (let j = 1; j <= nCount; j++) missHeaders.push("N" + j);
+    const config = getGameConfig(lotto);
+    if (config.hasS1) missHeaders.push("S1");
+    missHeaders.push("Sum");
+    for (let j = 1; j <= config.maxNum; j++) missHeaders.push("M" + j);
+    for (let j = 1; j <= config.maxSpecial; j++) missHeaders.push("MS" + j);
+
+    mergedRows = mergeMissData(sourceTemp, missTemp, sourceHeaders, missHeaders, dateCol);
+  } else {
+    mergedRows = fillMissData(sourceTemp, missTemp || [], lotto, dateCol);
+  }
+
+  const config = getGameConfig(lotto);
+  const combinedHeaders = sourceHeaders.slice();
+  for (let j = 1; j <= config.maxNum; j++) combinedHeaders.push("M" + j);
+  for (let j = 1; j <= config.maxSpecial; j++) combinedHeaders.push("MS" + j);
+
+  if (sort === "DESC") {
+    mergedRows.sort((a, b) => new Date(b[dateCol]) - new Date(a[dateCol]));
+  } else {
+    mergedRows.sort((a, b) => new Date(a[dateCol]) - new Date(b[dateCol]));
+  }
+
+  const finalLimit = (limit !== undefined && limit !== null) ? parseInt(limit, 10) : -1;
+  const outputRows = finalLimit > 0 ? mergedRows.slice(0, finalLimit) : mergedRows;
+
+  return {
+    status: "success",
+    headers: combinedHeaders,
+    rows: outputRows,
+    sourceHeaders: sourceHeaders,
+    dateCol: dateCol,
+  };
 }

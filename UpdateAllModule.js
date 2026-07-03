@@ -197,7 +197,7 @@ function combineData(sheetname) {
  * @param {*} sheetname
  * @returns
  */
-function genMissData(sheetname) {
+function genMissData_legacy(sheetname) {
   const trObj = getTargetsheet("Sheets", sheetname);
   const trspreadsheet = trObj.spreadsheet;
   let trsheet = trspreadsheet.getSheetByName("Miss");
@@ -267,7 +267,7 @@ function genMissData(sheetname) {
       // 修復：如果最後一行損壞，移除並遞迴重新執行
       logSystemError("genMissData", "偵測到 Miss 表格末行損壞，正在自動修復...", "WARNING");
       trsheet.deleteRow(trLastRow);
-      return genMissData(sheetname);
+      return genMissData_legacy(sheetname);
     }
 
     // 載入前一筆的遺漏值

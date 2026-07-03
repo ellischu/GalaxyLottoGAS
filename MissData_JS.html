@@ -1,0 +1,362 @@
+<script>
+  function _restoreMissDataParams() {
+    try {
+      var stored = sessionStorage.getItem("_missDataParams");
+      if (stored) {
+        var p = JSON.parse(stored);
+        sessionStorage.removeItem("_missDataParams");
+        return p;
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  var lotto, date, method;
+
+  $(document).ready(function () {
+    var urlParams = new URLSearchParams(window.location.search);
+    var stored = _restoreMissDataParams();
+
+    if (window.location.search.indexOf("createOAuthDialog") !== -1 && stored) {
+      lotto = stored.lotto || "L539";
+      date = stored.date;
+      method = String(stored.methodSN || "1");
+    } else {
+      lotto = urlParams.get("lotto") || (stored ? stored.lotto : "L539");
+      date = urlParams.get("date") || (stored ? stored.date : "");
+      method = urlParams.get("methodSN") || (stored ? String(stored.methodSN) : "1");
+    }
+
+    if (!date) {
+      date = new Date().toISOString().split("T")[0];
+      $("#summaryDate").text(date + " (預設)");
+    } else {
+      $("#summaryDate").text(date);
+    }
+    $("#summaryLotto").text(lotto);
+    $("#summaryMethodSN").text(method);
+
+    /* debug: show raw URL params */
+    if (window.location.search.indexOf("createOAuthDialog") !== -1) {
+      $("#debugQS").text(window.location.search + " (OAuth — 改用 sessionStorage)");
+    } else {
+      $("#debugQS").text(window.location.search);
+    }
+    $("#debugDateParam").text(date);
+    $("#debugMethodParam").text(method);
+
+    loadMissData();
+
+    $("#btnApplyFilter").on("click", function () {
+      filterMissTable();
+    });
+
+    $("#missFilter").on("keydown", function (e) {
+      if (e.key === "Enter") $("#btnApplyFilter").click();
+    });
+
+    $("#btnSortToggle").on("click", function () {
+      var asc = $("#sortIcon").hasClass("fa-sort-amount-down-alt");
+      if (asc) {
+        $("#sortIcon").removeClass("fa-sort-amount-down-alt").addClass("fa-sort-amount-down");
+        $("#sortLabel").text("倒序");
+      } else {
+        $("#sortIcon").removeClass("fa-sort-amount-down").addClass("fa-sort-amount-down-alt");
+        $("#sortLabel").text("正序");
+      }
+      renderMissTable(_fullHeaders, _fullRows);
+    });
+
+    $("#btnReload").on("click", function () {
+      loadMissData();
+    });
+    $("#limitInput").on("keydown", function (e) {
+      if (e.key === "Enter") $("#btnReload").click();
+    });
+  });
+
+  var _fullHeaders = [];
+  var _fullRows = [];
+  var _dateCol = -1;
+
+  function loadMissData() {
+    var limit = parseInt($("#limitInput").val()) || 50;
+    $("#summaryCount").text("載入中...");
+    $("#AreaTable").html(
+      '<div class="text-center py-5 text-muted">' +
+        '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+        "<div>正在載入遺漏資料...</div></div>"
+    );
+
+    /* 先 ping 測試通訊 */
+    google.script.run
+      .withSuccessHandler(function (pingRes) {
+        console.log("[MissData] ping OK:", pingRes);
+        if (!pingRes) {
+          $("#AreaTable").html(
+            '<div class="alert alert-warning m-3">' +
+              '需要授權才能使用此應用程式。若未看到授權畫面，' +
+              '請 <a href="' + window.location.href.split("?")[0] + '" class="alert-link">點此重新授權</a>。' +
+              "</div>"
+          );
+          $("#lblMethod").html(
+            '<i class="bi bi-exclamation-triangle me-1"></i> 需要授權'
+          );
+          return;
+        }
+        /* ping 成功，先測 light 版 */
+        google.script.run
+          .withSuccessHandler(function (lightRes) {
+            console.log("[MissData] light test:", lightRes);
+            if (!lightRes || lightRes.status !== "success") {
+              $("#AreaTable").html(
+                '<div class="alert alert-warning m-3">light 測試失敗：' +
+                  (lightRes ? lightRes.message : "null") +
+                  "</div>"
+              );
+              return;
+            }
+            /* light 成功，正式載入遺漏資料 */
+            google.script.run
+              .withSuccessHandler(function (res) {
+                if (!res) {
+                  $("#AreaTable").html(
+                    '<div class="alert alert-warning m-3">' +
+                      '伺服器回傳空值，請重新整理頁面。' +
+                      "</div>"
+                  );
+                  $("#lblMethod").html(
+                    '<i class="bi bi-exclamation-triangle me-1"></i> 載入失敗'
+                  );
+                  return;
+                }
+                if (res.status === "error") {
+                  $("#AreaTable").html(
+                    '<div class="alert alert-danger m-3">' +
+                      (res.message || "載入失敗") +
+                      "</div>"
+                  );
+                  $("#lblMethod").html(
+                    '<i class="bi bi-exclamation-triangle me-1"></i> 載入失敗'
+                  );
+                  return;
+                }
+
+                var msn = res.summary ? res.summary.methodSN : method;
+                var methodLabel = "方法 " + msn;
+                if (msn == 1) {
+                  methodLabel = "全資料";
+                } else if (res.method) {
+                  var parts = [];
+                  if (res.method.strCompares) parts.push("同 " + res.method.strCompares);
+                  if (res.method.strNextNums) parts.push("托 " + res.method.strNextNums.replace(/;/g, ","));
+                  if (parts.length) methodLabel += " (" + parts.join(" ") + ")";
+                }
+                $("#lblMethod").html('<i class="bi bi-cpu me-1"></i> ' + methodLabel);
+                if (res.summary) {
+                  $("#summaryCount").text(res.summary.rowCount);
+                  $("#summaryMethodSN").text(methodLabel);
+                }
+
+                _dateCol = res.dateCol != null ? res.dateCol : 0;
+                renderMissTable(res.headers, res.rows);
+                loadAllData(date);
+              })
+              .withFailureHandler(function (err) {
+                $("#AreaTable").html(
+                  '<div class="alert alert-danger m-3">系統錯誤：' +
+                    (err && err.message ? err.message : "請求超時或連線失敗，請重新整理頁面") +
+                    "</div>"
+                );
+              })
+              .getMissData(lotto, date, parseInt(method), limit);
+          })
+          .withFailureHandler(function (err) {
+            $("#AreaTable").html(
+              '<div class="alert alert-danger m-3">light 錯誤：' +
+                (err && err.message ? err.message : "請求超時") +
+                "</div>"
+            );
+          })
+          .getMissDataLight();
+      })
+      .withFailureHandler(function (err) {
+        $("#AreaTable").html(
+          '<div class="alert alert-danger m-3">系統錯誤(ping)：' +
+            (err && err.message ? err.message : "請求超時或連線失敗") +
+            "</div>"
+        );
+      })
+      .ping();
+  }
+
+  function loadAllData(dateStr) {
+    if (!dateStr) {
+      $("#summaryAllData").text("無日期");
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || res.status !== "success" || !res.data) {
+          $("#summaryAllData").text("無法載入");
+          return;
+        }
+        var d = res.data;
+        var items = [
+          "年天干", "年地支", "月天干", "月地支", "日天干", "日地支",
+          "時柱", "日五形", "日十二建除", "日九星", "日二十八星宿", "時二十八星宿",
+          "日八掛", "本命", "父母", "福德", "田宅", "官祿", "奴僕", "遷移", "疾厄", "財帛", "子女", "夫妻", "兄弟", "命重"
+        ];
+        var html = items.map(function(f) {
+          return '<span class="me-3 mb-1 d-inline-block"><strong class="text-secondary">' + f + '：</strong>' + (d[f] || "-") + '</span>';
+        }).join("");
+        $("#summaryAllData").html(html);
+      })
+      .withFailureHandler(function () {
+        $("#summaryAllData").text("載入失敗");
+      })
+      .getMissDataAllData(dateStr);
+  }
+
+  function renderMissTable(headers, rows) {
+    _fullHeaders = headers;
+    _fullRows = rows;
+
+    if (!rows || rows.length === 0) {
+      $("#AreaTable").html(
+        '<div class="p-4 text-center text-muted">無遺漏資料</div>'
+      );
+      return;
+    }
+
+    const numHeaders = headers.length;
+    let mCols = [];
+    let nCols = [];
+    headers.forEach(function (h, i) {
+      if (h.match(/^M\d+$/) || h.match(/^MS\d+$/)) mCols.push(i);
+      if (h.match(/^N\d+$/) || h === "S1") nCols.push(i);
+    });
+
+    var filterVal = parseInt($("#missFilter").val()) || 0;
+    var filteredRows = rows;
+    if (filterVal > 0 && mCols.length > 0) {
+      filteredRows = rows.filter(function (row) {
+        return mCols.some(function (ci) {
+          return parseInt(row[ci]) >= filterVal;
+        });
+      });
+    }
+
+    var isAsc = $("#sortIcon").hasClass("fa-sort-amount-down-alt");
+    if (_dateCol > -1) {
+      filteredRows = filteredRows.slice().sort(function (a, b) {
+        var da = new Date(a[_dateCol]).getTime();
+        var db = new Date(b[_dateCol]).getTime();
+        return isAsc ? da - db : db - da;
+      });
+    }
+
+    if (filteredRows.length === 0) {
+      $("#AreaTable").html(
+        '<div class="p-4 text-center text-muted">篩選條件下無符合資料</div>'
+      );
+      return;
+    }
+
+    var html = '<div class="table-responsive" style="max-height:70vh;overflow-y:auto;">';
+    html += '<table class="table table-bordered table-striped miss-table mb-0">';
+    html += "<thead><tr>";
+
+    headers.forEach(function (h) {
+      if (h === "lngMethodSN") return;
+      html += "<th>" + getDisplayTitle(h) + "</th>";
+    });
+    html += "</tr></thead><tbody>";
+
+    filteredRows.forEach(function (row) {
+      html += "<tr>";
+      headers.forEach(function (h, ci) {
+        if (h === "lngMethodSN") return;
+        var val = row[ci];
+        var valStr = val !== undefined && val !== null ? String(val) : "";
+        var isNum = h.match(/^N\d+$/);
+        var isS1 = h === "S1";
+        var isMiss = h.match(/^M\d+$/) || h.match(/^MS\d+$/);
+        var isDate = h === "Date";
+
+        if (isDate) {
+          html += '<td class="date-col">' + formatDate(val) + "</td>";
+        } else if (isS1) {
+          html += '<td><span class="num-ball bg-info">' + valStr + "</span></td>";
+        } else if (isNum) {
+          var nIdx = parseInt(h.substring(1));
+          if (nIdx >= 1 && nIdx <= 5) {
+            html += "<td>" + valStr + "</td>";
+          } else {
+            html += '<td><span class="num-ball bg-primary">' + valStr + "</span></td>";
+          }
+        } else if (isMiss) {
+          var numVal = parseInt(val) || 0;
+          if (numVal === 0) {
+            var isMS = h.match(/^MS\d+$/);
+            var bg;
+            if (isMS) {
+              bg = "bg-info";
+            } else {
+              var ballNum = parseInt(h.substring(1));
+              bg = (ballNum >= 1 && ballNum <= 5) ? "num-n" + ballNum : "bg-primary";
+            }
+            html += '<td><span class="num-ball ' + bg + '">0</span></td>';
+          } else {
+            html += "<td>" + numVal + "</td>";
+          }
+        } else {
+          html += "<td>" + valStr + "</td>";
+        }
+      });
+      html += "</tr>";
+    });
+
+    html += "</tbody></table></div>";
+    $("#AreaTable").html(html);
+  }
+
+  function filterMissTable(minVal) {
+    renderMissTable(_fullHeaders, _fullRows);
+  }
+
+  function formatDate(val) {
+    if (!val) return "-";
+    if (val instanceof Date) {
+      var y = val.getFullYear();
+      var m = ("0" + (val.getMonth() + 1)).slice(-2);
+      var d = ("0" + val.getDate()).slice(-2);
+      return y + "-" + m + "-" + d;
+    }
+    var s = String(val);
+    if (s.length >= 10) return s.substring(0, 10);
+    return s;
+  }
+
+  function getDisplayTitle(h) {
+    var map = {
+      Date: "日期",
+      N1: "號1", N2: "號2", N3: "號3", N4: "號4", N5: "號5", N6: "號6",
+      S1: "特1",
+      Sum: "總合",
+      M1: "遺1", M2: "遺2", M3: "遺3", M4: "遺4", M5: "遺5",
+      M6: "遺6", M7: "遺7", M8: "遺8", M9: "遺9", M10: "遺10",
+      M11: "遺11", M12: "遺12", M13: "遺13", M14: "遺14", M15: "遺15",
+      M16: "遺16", M17: "遺17", M18: "遺18", M19: "遺19", M20: "遺20",
+      M21: "遺21", M22: "遺22", M23: "遺23", M24: "遺24", M25: "遺25",
+      M26: "遺26", M27: "遺27", M28: "遺28", M29: "遺29", M30: "遺30",
+      M31: "遺31", M32: "遺32", M33: "遺33", M34: "遺34", M35: "遺35",
+      M36: "遺36", M37: "遺37", M38: "遺38", M39: "遺39", M40: "遺40",
+      M41: "遺41", M42: "遺42", M43: "遺43", M44: "遺44", M45: "遺45",
+      M46: "遺46", M47: "遺47", M48: "遺48", M49: "遺49",
+      MS1: "特遺1", MS2: "特遺2", MS3: "特遺3", MS4: "特遺4",
+      MS5: "特遺5", MS6: "特遺6", MS7: "特遺7", MS8: "特遺8",
+    };
+    return map[h] || h;
+  }
+</script>

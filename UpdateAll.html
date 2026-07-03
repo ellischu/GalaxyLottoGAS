@@ -477,7 +477,7 @@
             });
 
           if (type === "Cmb") runner.combineData(lotto);
-          else runner.genMissData(lotto);
+          else runner.genMissData(lotto, new Date(), 1, "ASC", -1);
         };
 
         window.stopUpdate = function () {

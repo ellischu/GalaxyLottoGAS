@@ -178,6 +178,11 @@
   }
 
   function startGalaxySearch() {
+    const date = $("#INDate").val();
+    if (!date) {
+      Swal.fire({ icon: "warning", title: "請選擇預測日期", text: "日期欄位不可為空" });
+      return;
+    }
     const nextMode = $("#chkNext").is(":checked");
     const rangeMode = $("#chkRange").is(":checked");
     const fieldMode = $("#chkField").is(":checked");
@@ -218,7 +223,14 @@
     google.script.run
       .withSuccessHandler(function (res) {
         Swal.close();
-        if (res.url) window.open(res.url, "_blank");
+        if (res.url) {
+          try { sessionStorage.setItem("_missDataParams", JSON.stringify({
+            lotto: params.lotto,
+            date: params.date,
+            methodSN: res.methodSN
+          })); } catch(e) {}
+          window.open(res.url, "_blank");
+        }
       })
       .prepareActivityQuery(params);
   }

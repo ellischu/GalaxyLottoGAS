@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GalaxyLotto 遺漏表查詢</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/combine/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css,npm/sweetalert2@11/dist/sweetalert2.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
+    />
+
+    <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.0/dist/jquery.min.js,npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js,npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
+    <?!= include("Lib_jQuery") ?> <?!= include("Lib_Bootstrap") ?> <?!=
+    include("Lib_Swal") ?> <?!= includeStyles(); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('MissData_Style').getContent(); ?>
+  </head>
+  <body>
+    <?!= includeNav(); ?>
+
+    <div class="container-fluid py-4">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-2" data-bs-toggle="collapse" data-bs-target="#queryCollapse" role="button" style="cursor:pointer;">
+          <span class="fw-bold"><i class="bi bi-chevron-down me-1"></i>遺漏表查詢</span>
+        </div>
+        <div id="queryCollapse" class="collapse">
+          <div class="card-body">
+            <div id="querySummary" class="row g-3 small">
+              <div class="col-auto"><strong>彩種：</strong><span id="summaryLotto" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>基準日期：</strong><span id="summaryDate" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>方法序號：</strong><span id="summaryMethodSN" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>資料筆數：</strong><span id="summaryCount" class="text-primary">-</span></div>
+              <div class="col-12">
+                <strong>欄位值：</strong>
+                <span id="summaryAllData" class="text-muted">載入中...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="debugCard" class="card shadow-sm mb-3 border-warning" style="display:none">
+        <div class="card-header bg-warning text-dark fw-bold small">
+          <i class="bi bi-bug me-1"></i>Debug
+          <button class="btn btn-sm btn-outline-dark float-end" onclick="$('#debugCard').toggle()">✕</button>
+        </div>
+        <div class="card-body small font-monospace">
+          <div>window.location.search: <span id="debugQS"></span></div>
+          <div>urlParams.get("date"): <span id="debugDateParam"></span></div>
+          <div>urlParams.get("methodSN"): <span id="debugMethodParam"></span></div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="bi bi-bar-chart me-2"></i>遺漏數統計表</span>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <div class="d-flex align-items-center gap-1">
+              <label class="text-light small me-1">筆數</label>
+              <input type="number" id="limitInput" class="form-control form-control-sm" style="width:60px" value="50" min="1" />
+            </div>
+            <button id="btnSortToggle" class="btn btn-sm btn-outline-light" title="切換排序方向">
+              <i id="sortIcon" class="fas fa-sort-amount-down"></i>
+              <span id="sortLabel" class="small ms-1">倒序</span>
+            </button>
+            <button id="btnReload" class="btn btn-sm btn-outline-light" title="重新載入"><i class="bi bi-arrow-clockwise"></i></button>
+            <label class="text-light small me-1">M ≥</label>
+            <input type="number" id="missFilter" class="form-control form-control-sm" style="width:60px" value="0" min="0" />
+            <button id="btnApplyFilter" class="btn btn-sm btn-outline-light"><i class="bi bi-funnel"></i></button>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div id="AreaTable" class="table-responsive">
+            <div class="text-center py-5 text-muted">
+              <div class="spinner-border text-primary mb-2" role="status"></div>
+              <div>正在載入遺漏資料...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <?!= include('Scripts'); ?>
+    <?!= HtmlService.createHtmlOutputFromFile('MissData_JS').getContent(); ?>
+    <?!= includeFooter(); ?>
+  </body>
+</html>
