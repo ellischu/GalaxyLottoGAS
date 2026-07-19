@@ -4,6 +4,7 @@
 
 | 欄位名稱 | 數值型態 | 預設值 | 顯示標題 | 說明 | 試算表 |
 | :-- | :-- | :-- | :-- | :-- | :-- |
+| lngMethodSN | Bigint | 1 | 方法序號 | 方法序號 | [GalaxyLotto_Method工作表](GalaxyLotto_Method工作表.md) |
 | Date | Date | null | 日期 | 日期(不可重複) | L539,L638,L649,LSix |
 | N1 | Int | 0 | 號1 | 排序後號碼1 | L539,L638,L649,LSix |
 | N2 | Int | 0 | 號2 | 排序後號碼2 | L539,L638,L649,LSix |
@@ -13,7 +14,6 @@
 | N6 | Int | 0 | 號6 | 排序後號碼6 | L649,L638,LSix |
 | S1 | Int | 0 | 特別號1 | 特別號1 | L649,L638,LSix |
 | Sum | Int | 0 | 總合 | 號數總合<br> L638為(N1~N6) | L539,L638,L649,LSix |
-| lngMethodSN | Bigint | 1 | 方法序號 | 方法序號(自動遞增) |  |
 | M1 | Int | 0 | 遺漏1 | 遺漏號碼1 | L539,L638,L649,LSix |
 | M2 | Int | 0 | 遺漏2 | 遺漏號碼2 | L539,L638,L649,LSix |
 | M3 | Int | 0 | 遺漏3 | 遺漏號碼3 | L539,L638,L649,LSix |
@@ -80,4 +80,16 @@
   - [L638 All工作表](共同工作表_all工作表.md)提供。
   - [LSix All工作表](共同工作表_all工作表.md)提供。 
   
+## 獲取資料流程
+- 由 SearchS.html 頁面的日期、彩種及各選項選擇，可以得到獲取資料的方法，例如：
+  - [L539] 相同五形的資料的訊息。利用日期(2026/07/07)找到 GalaxyLotto > AllData工作表中的相同日期資料。找到欄位 日五形 是 '木'。
+  - GalaxyLotto > AllData工作表，僅提供獲取資料的方法的條件，不提供整體資料。
+  - 按下查詢後計算完畢把資料(Date ,彩種 ,方法序號)傳給 MissData.html.
+- MissData.html 
+  - 根據 Date ,彩種 ,方法序號(lngMethodSN)，對 彩種 > All 工作表進行 < Date 且 符合方法序號提供的方式篩選，並傳回結果稱為 BaseData。
+  - 根據 Date ,彩種 ,方法序號(lngMethodSN)，對 彩種 > Miss 工作表進行 < Date 且 相同方法序號 進行篩選，並傳回結果稱為 TargetData。
+  - 檢查 BaseData.length == TargetData.length，如果相等則將 TargetData 先以 DESC 排序並擷取指定數量回傳。
+  - BaseData.length != TargetData.length，先 BaseData(ASC) 和 TargetData(ASC) 進行排序，如果 BaseData(ASC) > TargetData(ASC)，則 TargetData(ASC) 從最後一筆資料以增量的方式補齊，並把資料TargetData(ASC)更新到 彩種 > Miss 工作表中。最後將 TargetData 先以 DESC 排序並擷取指定數量回傳。
+  - 全部以增量的方式操作。
+
 [Back](L539L649L638LSix試算表.md) 
