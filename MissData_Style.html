@@ -1,4 +1,19 @@
 <style>
+  .card-header[data-bs-toggle="collapse"] {
+    background-color: #f8f9fa !important;
+    color: #212529 !important;
+    transition: background-color 0.2s;
+  }
+  [data-bs-theme="dark"] .card-header[data-bs-toggle="collapse"] {
+    background-color: #343a40 !important;
+    color: #f8f9fa !important;
+  }
+  .card-header[data-bs-toggle="collapse"]:hover {
+    background-color: #e9ecef !important;
+  }
+  [data-bs-theme="dark"] .card-header[data-bs-toggle="collapse"]:hover {
+    background-color: #495057 !important;
+  }
   .miss-table {
     font-size: 0.75rem;
   }
@@ -25,27 +40,32 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 6px;
+    border-radius: 15px;
     color: #fff;
-    font-size: 0.7rem;
-    font-weight: 700;
+    font-size: 0.85rem;
+    font-weight: 800;
   }
-  .num-n1 { background-color: #FADBD8; color: #212529; }
-  .num-n2 { background-color: #D4E6F1; color: #212529; }
-  .num-n3 { background-color: #D5F5E3; color: #212529; }
-  .num-n4 { background-color: #FCF3CF; color: #212529; }
-  .num-n5 { background-color: #E8DAEF; color: #212529; }
+  .miss-table .num-ball.bg-info { color: #111; }
+  .miss-table .num-n1 { background: #fffcbc; color: #111; }
+  .miss-table .num-n2 { background: rgba(201, 194, 255, 0.80); color: #111; }
+  .miss-table .num-n3 { background: rgba(172, 255, 255, 0.80); color: #111; }
+  .miss-table .num-n4 { background: rgba(255, 221, 255, 0.80); color: #111; }
+  .miss-table .num-n5 { background: rgba(206, 255, 189, 0.80); color: #111; }
 
+  .miss-table tr.glMonday { background: rgba(255, 255, 0, 0.05) !important; border-bottom: 1px solid rgba(255, 255, 0, 0.30); }
+  .miss-table tr.glTuesday { background: rgba(237, 0, 255, 0.05) !important; border-bottom: 1px solid rgba(237, 0, 255, 0.30); }
+  .miss-table tr.glWednesday { background: rgba(0, 128, 0, 0.05) !important; border-bottom: 1px solid rgba(0, 128, 0, 0.30); }
+  .miss-table tr.glThursday { background: rgba(255, 70, 0, 0.05) !important; border-bottom: 1px solid rgba(255, 70, 0, 0.30); }
+  .miss-table tr.glFriday { background: rgba(40, 155, 232, 0.05) !important; border-bottom: 1px solid rgba(40, 155, 232, 0.30); }
+  .miss-table tr.glSaturday { background: rgba(128, 0, 128, 0.05) !important; border-bottom: 1px solid rgba(128, 0, 128, 0.30); }
+  .miss-table tr.glSunday { background: rgba(255, 0, 0, 0.05) !important; border-bottom: 1px solid rgba(255, 0, 0, 0.30); }
+  .miss-table tr.lngM0 { background: rgba(255, 255, 153, 0.50) !important; }
+  .miss-table tr.glRow5 { border-bottom: 2px solid rgba(25, 126, 25, 0.70) !important; }
+  .glColNum5 { border-right: 2px solid blue; }
 
-  #missFilter {
-    max-width: 70px;
-    font-size: 0.8rem;
-  }
-  #btnApplyFilter {
-    font-size: 0.8rem;
-  }
   .summary-item {
     border-right: 1px solid #dee2e6;
     padding-right: 1rem;
@@ -53,5 +73,16 @@
   }
   .summary-item:last-child {
     border-right: none;
+  }
+  .summary-num-ball {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: #e74c3c;
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.85rem;
   }
 </style>

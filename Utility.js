@@ -715,13 +715,13 @@ function getMethodObj(lngMethodSN) {
   }
 
   const sheet = mainspreadsheet.getSheetByName(sheetName);
-  if (!sheet) return null;
+  if (!sheet) return {};
 
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const lngMethodSNColIdx = headers.indexOf("lngMethodSN");
 
-  if (lngMethodSNColIdx === -1) return null;
+  if (lngMethodSNColIdx === -1) return {};
 
   // 定義屬性順序 (必須與 getMethodSN 內部定義完全一致)
   const orderedPropsForMethod = [
@@ -757,7 +757,7 @@ function getMethodObj(lngMethodSN) {
     }
   }
 
-  return null;
+  return {};
 }
 
 /**
@@ -1713,7 +1713,7 @@ function fillMissData(sourceRows, missRows, lotto, dateCol) {
   let prevSpecialMiss = [];
 
   if (missRows && missRows.length > 0) {
-    const mStartIdx = nStartIdx + nCols.length + (hasS1 ? 1 : 0) + 2;
+    const mStartIdx = missRows[missRows.length - 1].length - maxNum - maxSpecial;
     for (let j = 0; j < maxNum; j++) prevMiss.push(Number(missRows[missRows.length - 1][mStartIdx + j]) || 0);
     if (maxSpecial > 0) {
       for (let j = 0; j < maxSpecial; j++) prevSpecialMiss.push(Number(missRows[missRows.length - 1][mStartIdx + maxNum + j]) || 0);
@@ -1784,15 +1784,35 @@ function fillMissData(sourceRows, missRows, lotto, dateCol) {
   const mStartIdx = missRows[0] ? (missRows[0].length - maxNum - maxSpecial) : 0;
 
   var missDateMap = {};
+  var missDateExample = null;
   for (var mi = 0; mi < missRows.length; mi++) {
     (function(r) {
-      if (r[1]) missDateMap[new Date(r[1]).getTime()] = r;
+      if (r[1]) {
+        var ts = new Date(r[1]).getTime();
+        missDateMap[ts] = r;
+        if (!missDateExample) missDateExample = { raw: r[1], ts: ts };
+      }
     })(missRows[mi]);
   }
+
+  Logger.log("[fillMissData] mStartIdx=%d maxNum=%d missRows=%d missDateMapKeys=%d", mStartIdx, maxNum, missRows ? missRows.length : 0, Object.keys(missDateMap).length);
+  Logger.log("[fillMissData] example miss date: raw=%s ts=%s", String(missDateExample ? missDateExample.raw : "null"), missDateExample ? missDateExample.ts : "null");
 
   return sourceRows.map(function(srcRow) {
     var srcDate = new Date(srcRow[dateCol]).getTime();
     var matchedMiss = missDateMap[srcDate] || null;
+
+    // Debug: log for 2026-06-16
+    var dStr = srcRow[dateCol] instanceof Date ? Utilities.formatDate(srcRow[dateCol], "Asia/Taipei", "yyyy-MM-dd") : String(srcRow[dateCol]);
+    if (dStr === "2026-06-16") {
+      Logger.log("[fillMissData] target date=%s srcDate ts=%s found=%s mStartIdx=%d", dStr, srcDate, !!matchedMiss, mStartIdx);
+      if (matchedMiss) {
+        var sample = [];
+        for (var sc = 0; sc < 10 && sc < maxNum + maxSpecial; sc++) sample.push(matchedMiss[mStartIdx + sc]);
+        Logger.log("[fillMissData] first 10 M values: %s", JSON.stringify(sample));
+      }
+    }
+
     var result = srcRow.slice();
     if (matchedMiss) {
       for (var c = 0; c < maxNum + maxSpecial; c++) {
@@ -1833,12 +1853,29 @@ function writeMissSheet(lotto, methodSN, dataRows, config) {
   for (let j = 1; j <= maxNum; j++) headers.push("M" + j);
   for (let j = 1; j <= maxSpecial; j++) headers.push("MS" + j);
 
+  function _safeRows(rows) {
+    return rows.map(function(r) {
+      var s = [];
+      for (var ci = 0; ci < r.length; ci++) {
+        var v = r[ci];
+        if (v == null) { s.push(""); continue; }
+        if (ci === 1 && !(v instanceof Date)) {
+          var p = new Date(String(v).replace(/-/g, "/"));
+          s.push(isNaN(p.getTime()) ? String(v) : p);
+        } else {
+          s.push(v);
+        }
+      }
+      return s;
+    });
+  }
+
   if (!sheet) {
     sheet = ss.insertSheet("Miss");
     sheet.appendRow(headers);
     if (dataRows.length > 0) {
-      const range = sheet.getRange(2, 1, dataRows.length, dataRows[0].length);
-      range.setValues(dataRows);
+      var safeData = _safeRows(dataRows);
+      sheet.getRange(2, 1, safeData.length, safeData[0].length).setValues(safeData);
     }
     return;
   }
@@ -1852,30 +1889,43 @@ function writeMissSheet(lotto, methodSN, dataRows, config) {
     sheet.clear();
     sheet.appendRow(headers);
     if (dataRows.length > 0) {
-      sheet.getRange(2, 1, dataRows.length, dataRows[0].length).setValues(dataRows);
+      var safeData = _safeRows(dataRows);
+      sheet.getRange(2, 1, safeData.length, safeData[0].length).setValues(safeData);
     }
     return;
   }
 
-  const keptRows = [];
+  const dateCol = existingHeaders.indexOf("Date");
+  const existingDates = new Set();
   for (let i = 1; i < existingData.length; i++) {
-    if (Number(existingData[i][snCol]) !== methodSN) {
-      keptRows.push(existingData[i]);
+    if (Number(existingData[i][snCol]) === methodSN) {
+      const d = existingData[i][dateCol];
+      if (d) existingDates.add(Utilities.formatDate(new Date(d), "Asia/Taipei", "yyyy-MM-dd"));
     }
   }
 
-  sheet.clear();
-  sheet.appendRow(headers);
-  let writeRow = 2;
-
-  if (keptRows.length > 0) {
-    const keptCols = keptRows[0].length;
-    sheet.getRange(writeRow, 1, keptRows.length, keptCols).setValues(keptRows);
-    writeRow += keptRows.length;
+  const newRows = [];
+  for (let i = 0; i < dataRows.length; i++) {
+    const d = dataRows[i][1];
+    if (!d) { newRows.push(dataRows[i]); continue; }
+    if (!existingDates.has(Utilities.formatDate(new Date(d), "Asia/Taipei", "yyyy-MM-dd"))) {
+      newRows.push(dataRows[i]);
+    }
   }
 
-  if (dataRows.length > 0) {
-    sheet.getRange(writeRow, 1, dataRows.length, dataRows[0].length).setValues(dataRows);
+  if (newRows.length === 0) return;
+
+  try {
+    var safeRows = _safeRows(newRows);
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, safeRows.length, safeRows[0].length).setValues(safeRows);
+  } catch (e) {
+    logSystemError("writeMissSheet", e.toString(), "ERROR", "setValues 失敗", {
+      lotto: lotto,
+      methodSN: methodSN,
+      safeRowsLen: safeRows.length,
+    });
+    throw e;
   }
 }
 
@@ -1889,85 +1939,301 @@ function writeMissSheet(lotto, methodSN, dataRows, config) {
  * @returns {Array<Array>} 遺漏數資料
  */
 function genMissData(lotto, date, methodRef, sort = "DESC", limit) {
+  startTime = new Date().getTime();
+
   const isBaseData = (methodRef === 1 || methodRef === "1");
-  const methodObj = isBaseData ? {} : (typeof methodRef === "object" ? methodRef : getMethodObj(Number(methodRef)));
+  let methodObj = isBaseData ? {} : (typeof methodRef === "object" ? methodRef : getMethodObj(Number(methodRef)));
   const methodSN = isBaseData ? 1 : (typeof methodRef === "object" ? getMethodSN(methodRef) : Number(methodRef));
 
   if (!methodObj) return [];
 
-  const sourceData = getDataBase(lotto, date, methodObj, "ASC", -1);
-  if (!sourceData || sourceData.length === 0) return [];
+  Logger.log("[genMissData] start lotto=%s methodSN=%s", lotto, methodSN);
 
-  const trObj = getTargetsheet("Sheets", lotto);
-  const allSheet = trObj.spreadsheet.getSheetByName("All");
-  const rawHeaders = allSheet.getRange(1, 1, 1, allSheet.getLastColumn()).getValues()[0]
-    .map(h => String(h || "").trim());
-
-  const dateCol = rawHeaders.indexOf("Date");
-  const nCols = rawHeaders.map((h, i) => h.match(/^N\d+$/) ? i : -1).filter(i => i !== -1);
-  const s1Col = rawHeaders.indexOf("S1");
-  const sumCol = rawHeaders.indexOf("Sum");
-
-  const config = getGameConfig(lotto);
-  const { maxNum, hasS1, maxSpecial } = config;
-
-  let prevMiss = [];
-  let prevSpecialMiss = [];
-  let missResults = [];
-
-  for (let i = 0; i < sourceData.length; i++) {
-    const row = sourceData[i];
-    const drawnNums = nCols.map(idx => row[idx]);
-    const s1Val = s1Col > -1 ? row[s1Col] : null;
-    const sumVal = sumCol > -1 ? row[sumCol] : null;
-
-    let poolSet = new Set(drawnNums);
-    if (hasS1 && lotto !== "L638" && s1Val !== null) poolSet.add(s1Val);
-
-    let currentMiss = [];
-    for (let j = 1; j <= maxNum; j++) {
-      if (prevMiss.length === 0) {
-        currentMiss.push(poolSet.has(j) ? 0 : 1);
-      } else {
-        currentMiss.push(poolSet.has(j) ? 0 : (Number(prevMiss[j - 1]) || 0) + 1);
-      }
+  var progressKey;
+  try {
+    progressKey = "GENMISS_JOB_" + lotto + "_" + methodSN;
+    const trObj = getTargetsheet("Sheets", lotto);
+    const allSheet = trObj.spreadsheet.getSheetByName("All");
+    if (!allSheet) {
+      Logger.log("[genMissData] no All sheet for %s", lotto);
+      return [];
     }
-    prevMiss = currentMiss;
+    const rawAllData = allSheet.getDataRange().getValues();
+    if (rawAllData.length <= 1) {
+      Logger.log("[genMissData] All sheet only has headers for %s", lotto);
+      return [];
+    }
+    const targetDate2 = new Date(String(date).replace(/-/g, "/"));
+    const rawHeaders2 = rawAllData[0].map(h => String(h || "").trim());
+    const dateIdx2 = rawHeaders2.indexOf("Date");
+    const rawHeaders = rawHeaders2;
 
-    let currentSpecialMiss = [];
-    if (maxSpecial > 0) {
-      for (let j = 1; j <= maxSpecial; j++) {
-        if (prevSpecialMiss.length === 0) {
-          currentSpecialMiss.push(s1Val === j ? 0 : 1);
-        } else {
-          currentSpecialMiss.push(s1Val === j ? 0 : (Number(prevSpecialMiss[j - 1]) || 0) + 1);
+    const dateCol = rawHeaders.indexOf("Date");
+    const nCols = rawHeaders.map((h, i) => h.match(/^N\d+$/) ? i : -1).filter(i => i !== -1);
+    const s1Col = rawHeaders.indexOf("S1");
+    const sumCol = rawHeaders.indexOf("Sum");
+
+    const config = getGameConfig(lotto);
+    const { maxNum, hasS1, maxSpecial } = config;
+
+    const missHeaders = buildMissHeaders(config, lotto);
+
+    // 先檢查是否有續傳進度（中斷續跑時不進行增量過濾）
+    let progress = getProgress(progressKey);
+
+    // 只在全新執行（無續傳進度）時讀取現有 Miss 資料，做增量過濾
+    let lastMissDate = null;
+    let initPrevMiss = [];
+    let initPrevSpecialMiss = [];
+    if (!progress) {
+      const existingMissSheet = trObj.spreadsheet.getSheetByName("Miss");
+      if (existingMissSheet) {
+        const existingData = existingMissSheet.getDataRange().getValues();
+        if (existingData.length > 1) {
+          const missH = existingData[0].map(function(c) { return String(c || "").trim(); });
+          const msnCol = missH.indexOf("lngMethodSN");
+          const mDateCol = missH.indexOf("Date");
+          const m1Col = missH.indexOf("M1");
+          if (msnCol > -1 && mDateCol > -1 && m1Col > -1) {
+            const methodRows = [];
+            for (let ei = 1; ei < existingData.length; ei++) {
+              if (Number(existingData[ei][msnCol]) === methodSN) methodRows.push(existingData[ei]);
+            }
+            if (methodRows.length > 0) {
+              methodRows.sort(function(a, b) { return new Date(b[mDateCol]) - new Date(a[mDateCol]); });
+              const lastRow = methodRows[0];
+              lastMissDate = lastRow[mDateCol] instanceof Date ? lastRow[mDateCol] : new Date(String(lastRow[mDateCol]).replace(/-/g, "/"));
+              for (let j = 0; j < maxNum; j++) initPrevMiss.push(Number(lastRow[m1Col + j]) || 0);
+              if (maxSpecial > 0) {
+                const ms1Col = missH.indexOf("MS1");
+                if (ms1Col > -1) {
+                  for (let j = 0; j < maxSpecial; j++) initPrevSpecialMiss.push(Number(lastRow[ms1Col + j]) || 0);
+                }
+              }
+            }
+          }
         }
       }
-      prevSpecialMiss = currentSpecialMiss;
     }
 
-    let newRow = [methodSN, row[dateCol]];
-    nCols.forEach(idx => newRow.push(row[idx]));
-    if (hasS1) newRow.push(s1Val);
-    if (sumVal !== null) newRow.push(sumVal);
-    newRow = newRow.concat(currentMiss);
-    if (maxSpecial > 0) newRow = newRow.concat(currentSpecialMiss);
+    const sourceData = rawAllData.slice(1)
+      .filter(function(r) {
+        if (!r[dateIdx2]) return false;
+        var rd = new Date(r[dateIdx2]);
+        if (rd >= targetDate2) return false;
+        if (lastMissDate && rd <= lastMissDate) return false;
+        return true;
+      })
+      .sort(function(a, b) { return new Date(a[dateIdx2]) - new Date(b[dateIdx2]); });
 
-    missResults.push(newRow);
+    Logger.log("[genMissData] lotto=%s methodSN=%s lastMissDate=%s newRows=%d progress=%s", lotto, methodSN, lastMissDate, sourceData ? sourceData.length : 0, !!progress);
+    if (!sourceData || sourceData.length === 0) {
+      Logger.log("[genMissData] no new source data to process");
+      clearProgress(progressKey);
+      return [];
+    }
+
+    let startIndex = 0;
+    let prevMiss = initPrevMiss.length > 0 ? initPrevMiss : [];
+    let prevSpecialMiss = initPrevSpecialMiss.length > 0 ? initPrevSpecialMiss : [];
+    let missResults = [];
+    let isFirstBatch = !lastMissDate;
+
+    if (progress) {
+      startIndex = progress.currentIndex || 0;
+      prevMiss = progress.prevMiss || [];
+      prevSpecialMiss = progress.prevSpecialMiss || [];
+      isFirstBatch = false;
+    }
+
+    const ss = trObj.spreadsheet;
+    const maxLoopTime = 8000;
+
+    for (let i = startIndex; i < sourceData.length; i++) {
+      const row = sourceData[i];
+      const drawnNums = nCols.map(idx => row[idx]);
+      const s1Val = s1Col > -1 ? row[s1Col] : null;
+      const sumVal = sumCol > -1 ? row[sumCol] : null;
+
+      let poolSet = new Set(drawnNums);
+      if (hasS1 && lotto !== "L638" && s1Val !== null) poolSet.add(s1Val);
+
+      let currentMiss = [];
+      for (let j = 1; j <= maxNum; j++) {
+        if (prevMiss.length === 0) {
+          currentMiss.push(poolSet.has(j) ? 0 : 1);
+        } else {
+          currentMiss.push(poolSet.has(j) ? 0 : (Number(prevMiss[j - 1]) || 0) + 1);
+        }
+      }
+      prevMiss = currentMiss;
+
+      let currentSpecialMiss = [];
+      if (maxSpecial > 0) {
+        for (let j = 1; j <= maxSpecial; j++) {
+          if (prevSpecialMiss.length === 0) {
+            currentSpecialMiss.push(s1Val === j ? 0 : 1);
+          } else {
+            currentSpecialMiss.push(s1Val === j ? 0 : (Number(prevSpecialMiss[j - 1]) || 0) + 1);
+          }
+        }
+        prevSpecialMiss = currentSpecialMiss;
+      }
+
+      let dateVal = row[dateCol];
+      if (dateVal != null && !(dateVal instanceof Date)) {
+        var parsed = new Date(String(dateVal).replace(/-/g, "/"));
+        dateVal = isNaN(parsed.getTime()) ? String(dateVal) : parsed;
+      }
+      let newRow = [methodSN, dateVal];
+      nCols.forEach(idx => newRow.push(row[idx] == null ? "" : row[idx]));
+      if (hasS1) newRow.push(s1Val == null ? "" : s1Val);
+      if (sumVal !== null) newRow.push(sumVal == null ? "" : sumVal);
+      newRow = newRow.concat(currentMiss);
+      if (maxSpecial > 0) newRow = newRow.concat(currentSpecialMiss);
+      missResults.push(newRow);
+
+      if (missResults.length >= 50) {
+        const nextIndex = i + 1;
+
+        if (missResults.length > 0) {
+          Logger.log("[genMissData] batch write at i=%d nextIdx=%d rows=%d isFirst=%s", i, nextIndex, missResults.length, isFirstBatch);
+          writeMissBatchDirect(ss, lotto, methodSN, missHeaders, missResults, isFirstBatch);
+          missResults = [];
+          SpreadsheetApp.flush();
+          isFirstBatch = false;
+        }
+
+        if (nextIndex < sourceData.length) {
+          saveProgress(progressKey, {
+            status: "continue",
+            currentIndex: nextIndex,
+            total: sourceData.length,
+            prevMiss: prevMiss,
+            prevSpecialMiss: prevSpecialMiss,
+          });
+
+          return {
+            status: "continue",
+            message: "遺漏計算中 " + nextIndex + " / " + sourceData.length,
+            currentIndex: nextIndex,
+            total: sourceData.length,
+          };
+        }
+      }
+    }
+
+    if (missResults.length > 0) {
+      Logger.log("[genMissData] final batch write: rows=%d isFirst=%s", missResults.length, isFirstBatch);
+      writeMissBatchDirect(ss, lotto, methodSN, missHeaders, missResults, isFirstBatch);
+      missResults = [];
+      SpreadsheetApp.flush();
+    }
+
+    Logger.log("[genMissData] clearing progress key=%s", progressKey);
+    clearProgress(progressKey);
+
+    const missSheet = ss.getSheetByName("Miss");
+    let outputData = [];
+    if (missSheet) {
+      const allData2 = missSheet.getDataRange().getValues();
+      const h2 = allData2[0].map(c => String(c || "").trim());
+      const snCol2 = h2.indexOf("lngMethodSN");
+      const dateCol2 = h2.indexOf("Date");
+      if (snCol2 > -1 && dateCol2 > -1) {
+        outputData = allData2.slice(1).filter(r => Number(r[snCol2]) === methodSN);
+        if (sort === "DESC") {
+          outputData.sort((a, b) => new Date(b[dateCol2]) - new Date(a[dateCol2]));
+        } else {
+          outputData.sort((a, b) => new Date(a[dateCol2]) - new Date(b[dateCol2]));
+        }
+      }
+    }
+    const finalLimit = (limit !== undefined && limit !== null) ? parseInt(limit, 10) : -1;
+    if (finalLimit > 0) outputData = outputData.slice(0, finalLimit);
+
+    Logger.log("[genMissData] complete lotto=%s rows=%s", lotto, outputData.length);
+    return outputData;
+  } catch (e) {
+    Logger.log("[genMissData] ERROR lotto=%s err=%s", lotto, e.message);
+    logSystemError("genMissData", "genMissData error: " + e.message, {lotto, methodSN});
+    clearProgress(progressKey);
+    return [];
   }
+}
 
-  if (sort === "DESC") {
-    missResults.sort((a, b) => new Date(b[1]) - new Date(a[1]));
-  } else {
-    missResults.sort((a, b) => new Date(a[1]) - new Date(b[1]));
+function buildMissHeaders(config, lotto) {
+  const { maxNum, hasS1, maxSpecial } = config;
+  const headers = ["lngMethodSN", "Date"];
+  const nCount = (lotto === "L539" ? 5 : 6);
+  for (let j = 1; j <= nCount; j++) headers.push("N" + j);
+  if (hasS1) headers.push("S1");
+  headers.push("Sum");
+  for (let j = 1; j <= maxNum; j++) headers.push("M" + j);
+  for (let j = 1; j <= maxSpecial; j++) headers.push("MS" + j);
+  return headers;
+}
+
+function writeMissBatchDirect(ss, lotto, methodSN, headers, rows, isFirstBatch) {
+  Logger.log("[writeMissBatch] lotto=%s first=%s rows=%d", lotto, isFirstBatch, rows.length);
+  var sheet = ss.getSheetByName("Miss");
+  if (isFirstBatch) {
+    if (sheet) {
+      // 只移除該 methodSN 的舊資料，保留其他 methodSN
+      var allData = sheet.getDataRange().getValues();
+      if (allData.length > 0) {
+        var h = allData[0].map(function(c) { return String(c || "").trim(); });
+        var snCol = h.indexOf("lngMethodSN");
+        if (snCol > -1 && h.length === headers.length) {
+          var keep = [allData[0]];
+          for (var di = 1; di < allData.length; di++) {
+            if (Number(allData[di][snCol]) !== methodSN) keep.push(allData[di]);
+          }
+          sheet.clear();
+          if (keep.length > 1 || (keep.length === 1 && keep[0].length === headers.length)) {
+            sheet.getRange(1, 1, keep.length, keep[0].length).setValues(keep);
+          } else {
+            sheet.appendRow(headers);
+          }
+        } else {
+          sheet.clear();
+          sheet.appendRow(headers);
+        }
+      } else {
+        sheet.appendRow(headers);
+      }
+    } else {
+      Logger.log("[writeMissBatch] creating new Miss sheet");
+      sheet = ss.insertSheet("Miss");
+      sheet.appendRow(headers);
+    }
+    SpreadsheetApp.flush();
+    Logger.log("[writeMissBatch] headers written, getLastRow=%d", sheet.getLastRow());
   }
-
-  const finalLimit = (limit !== undefined && limit !== null) ? parseInt(limit, 10) : -1;
-  const outputData = finalLimit > 0 ? missResults.slice(0, finalLimit) : missResults;
-
-  writeMissSheet(lotto, methodSN, outputData, config);
-
-  return outputData;
+  if (rows.length === 0) { Logger.log("[writeMissBatch] no rows to write"); return; }
+  var safeRows = [];
+  for (var ri = 0; ri < rows.length; ri++) {
+    var r = rows[ri];
+    var s = [];
+    for (var ci = 0; ci < r.length; ci++) {
+      var v = r[ci];
+      if (v == null) { s.push(""); continue; }
+      if (ci === 1 && !(v instanceof Date)) {
+        var p = new Date(String(v).replace(/-/g, "/"));
+        s.push(isNaN(p.getTime()) ? String(v) : p);
+      } else {
+        s.push(v);
+      }
+    }
+    safeRows.push(s);
+  }
+  var lastRow = sheet.getLastRow();
+  Logger.log("[writeMissBatch] lastRow=%d safeRows=%d cols=%d", lastRow, safeRows.length, safeRows[0].length);
+  if (safeRows.length > 0) {
+    sheet.getRange(lastRow + 1, 1, safeRows.length, safeRows[0].length).setValues(safeRows);
+    SpreadsheetApp.flush();
+    Logger.log("[writeMissBatch] write OK, new lastRow=%d", sheet.getLastRow());
+  }
 }
 
 /**
@@ -2013,7 +2279,7 @@ function getMissTable(lotto, date, methodRef, sort = "DESC", limit) {
 }
 
 /**
- * 合併 All 與 Miss 資料，依日期配對輸出
+ * 取得遺漏表資料（依文件規範：BaseData vs TargetData 比對）
  * @param {string} lotto 彩種
  * @param {Date|string} date 基準日期
  * @param {number|Object} methodRef 方法序號或物件
@@ -2031,53 +2297,72 @@ function getMissDataTable(lotto, date, methodRef, sort = "DESC", limit) {
   const dateCol = sourceHeaders.indexOf("Date");
 
   const isBaseData = (methodRef === 1 || methodRef === "1");
-  const methodObj = isBaseData ? {} : (typeof methodRef === "object" ? methodRef : getMethodObj(Number(methodRef)));
+  let methodObj = isBaseData ? {} : (typeof methodRef === "object" ? methodRef : getMethodObj(Number(methodRef)));
   const methodSN = isBaseData ? 1 : (typeof methodRef === "object" ? getMethodSN(methodRef) : Number(methodRef));
-
   if (!methodObj) return { status: "error", message: "無法解析方法參數" };
 
-  const sourceLimit = isBaseData ? Math.max(limit * 4 + 100, 300) : -1;
-  const sourceTemp = getDataBase(lotto, date, methodObj, "ASC", sourceLimit);
+  const config = getGameConfig(lotto);
+  const keepHeaders = buildMissHeaders(config, lotto);
+
+  // ── BaseData (All 工作表，依 methodObj 篩選，ASC) ──
+  const sourceTemp = getDataBase(lotto, date, methodObj, "ASC", -1);
   if (!sourceTemp || sourceTemp.length === 0) return { status: "error", message: "無篩選資料" };
 
+  // ── TargetData (Miss 工作表，相同 methodSN，ASC) ──
   const missTemp = getMissTable(lotto, date, methodSN, "ASC", -1);
 
-  let mergedRows;
+  let outputRows;
+  const nCount = (lotto === "L539" ? 5 : 6);
 
   if (sourceTemp.length === missTemp.length) {
-    const missHeaders = ["lngMethodSN", "Date"];
-    const nCount = (lotto === "L539" ? 5 : 6);
-    for (let j = 1; j <= nCount; j++) missHeaders.push("N" + j);
-    const config = getGameConfig(lotto);
-    if (config.hasS1) missHeaders.push("S1");
-    missHeaders.push("Sum");
-    for (let j = 1; j <= config.maxNum; j++) missHeaders.push("M" + j);
-    for (let j = 1; j <= config.maxSpecial; j++) missHeaders.push("MS" + j);
+    // 長度相等 → 直接回傳 TargetData（Miss 格式已含所有欄位）
+    outputRows = missTemp;
 
-    mergedRows = mergeMissData(sourceTemp, missTemp, sourceHeaders, missHeaders, dateCol);
+  } else if (sourceTemp.length > missTemp.length) {
+    // 增量補齊：fillMissData 回傳 merged 格式 [srcRow + M val]，轉成 Miss 格式
+    const mergedRows = fillMissData(sourceTemp, missTemp || [], lotto, dateCol);
+    const mStart = sourceHeaders.length;
+
+    // 轉換 merged 格式 → Miss 格式: [methodSN, Date, N1..N5(,S1), Sum, M1..M39]
+    outputRows = mergedRows.map(function(mr) {
+      var missRow = [methodSN];                         // lngMethodSN
+      missRow.push(mr[dateCol]);                         // Date
+      for (var c = 0; c < nCount; c++) missRow.push(mr[dateCol + 1 + c]); // N1~N5
+      if (config.hasS1) missRow.push(mr[dateCol + 1 + nCount]); // S1
+      // Sum: 在 sourceHeaders 中尋找 index
+      var si = sourceHeaders.indexOf("Sum");
+      missRow.push(si >= 0 ? mr[si] : "");              // Sum
+      for (var c = 0; c < config.maxNum; c++) missRow.push(mr[mStart + c]); // M1~M39
+      if (config.maxSpecial > 0) {
+        for (var c = 0; c < config.maxSpecial; c++) missRow.push(mr[mStart + config.maxNum + c]); // MS
+      }
+      return missRow;
+    });
+
+    // 寫回 Miss 工作表
+    writeMissBatchDirect(trObj.spreadsheet, lotto, methodSN, keepHeaders, outputRows, true);
+
   } else {
-    mergedRows = fillMissData(sourceTemp, missTemp || [], lotto, dateCol);
+    // BaseData < TargetData（不應發生）
+    outputRows = missTemp;
   }
 
-  const config = getGameConfig(lotto);
-  const combinedHeaders = sourceHeaders.slice();
-  for (let j = 1; j <= config.maxNum; j++) combinedHeaders.push("M" + j);
-  for (let j = 1; j <= config.maxSpecial; j++) combinedHeaders.push("MS" + j);
-
+  // 依 requested sort 排序（keepHeaders 中 Date 在 index 1）
+  const dateIdx = 1;
   if (sort === "DESC") {
-    mergedRows.sort((a, b) => new Date(b[dateCol]) - new Date(a[dateCol]));
+    outputRows.sort(function(a, b) { return new Date(b[dateIdx]) - new Date(a[dateIdx]); });
   } else {
-    mergedRows.sort((a, b) => new Date(a[dateCol]) - new Date(b[dateCol]));
+    outputRows.sort(function(a, b) { return new Date(a[dateIdx]) - new Date(b[dateIdx]); });
   }
 
-  const finalLimit = (limit !== undefined && limit !== null) ? parseInt(limit, 10) : -1;
-  const outputRows = finalLimit > 0 ? mergedRows.slice(0, finalLimit) : mergedRows;
+  var finalLimit = parseInt(limit, 10);
+  if (finalLimit > 0 && outputRows.length > finalLimit) outputRows = outputRows.slice(0, finalLimit);
 
   return {
     status: "success",
-    headers: combinedHeaders,
+    headers: keepHeaders,
     rows: outputRows,
     sourceHeaders: sourceHeaders,
-    dateCol: dateCol,
+    dateCol: dateIdx,
   };
 }

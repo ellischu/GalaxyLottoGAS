@@ -11,18 +11,16 @@ https://api.taiwanlottery.com/TLCAPIWeB/Lottery/Daily539Result?period=115000001
  */
 
 /**
- * 每日更新主流程
+ * 每日更新主流程（單一流程，保留給 UI 呼叫）
  * @param {boolean} isUI 是否為 UI 模式 (UI 模式會每步回傳以更新進度條)
  */
 function dailyupdate(isUI) {
-  // 每次進入重設計時器，確保續傳仍有完整 290 秒
   startTime = new Date().getTime();
 
   const stateKey = "DAILY_UPDATE_FLOW_STATE";
   let state = getProgress(stateKey) || { step: 0 };
   const lottos = ["L539", "L649", "L638", "LSix"];
 
-  // 定義任務序列
   const tasks = [];
   lottos.forEach((l) =>
     tasks.push({ name: "Update_" + l, run: () => updatenumber(l) }),
@@ -56,9 +54,7 @@ function dailyupdate(isUI) {
     },
   });
 
-
   for (let i = state.step; i < tasks.length; i++) {
-    // 檢查整體執行時間
     if (isNearTimeout()) {
       saveProgress(stateKey, { step: i });
       logSystemError("dailyupdate", "超時保護觸發：已暫停於步驟 " + tasks[i].name, "WARNING");
@@ -73,19 +69,15 @@ function dailyupdate(isUI) {
 
     let result = task.run();
 
-    // 如果子任務回傳需要續傳，則停止目前序列
     if (result && result.status === "continue") {
       saveProgress(stateKey, { step: i });
       logSystemError("dailyupdate", "子任務 " + task.name + " 要求續傳：" + result.message);
       return result;
     }
 
-    // 步驟完成，更新索引
     state.step = i + 1;
     saveProgress(stateKey, state);
 
-    // 核心修正：如果是 UI 觸發，則每個任務完成後回傳一次狀態給前端更新進度條。
-    // 若是背景排程觸發 (isUI 不為 true)，則在時間允許內繼續執行下一個任務。
     if (isUI === true) {
       return {
         status: "continue",
@@ -94,10 +86,226 @@ function dailyupdate(isUI) {
     }
   }
 
-  // 全部完成，清除流程進度
   clearProgress(stateKey);
   logSystemError("dailyupdate", "每日更新任務已全數執行完畢");
   return { status: "complete", message: "全部任務已完成" };
+}
+
+// ============================================================
+//  三階段排程觸發（背景觸發用，繞過 6 分鐘限制）
+//  各階段獨立執行，由 GAS 時間驅動觸發在指定時段啟動
+// ============================================================
+
+/** 共用彩種列表 */
+const _DAILY_LOTTOS = ["L539", "L649", "L638", "LSix"];
+
+/**
+ * 執行通用任務序列（支援續傳），供三階段函數共用
+ * @param {string} stateKey 進度儲存鍵
+ * @param {Array<{name:string, run:function}>} tasks 任務序列
+ * @returns {Object} {status, message}
+ */
+function _runTaskSequence(stateKey, tasks) {
+  startTime = new Date().getTime();
+  let state = getProgress(stateKey) || { step: 0 };
+
+  for (let i = state.step; i < tasks.length; i++) {
+    if (isNearTimeout()) {
+      saveProgress(stateKey, { step: i });
+      logSystemError(stateKey, "超時保護：已暫停於 " + tasks[i].name, "WARNING");
+      return { status: "continue", message: "超時續傳" };
+    }
+
+    let task = tasks[i];
+    logSystemError(stateKey, "正在執行: " + task.name);
+    let result;
+    try {
+      result = task.run();
+    } catch (e) {
+      logSystemError(stateKey, "子任務 " + task.name + " 失敗：" + e, "ERROR");
+      state.step = i + 1;
+      saveProgress(stateKey, state);
+      continue;
+    }
+
+    if (result && result.status === "continue") {
+      saveProgress(stateKey, { step: i });
+      logSystemError(stateKey, "子任務 " + task.name + " 續傳：" + result.message);
+      return result;
+    }
+
+    state.step = i + 1;
+    saveProgress(stateKey, state);
+  }
+
+  clearProgress(stateKey);
+  logSystemError(stateKey, "全部完成");
+  return { status: "complete", message: "完成" };
+}
+
+/**
+ * 第一階段 (00:00-00:30)：擷取號碼 + 合併 All 工作表
+ * 每 5 分鐘重複觸發直到完成，LockService 防止重疊
+ */
+function dailyupdate_phase1() {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: "continue", message: "另一執行個體正在執行" };
+  }
+  try {
+    var today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd");
+    var completed = PropertiesService.getScriptProperties().getProperty("PHASE1_COMPLETED_DATE");
+    if (completed === today) {
+      return { status: "complete", message: "今日已完成" };
+    }
+
+    const tasks = [];
+    _DAILY_LOTTOS.forEach((l) =>
+      tasks.push({ name: "Update_" + l, run: () => updatenumber(l) }),
+    );
+    _DAILY_LOTTOS.forEach((l) =>
+      tasks.push({ name: "Combine_" + l, run: () => combineData(l) }),
+    );
+
+    var result = _runTaskSequence("DAILY_UPDATE_PHASE1", tasks);
+
+    if (result.status === "complete") {
+      PropertiesService.getScriptProperties().setProperty("PHASE1_COMPLETED_DATE", today);
+    }
+
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 第二階段 (00:30-01:00)：更新 MissData（所有方法序號）
+ * 每 5 分鐘重複觸發直到完成，LockService 防止重疊
+ */
+function dailyupdate_phase2() {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: "continue", message: "另一執行個體正在執行" };
+  }
+  try {
+    var today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd");
+    var completed = PropertiesService.getScriptProperties().getProperty("PHASE2_COMPLETED_DATE");
+    if (completed === today) {
+      return { status: "complete", message: "今日已完成" };
+    }
+
+    const tasks = [];
+    _DAILY_LOTTOS.forEach((l) =>
+      tasks.push({ name: "Miss_" + l, run: () => genMissData(l, new Date(), 1, "ASC", -1) }),
+    );
+
+    var result = _runTaskSequence("DAILY_UPDATE_PHASE2", tasks);
+
+    if (result.status === "complete") {
+      PropertiesService.getScriptProperties().setProperty("PHASE2_COMPLETED_DATE", today);
+    }
+
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 第三階段 (01:00-01:30)：快取預載、封存、清理
+ * 任務較輕量僅一支觸發，但同樣加入 LockService + 完成檢查
+ */
+function dailyupdate_phase3() {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: "continue", message: "另一執行個體正在執行" };
+  }
+  try {
+    var today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd");
+    var completed = PropertiesService.getScriptProperties().getProperty("PHASE3_COMPLETED_DATE");
+    if (completed === today) {
+      return { status: "complete", message: "今日已完成" };
+    }
+
+    const tasks = [
+      {
+        name: "PreloadCache",
+        run: () => { preloadPrediction1Cache(); return { status: "complete" }; },
+      },
+      {
+        name: "Archive",
+        run: () => { maintenance_ArchiveOldRecords(); return { status: "complete" }; },
+      },
+      {
+        name: "Cleanup",
+        run: () => { autoCleanupErrorLog(30); return { status: "complete" }; },
+      },
+    ];
+
+    var result = _runTaskSequence("DAILY_UPDATE_PHASE3", tasks);
+
+    if (result.status === "complete") {
+      PropertiesService.getScriptProperties().setProperty("PHASE3_COMPLETED_DATE", today);
+    }
+
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 設定多支 GAS 定時觸發（每 5 分鐘一支，確保 30 分鐘窗口內可續傳）
+ * 先用 removeDailyTriggers 清乾淨再重建
+ * 執行後可從 GAS 編輯器 → 觸發器 確認
+ */
+function setDailyTriggers() {
+  removeDailyTriggers();
+
+  const schedule = [
+    { func: "dailyupdate_phase1", hour: 0, minutes: [0, 5, 10, 15, 20, 25] },
+    { func: "dailyupdate_phase2", hour: 0, minutes: [30, 35, 40, 45, 50, 55] },
+    { func: "dailyupdate_phase3", hour: 1, minutes: [0] },
+  ];
+
+  var count = 0;
+  schedule.forEach(s => {
+    s.minutes.forEach(min => {
+      ScriptApp.newTrigger(s.func)
+        .timeBased()
+        .everyDays(1)
+        .atHour(s.hour)
+        .nearMinute(min)
+        .create();
+      count++;
+      logSystemError("setDailyTriggers", "已建立觸發: " + s.func + " @ " + s.hour + ":" + ("0" + min).slice(-2), "INFO");
+    });
+  });
+  logSystemError("setDailyTriggers", "共建立 " + count + " 個觸發器", "INFO");
+}
+
+/**
+ * 移除所有 dailyupdate 階段觸發（用於重新設定前清理）
+ * 同時清除各階段的完成日期標記
+ */
+function removeDailyTriggers() {
+  const triggers = ScriptApp.getProjectTriggers();
+  const targets = new Set(["dailyupdate_phase1", "dailyupdate_phase2", "dailyupdate_phase3"]);
+  triggers.forEach(t => {
+    if (targets.has(t.getHandlerFunction())) {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+  ["PHASE1_COMPLETED_DATE", "PHASE2_COMPLETED_DATE", "PHASE3_COMPLETED_DATE"].forEach(function (key) {
+    PropertiesService.getScriptProperties().deleteProperty(key);
+  });
 }
 
 function updatenumber(sheetName) {
@@ -295,17 +503,19 @@ function scrapeDailyCash(sheetName, period) {
 function fetchMonthlyBatch(sheetName, url00, url01, startperiod) {
   var allResults = [];
 
-  // 計算 startperiod 所屬月份 (期號前3碼為民國年，需 +1911 轉西元年)
+  // 期號格式為 YYYNNNNNNN（前3碼民國年，後7碼序號），不包含月份
   var startYear = Math.floor(startperiod / 1000000) + 1911;
-  var startMonth = Math.floor((startperiod % 1000000) / 10000);
-  if (startMonth < 1) startMonth = 1; // 預防預設值 115000001 造成 month=0
-  var startDate = new Date(startYear, startMonth - 1, 1);
-
+  // 改用當前日期推算查詢起始月（往前推 2 個月確保涵蓋最新開獎）
   var now = new Date();
   // 每月1號時，當月可能尚無開獎資料，改查上個月
   if (now.getDate() === 1) {
     now.setMonth(now.getMonth() - 1);
   }
+  var startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  // 避免超過期號所屬年度往前推太多
+  var yearStart = new Date(startYear, 0, 1);
+  if (startDate < yearStart) startDate = yearStart;
+
   var monthsToFetch = [];
   var cursor = new Date(startDate);
 

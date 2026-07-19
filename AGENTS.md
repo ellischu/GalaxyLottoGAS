@@ -36,7 +36,17 @@ PageName_JS.html     — 前端 JavaScript (以 <script> 包裹, .html 副檔名
 | V1 預測     | `Prediction1.html` | `Prediction1_Server.js` | `Prediction1_Style.html` | `Prediction1_JS.html` |
 | 查詢        | `SearchS.html`     | `SearchS_Server.js`     | `SearchS_Style.html`     | `SearchS_JS.html`     |
 | 活動        | `Activity.html`    | `Activity_Server.js`    | `Activity_Style.html`    | `Activity_JS.html`    |
+| 遺漏表      | `MissData.html`    | `MissData_Server.js`    | `MissData_Style.html`    | `MissData_JS.html`    |
 | 維護        | `UpdateAll.html`   | — (inline)              | —                        | —                     |
+
+### SearchS 桌面版/手機版分離
+
+`SearchS.html` 採用動態版型載入，根據裝置或使用者偏好切換：
+
+- `SearchS_Desktop_Body.html` — 桌面版佈局（多欄卡片）
+- `SearchS_Mobile_Body.html` — 手機版佈局（全寬垂直堆疊）
+- 伺服器函數 `getSearchSTemplates()` 一次回傳兩種版型
+- 用戶端以 Bootstrap `d-md-none` CSS 類別偵測裝置，支援 `localStorage` 記憶切換
 
 ### 共用元件
 
@@ -71,18 +81,24 @@ genMissData() → 計算遺漏值 → Miss 工作表
 
 | 檔案                    | 行數  | 用途                                |
 | ----------------------- | ----- | ----------------------------------- |
-| `Utility.js`            | ~1658 | 路由、快取、DB 存取、日誌、進度管理 |
-| `dailywork.js`          | ~531  | 每日更新協調器（12 步驟）           |
+| `Utility.js`            | ~2328 | 路由、快取、DB 存取、日誌、進度管理 |
+| `dailywork.js`          | ~746  | 每日更新協調器（三階段排程 + UI 相容）|
 | `UpdateAllModule.js`    | ~572  | 新一代 combine/miss（含自我修復）   |
 | `GalaxyAllModule.js`    | ~324  | 舊版 combine/miss                   |
 | `main.js`               | ~98   | 舊版資料管理                        |
 | `Predict_Server.js`     | ~1630 | Galaxy 預測引擎 (P109)              |
 | `Prediction1_Server.js` | ~2777 | V1 預測引擎 (A147)                  |
-| `SearchS_Server.js`     | ~320  | 查詢邏輯                            |
-| `Activity_Server.js`    | ~75   | 活動報表資料                        |
-| `Index_Server.js`       | ~94   | 系統狀態                            |
-| `UpdateAll.html`        | ~703  | 資料庫維護 UI                       |
-| `Tests.js`              | ~96   | 單元測試                            |
+| `MissData_Server.js`  | ~158  | 遺漏表資料查詢（含 AllData 環境參數）          |
+| `SearchS_Server.js`   | ~330  | 查詢邏輯（含 getSearchSTemplates）             |
+| `Activity_Server.js`  | ~75   | 活動報表資料                                    |
+| `Index_Server.js`     | ~94   | 系統狀態                                        |
+| `UpdateAll.html`      | ~703  | 資料庫維護 UI                                   |
+| `Tests.js`            | ~96   | 單元測試                                        |
+| `MissData_JS.html`    | ~345  | 遺漏表前端 JS（條件式渲染、ballToPos 配色）      |
+| `MissData_Style.html` | ~65   | 遺漏表樣式（N1~N5 清淡底色、miss=0 圓形）       |
+| `MissData.html`       | ~93   | 遺漏表頁面骨架（收合式查詢摘要）                 |
+| `SearchS_Desktop_Body.html` | ~125 | 桌面版佈局模板                             |
+| `SearchS_Mobile_Body.html` | ~150 | 手機版全寬卡片模板                           |
 
 ## 關鍵設計模式
 
@@ -119,6 +135,7 @@ function longRunningTask() {
 - 權重更新 (`getAIWeightSettings` / `setAIWeightSettings`)
 - 錯誤日誌 (`logSystemError`)
 - 版本遞增 (`clearAllCache`)
+- 每日更新 phase function (`dailyupdate_phase1/2/3`) — 防止多支 trigger 重疊執行
 
 ### 4. 超時保護
 
@@ -174,13 +191,25 @@ runPredictUnitTests()
 - **正式版** (production): `https://script.google.com/macros/s/AKfycby-jI3_kEJFTmdNLsk_IQPQg3Y2V7DqbjC12PRjE7Atc8jiYU7fUhas7pDXOo7srh8W/exec`
 - **測試版** (staging): `https://script.google.com/macros/s/AKfycbzKNPXpAYKMnH07pkeqb5-scpTEcYWn-c-XLwoY-trUUBCjFtjy1yKvPEwMUDFvHUXG/exec`
 
-**部署規則**：`npm run deploy:gas` 預設部署到測試版。若需部署到正式版，必須先向使用者確認。
+**部署規則**：`npm run deploy:ver -- -d "測試版"` 部署到測試版，部署說明一律設為 `'測試版'`。若需部署到正式版，必須先向使用者確認。
 
 ## 有用的參考
 
 - **路由入口**: `Utility.js` → `doGet(e)` — 根據 `?page=` 參數分流
 - **快取清除**: 呼叫前端 `clearAllSystems()`，或手動遞增任何版本號
-- **每日更新**: `dailywork.js` → `dailyupdate(isUI)` — 依序執行 12 步驟
+- **每日更新 (三階段排程)**: `dailywork.js` → 每 phase 有多支重複觸發（每 5 分鐘一支），配合 LockService 防止重疊：
+  - `dailyupdate_phase1()` (00:00~00:25, 共 6 支) — 擷取號碼 + 合併 All (Update_* + Combine_*)
+  - `dailyupdate_phase2()` (00:30~00:55, 共 6 支) — 更新 MissData（僅 methodSN=1）
+  - `dailyupdate_phase3()` (01:00, 1 支) — 快取預載、封存、清理 (PreloadCache + Archive + Cleanup)
+  - 每支 phase function 進入時以 LockService 防止重疊，並檢查 `PHASE{N}_COMPLETED_DATE` 標記；若當天已完成則直接跳過
+  - 完成後寫入 `PHASE{N}_COMPLETED_DATE`，後續 trigger 看到同日期標記即跳過不重複執行
+- **genMissData 增量模式**: 全新執行（無續傳進度）時讀取 Miss 工作表該 methodSN 最後日期，只處理 All 中該日期之後的新資料（不刪除重填）；續傳中時跳過增量過濾直接以 startIndex 續跑
+- **writeMissBatchDirect**: `isFirstBatch=true` 時只移除該 methodSN 的舊資料再附加新資料，保留其他 methodSN；`isFirstBatch=false` 時直接附加不刪除
+- **fetchMonthlyBatch 修復**: 原 month 從期號解析（`115000168 % 1000000 / 10000` 恆為 0），改以 `today - 2 months` 計算起始月，確保跨月開獎資料正常抓取
+- **_runTaskSequence**: 單一 task 失敗以 try-catch 跳過，不阻斷整個序列
+- **combineData**: 加入 try-catch 與 null source sheet 保護
+- **設定觸發**: 部署後在 GAS 編輯器執行 `setDailyTriggers()` 一次性建立三支定時觸發；`removeDailyTriggers()` 可移除
+- **舊版相容**: `dailyupdate(isUI)` 保留供 UI 手動呼叫，行為與三階段一致
 - **註冊試算表**: 在 `Sheets` 工作表設定 `{name, url, recent}`
 
 ## 文件

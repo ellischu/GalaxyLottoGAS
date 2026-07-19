@@ -1,0 +1,158 @@
+<div class="card config-card">
+  <div class="card-body p-4">
+    <h4 class="text-center mb-4 text-primary">
+      <i class="bi bi-gear-fill"></i> 星系預測參數設定
+    </h4>
+
+    <div class="section-title">基礎設定</div>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label for="INDate" class="form-label">預測日期</label>
+        <input type="date" class="form-control" id="INDate" />
+      </div>
+      <div class="col-md-6">
+        <label for="SecLotto" class="form-label">選擇彩種</label>
+        <select class="form-select" id="SecLotto">
+          <option value="L539" selected>今彩 539</option>
+          <option value="L649">大樂透</option>
+          <option value="L638">威力彩</option>
+          <option value="LSix">六合彩</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="AeraAllData" class="mt-4 p-3 bg-body-tertiary rounded border border-info-subtle shadow-sm">
+      <small class="text-muted">請選擇日期以載入詳細環境參數...</small>
+    </div>
+
+    <hr class="my-4" />
+
+    <div class="row text-center mb-4">
+      <div class="col-6 col-md-3">
+        <div class="form-switch form-check d-inline-block">
+          <input class="form-check-input" type="checkbox" id="chkField" />
+          <label class="form-check-label d-block" for="chkField">欄位設定</label>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="form-switch form-check d-inline-block">
+          <input class="form-check-input" type="checkbox" id="chkNext" />
+          <label class="form-check-label d-block" for="chkNext">托牌模式</label>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="form-switch form-check d-inline-block">
+          <input class="form-check-input" type="checkbox" id="chkRange" />
+          <label class="form-check-label d-block" for="chkRange">資料範圍</label>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="form-switch form-check d-inline-block">
+          <input class="form-check-input" type="checkbox" id="chkPreview" checked />
+          <label class="form-check-label d-block" for="chkPreview">顯示預覽</label>
+        </div>
+      </div>
+    </div>
+
+    <div id="AreaField" class="hidden-area p-3 border rounded mb-3 bg-body-tertiary">
+      <h6 class="text-secondary mb-3">關鍵欄位比對設定</h6>
+      <div class="row g-2">
+        <div class="col-6 col-md-3">
+          <select id="SecField1" class="form-select form-select-sm"><option value="">-- 欄位 1 --</option></select>
+        </div>
+        <div class="col-6 col-md-3">
+          <select id="SecField2" class="form-select form-select-sm"><option value="">-- 欄位 2 --</option></select>
+        </div>
+        <div class="col-6 col-md-3">
+          <select id="SecField3" class="form-select form-select-sm"><option value="">-- 欄位 3 --</option></select>
+        </div>
+        <div class="col-6 col-md-3">
+          <select id="SecField4" class="form-select form-select-sm"><option value="">-- 欄位 4 --</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div id="AreaNext" class="hidden-area p-3 border rounded mb-3 bg-body-tertiary">
+      <h6 class="text-secondary mb-3">托牌分析參數</h6>
+      <div class="row g-3">
+        <div class="col-md-3 col-6">
+          <label class="form-label small">星數選擇</label>
+          <select id="SecNextNums" class="form-select">
+            <option value="1">1 星</option>
+            <option value="2">2 星</option>
+            <option value="3">3 星</option>
+            <option value="4">4 星</option>
+          </select>
+        </div>
+        <div class="col-md-3 col-6">
+          <label class="form-label small">間隔期數</label>
+          <select id="SecNextStep" class="form-select">
+            <option value="1">1 期</option>
+            <option value="2">2 期</option>
+            <option value="3">3 期</option>
+            <option value="4">4 期</option>
+            <option value="5">5 期</option>
+          </select>
+        </div>
+        <div id="ColNextCombo" class="col-md-6 col-12">
+          <label class="form-label small">托牌組合項目</label>
+          <select id="SecNextCombo" class="form-select border-info shadow-sm">
+            <option value="all">請先選擇日期或開啟托牌模式...</option>
+          </select>
+        </div>
+        <div id="ColNextSpe" class="col-md-2 col-4" style="display:none">
+          <label class="form-label small">特別號</label>
+          <select id="SecNextSpe" class="form-select border-info shadow-sm"></select>
+        </div>
+      </div>
+    </div>
+
+    <div id="AreaRange" class="hidden-area p-3 border rounded mb-3 bg-body-tertiary">
+      <h6 class="text-secondary mb-3">資料查詢限制</h6>
+      <div class="row g-3">
+        <div class="col-6 col-md-3">
+          <label class="small">資料數量</label>
+          <input type="number" id="InDataLimit" class="form-control" placeholder="100" value="0" />
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="small">資料偏移量</label>
+          <input type="number" id="InDataOffset" class="form-control" placeholder="0" value="0" />
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="small">搜尋數量</label>
+          <input type="number" id="InSearchLimit" class="form-control" placeholder="10" value="0" />
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="small">搜尋偏移量</label>
+          <input type="number" id="InSearchOffset" class="form-control" placeholder="0" value="0" />
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title mt-4">預測核心</div>
+    <div class="row g-3">
+      <div class="col-md-12">
+        <select class="form-select" id="SecModules">
+          <option value="Activity" selected>星系活性模組</option>
+          <option value="MissData">遺漏表查詢</option>
+        </select>
+      </div>
+      <div class="col-md-12 mt-4">
+        <div class="d-flex gap-2">
+          <button type="button" id="btnQuery" class="btn btn-outline-primary btn-lg flex-grow-1 shadow-sm">
+            <i class="bi bi-search"></i> 啟動星系查詢
+          </button>
+          <button type="button" id="btnPreview" class="btn btn-outline-success btn-lg flex-grow-1 shadow-sm">
+            <i class="bi bi-eye"></i> 預覽資料
+          </button>
+        </div>
+      </div>
+      <div class="col-md-12 mt-3">
+        <div id="AreaTable" class="mt-2" style="display:none"></div>
+      </div>
+      <div class="col-md-12 mt-3">
+        <div id="AreaDebug" class="debug-panel" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>

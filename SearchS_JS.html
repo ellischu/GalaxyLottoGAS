@@ -3,10 +3,61 @@
    * SearchS.html 邏輯處理
    */
   $(document).ready(function () {
-    // 1. 介面初始化
-    initPage();
-    window._lastPreviewData = null; // 暫存預覽資料供切換過濾
+    window._lastPreviewData = null;
 
+    var stored = localStorage.getItem("searchS_layout");
+    var isMobile = stored ? stored === "mobile" : null;
+    if (isMobile === null) isMobile = $("#mobile-check").is(":visible");
+    updateLayoutLabel(isMobile);
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        renderLayout(result, isMobile);
+      })
+      .getSearchSTemplates();
+
+    $("#btnToggleLayout").on("click", function () {
+      isMobile = !isMobile;
+      localStorage.setItem("searchS_layout", isMobile ? "mobile" : "desktop");
+      updateLayoutLabel(isMobile);
+      google.script.run
+        .withSuccessHandler(function (result) {
+          renderLayout(result, isMobile);
+        })
+        .getSearchSTemplates();
+    });
+  });
+
+  function _fieldMode() { var on = !!($("#chkField").is(":checked") && ($("#SecField1").val() || $("#SecField2").val() || $("#SecField3").val() || $("#SecField4").val())); if (!on && $("#chkField").is(":checked")) $("#chkField").prop("checked", false).trigger("change"); return on; }
+  function _fieldVals() { return [$("#SecField1").val(), $("#SecField2").val(), $("#SecField3").val(), $("#SecField4").val()].filter(function(v) { return v; }); }
+
+  function updateLayoutLabel(mobile) {
+    $("#layoutLabel").text(mobile ? "桌面版" : "手機版");
+    $("#btnToggleLayout i").attr("class", mobile ? "bi bi-laptop" : "bi bi-phone");
+  }
+
+  function renderLayout(result, isMobile) {
+    $("#app-root").html(isMobile ? result.mobile : result.desktop);
+    initPage();
+    bindEvents();
+  }
+
+  function initPage() {
+    var today = new Date().toISOString().split("T")[0];
+    $("#INDate").val(today);
+
+    google.script.run
+      .withSuccessHandler(function (fields) {
+        var $selects = $("#SecField1, #SecField2, #SecField3, #SecField4");
+        fields.forEach(function (f) {
+          $selects.append($("<option>", { value: f.id, text: f.name }));
+        });
+        loadPreviewData();
+      })
+      .getFieldList();
+  }
+
+  function bindEvents() {
     // 2. 開關聯動與滑動效果
     $("#chkField").on("change", function () {
       $("#AreaField").slideToggle(this.checked);
@@ -52,23 +103,6 @@
       // 當選中的組合或特別號改變時，應重新觸發預覽以取得該組合對應的正確歷史結果
       showDataPreview();
     });
-  });
-
-  function initPage() {
-    // 設定預設日期為今天
-    const today = new Date().toISOString().split("T")[0];
-    $("#INDate").val(today);
-
-    // 從伺服器獲取欄位列表以填充 Select
-    google.script.run
-      .withSuccessHandler(function (fields) {
-        const $selects = $("#SecField1, #SecField2, #SecField3, #SecField4");
-        fields.forEach((f) => {
-          $selects.append($("<option>", { value: f.id, text: f.name }));
-        });
-        loadPreviewData();
-      })
-      .getFieldList();
   }
 
   function loadPreviewData() {
@@ -122,13 +156,8 @@
     const params = {
       lotto: $("#SecLotto").val(),
       date: $("#INDate").val(),
-      fieldMode: $("#chkField").is(":checked"),
-      fields: [
-        $("#SecField1").val(),
-        $("#SecField2").val(),
-        $("#SecField3").val(),
-        $("#SecField4").val(),
-      ].filter((v) => v),
+      fieldMode: _fieldMode(),
+      fields: _fieldVals(),
       nextNums: parseInt($("#SecNextNums").val()) || 1,
       nextStep: parseInt($("#SecNextStep").val()) || 1,
     };
@@ -185,21 +214,14 @@
     }
     const nextMode = $("#chkNext").is(":checked");
     const rangeMode = $("#chkRange").is(":checked");
-    const fieldMode = $("#chkField").is(":checked");
+    const fieldMode = _fieldMode();
 
     const params = {
       lotto: $("#SecLotto").val(),
       date: $("#INDate").val(),
       module: $("#SecModules").val(),
       fieldMode: fieldMode,
-      fields: fieldMode
-        ? [
-            $("#SecField1").val(),
-            $("#SecField2").val(),
-            $("#SecField3").val(),
-            $("#SecField4").val(),
-          ].filter((v) => v)
-        : [],
+      fields: fieldMode ? _fieldVals() : [],
       nextMode: nextMode,
       nextNums: nextMode ? parseInt($("#SecNextNums").val()) || 0 : 0,
       nextStep: nextMode ? parseInt($("#SecNextStep").val()) || 0 : 0,
@@ -238,20 +260,13 @@
   function showDataPreview() {
     const nextMode = $("#chkNext").is(":checked");
     const rangeMode = $("#chkRange").is(":checked");
-    const fieldMode = $("#chkField").is(":checked");
+    const fieldMode = _fieldMode();
 
     const params = {
       lotto: $("#SecLotto").val(),
       date: $("#INDate").val(),
       fieldMode: fieldMode,
-      fields: fieldMode
-        ? [
-            $("#SecField1").val(),
-            $("#SecField2").val(),
-            $("#SecField3").val(),
-            $("#SecField4").val(),
-          ].filter((v) => v)
-        : [],
+      fields: fieldMode ? _fieldVals() : [],
       // 加入其餘參數供除錯面板觀察輸入狀態
       nextMode: nextMode,
       nextNums: nextMode ? parseInt($("#SecNextNums").val()) || 0 : 0,

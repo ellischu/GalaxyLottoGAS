@@ -16,15 +16,17 @@
   $(document).ready(function () {
     var urlParams = new URLSearchParams(window.location.search);
     var stored = _restoreMissDataParams();
+    var cached = null;
+    try { var c = sessionStorage.getItem("_missDataCached"); if (c) cached = JSON.parse(c); } catch(e) {}
 
     if (window.location.search.indexOf("createOAuthDialog") !== -1 && stored) {
       lotto = stored.lotto || "L539";
       date = stored.date;
       method = String(stored.methodSN || "1");
     } else {
-      lotto = urlParams.get("lotto") || (stored ? stored.lotto : "L539");
-      date = urlParams.get("date") || (stored ? stored.date : "");
-      method = urlParams.get("methodSN") || (stored ? String(stored.methodSN) : "1");
+      lotto = urlParams.get("lotto") || (stored ? stored.lotto : (cached ? cached.lotto : "L539"));
+      date = urlParams.get("date") || (stored ? stored.date : (cached ? cached.date : ""));
+      method = urlParams.get("methodSN") || (stored ? String(stored.methodSN) : (cached ? String(cached.methodSN) : "1"));
     }
 
     if (!date) {
@@ -33,6 +35,7 @@
     } else {
       $("#summaryDate").text(date);
     }
+    try { sessionStorage.setItem("_missDataCached", JSON.stringify({ lotto: lotto, date: date, methodSN: method })); } catch(e) {}
     $("#summaryLotto").text(lotto);
     $("#summaryMethodSN").text(method);
 
@@ -46,14 +49,6 @@
     $("#debugMethodParam").text(method);
 
     loadMissData();
-
-    $("#btnApplyFilter").on("click", function () {
-      filterMissTable();
-    });
-
-    $("#missFilter").on("keydown", function (e) {
-      if (e.key === "Enter") $("#btnApplyFilter").click();
-    });
 
     $("#btnSortToggle").on("click", function () {
       var asc = $("#sortIcon").hasClass("fa-sort-amount-down-alt");
@@ -161,6 +156,23 @@
                 _dateCol = res.dateCol != null ? res.dateCol : 0;
                 renderMissTable(res.headers, res.rows);
                 loadAllData(date);
+
+                // 載入當日號碼
+                google.script.run
+                  .withSuccessHandler(function (nr) {
+                    if (nr && nr.status === "success" && nr.numbers && nr.numbers.length > 0) {
+                      var html = nr.numbers.map(function (n) {
+                        return '<span class="summary-num-ball">' + n + "</span>";
+                      }).join(" ");
+                      $("#summaryDrawNumbers").html(html);
+                    } else {
+                      $("#summaryDrawNumbers").text("無資料");
+                    }
+                  })
+                  .withFailureHandler(function () {
+                    $("#summaryDrawNumbers").text("載入失敗");
+                  })
+                  .getMissDataDrawNumbers(lotto, date);
               })
               .withFailureHandler(function (err) {
                 $("#AreaTable").html(
@@ -178,7 +190,7 @@
                 "</div>"
             );
           })
-          .getMissDataLight();
+          .getMissDataLight(lotto);
       })
       .withFailureHandler(function (err) {
         $("#AreaTable").html(
@@ -229,36 +241,18 @@
       return;
     }
 
-    const numHeaders = headers.length;
-    let mCols = [];
-    let nCols = [];
-    headers.forEach(function (h, i) {
-      if (h.match(/^M\d+$/) || h.match(/^MS\d+$/)) mCols.push(i);
-      if (h.match(/^N\d+$/) || h === "S1") nCols.push(i);
-    });
-
-    var filterVal = parseInt($("#missFilter").val()) || 0;
-    var filteredRows = rows;
-    if (filterVal > 0 && mCols.length > 0) {
-      filteredRows = rows.filter(function (row) {
-        return mCols.some(function (ci) {
-          return parseInt(row[ci]) >= filterVal;
-        });
-      });
-    }
-
     var isAsc = $("#sortIcon").hasClass("fa-sort-amount-down-alt");
     if (_dateCol > -1) {
-      filteredRows = filteredRows.slice().sort(function (a, b) {
+      rows = rows.slice().sort(function (a, b) {
         var da = new Date(a[_dateCol]).getTime();
         var db = new Date(b[_dateCol]).getTime();
         return isAsc ? da - db : db - da;
       });
     }
 
-    if (filteredRows.length === 0) {
+    if (rows.length === 0) {
       $("#AreaTable").html(
-        '<div class="p-4 text-center text-muted">篩選條件下無符合資料</div>'
+        '<div class="p-4 text-center text-muted">無資料</div>'
       );
       return;
     }
@@ -273,8 +267,31 @@
     });
     html += "</tr></thead><tbody>";
 
-    filteredRows.forEach(function (row) {
-      html += "<tr>";
+    var s1Col = -1;
+    headers.forEach(function(h, ci) { if (h === "S1") s1Col = ci; });
+
+    var dayNames = ["glSunday", "glMonday", "glTuesday", "glWednesday", "glThursday", "glFriday", "glSaturday"];
+
+    rows.forEach(function (row, ri) {
+      var ballToPos = {};
+      headers.forEach(function(h, ci) {
+        if (h.match(/^N[1-5]$/)) {
+          ballToPos[parseInt(row[ci])] = parseInt(h.substring(1));
+        }
+      });
+
+      var rowCls = [];
+      var dateIdx = headers.indexOf("Date");
+      if (dateIdx > -1 && row[dateIdx]) {
+        var d = new Date(row[dateIdx]);
+        if (!isNaN(d.getTime())) rowCls.push(dayNames[d.getDay()]);
+      }
+      var m1Idx = headers.indexOf("M1");
+      if (m1Idx > -1 && (parseInt(row[m1Idx]) || 0) === 0) rowCls.push("lngM0");
+      if ((ri + 1) % 5 === 0) rowCls.push("glRow5");
+
+      html += "<tr" + (rowCls.length ? ' class="' + rowCls.join(" ") + '"' : "") + ">";
+      var mColCount = 0;
       headers.forEach(function (h, ci) {
         if (h === "lngMethodSN") return;
         var val = row[ci];
@@ -283,35 +300,40 @@
         var isS1 = h === "S1";
         var isMiss = h.match(/^M\d+$/) || h.match(/^MS\d+$/);
         var isDate = h === "Date";
+        var isMCol = h.match(/^M\d+$/);
+        var ttl = getDisplayTitle(h);
+
+        var extraStyle = "";
+        if (isMCol) {
+          mColCount++;
+          if (mColCount % 5 === 0) extraStyle = ' style="border-right:2px solid blue"';
+        }
 
         if (isDate) {
-          html += '<td class="date-col">' + formatDate(val) + "</td>";
+          html += '<td title="' + ttl + '" class="date-col">' + formatDate(val) + "</td>";
         } else if (isS1) {
-          html += '<td><span class="num-ball bg-info">' + valStr + "</span></td>";
+          html += '<td title="' + ttl + '"><span class="num-ball bg-info">' + valStr + "</span></td>";
         } else if (isNum) {
-          var nIdx = parseInt(h.substring(1));
-          if (nIdx >= 1 && nIdx <= 5) {
-            html += "<td>" + valStr + "</td>";
-          } else {
-            html += '<td><span class="num-ball bg-primary">' + valStr + "</span></td>";
-          }
+          html += '<td title="' + ttl + '">' + valStr + "</td>";
         } else if (isMiss) {
           var numVal = parseInt(val) || 0;
           if (numVal === 0) {
             var isMS = h.match(/^MS\d+$/);
-            var bg;
+            var bg, displayNum;
             if (isMS) {
               bg = "bg-info";
+              displayNum = s1Col >= 0 ? String(row[s1Col]) : "";
             } else {
               var ballNum = parseInt(h.substring(1));
-              bg = (ballNum >= 1 && ballNum <= 5) ? "num-n" + ballNum : "bg-primary";
+              displayNum = ballNum;
+              bg = ballToPos[ballNum] ? "num-n" + ballToPos[ballNum] : "bg-primary";
             }
-            html += '<td><span class="num-ball ' + bg + '">0</span></td>';
+            html += '<td title="' + ttl + '"' + extraStyle + '><span class="num-ball ' + bg + '">' + displayNum + '</span></td>';
           } else {
-            html += "<td>" + numVal + "</td>";
+            html += '<td title="' + ttl + '"' + extraStyle + ">" + numVal + "</td>";
           }
         } else {
-          html += "<td>" + valStr + "</td>";
+          html += '<td title="' + ttl + '">' + valStr + "</td>";
         }
       });
       html += "</tr>";
@@ -319,10 +341,6 @@
 
     html += "</tbody></table></div>";
     $("#AreaTable").html(html);
-  }
-
-  function filterMissTable(minVal) {
-    renderMissTable(_fullHeaders, _fullRows);
   }
 
   function formatDate(val) {

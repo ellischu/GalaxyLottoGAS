@@ -70,7 +70,7 @@ function maintenance_PruneSystemProperties() {
 
   // 2. 清理 ScriptProperties (主要存放任務進度與系統版本)
   const sProps = scriptProps.getProperties();
-  const transientPrefixes = ["Update_JOB", "Miss_JOB", "TransformAllData_JOB"];
+  const transientPrefixes = ["Combine_JOB_", "Miss_JOB_", "TransformAllData_JOB"];
   for (const key in sProps) {
     // 清理殘留的續傳進度 (如果該 key 存在超過 24 小時則視為垃圾)
     // 註：目前的 saveProgress 未存時間戳，此處先以「非關鍵 key」進行安全清理

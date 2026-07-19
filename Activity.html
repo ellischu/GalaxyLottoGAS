@@ -4,66 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>星系活性分析報告</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
-    />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/combine/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css,npm/sweetalert2@11/dist/sweetalert2.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" />
+    <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.0/dist/jquery.min.js,npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js,npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+    <?!= include("Lib_jQuery") ?> <?!= include("Lib_Bootstrap") ?> <?!= include("Lib_Swal") ?>
+    <?!= includeStyles(); ?>
     <?!= HtmlService.createHtmlOutputFromFile('Activity_Style').getContent(); ?>
   </head>
   <body>
+    <?!= includeNav(); ?>
+
     <div class="container-fluid py-4">
-      <!-- 頁首標題與方法序號 -->
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div class="d-flex align-items-center gap-3">
-          <h3 class="text-primary mb-0">
-            <i class="bi bi-graph-up-arrow"></i> 活性分析報告
-          </h3>
-          <button
-            id="activityThemeToggle"
-            class="btn btn-outline-secondary btn-sm"
-            onclick="window.toggleActivityTheme()"
-            title="切換報告主題"
-          >
-            <i class="bi bi-moon-stars"></i>
-          </button>
-        </div>
-        <div id="lblMethod" class="badge bg-primary fs-6 p-2 shadow-sm">
-          正在載入方法...
-        </div>
-      </div>
-
-      <!-- 當日結果及詳細資料區 (預設收合) -->
-      <div class="card shadow-sm mb-4">
-        <div
-          class="card-header bg-white d-flex justify-content-between align-items-center cursor-pointer"
-          data-bs-toggle="collapse"
-          data-bs-target="#collapseAeraAll"
-          role="button"
-        >
-          <span class="fw-bold"
-            ><i class="bi bi-calendar-check me-2"></i
-            >當日環境參數與開獎紀錄</span
-          >
-          <i class="bi bi-chevron-down"></i>
-        </div>
-        <div id="collapseAeraAll" class="collapse">
-          <div class="card-body p-0">
-            <div id="AeraAll" class="table-responsive">
-              <!-- 由 JS 動態填充內容 -->
-              <div class="text-center py-3 text-muted">資料讀取中...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- 結果資料區 -->
       <div class="card shadow-sm">
-        <div class="card-header bg-dark text-white fw-bold">
-          <i class="bi bi-table me-2"></i>星系統計分析結果
+        <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-table me-2"></i>活性統計表</span>
+          <span id="lblMethod" class="badge bg-primary fs-6 p-2 shadow-sm">正在載入方法...</span>
         </div>
         <div class="card-body p-0">
           <div id="AreaTable" class="table-responsive">
@@ -71,10 +28,32 @@
           </div>
         </div>
       </div>
+
+      <!-- 當日環境參數 (預設收合，置底) -->
+      <div class="card shadow-sm mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2" data-bs-toggle="collapse" data-bs-target="#collapseAeraAll" role="button" style="cursor:pointer;">
+          <span class="fw-bold"><i class="bi bi-chevron-down me-1"></i>當日環境參數</span>
+        </div>
+        <div id="collapseAeraAll" class="collapse">
+          <div class="card-body">
+            <div id="querySummary" class="row g-3 small">
+              <div class="col-auto"><strong>彩種：</strong><span id="summaryLotto" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>基準日期：</strong><span id="summaryDate" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>方法序號：</strong><span id="summaryMethodSN" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>資料筆數：</strong><span id="summaryCount" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>當日號碼：</strong><span id="summaryDrawNumbers" class="text-primary"></span></div>
+              <div class="col-12">
+                <strong>欄位值：</strong>
+                <span id="summaryAllData" class="text-muted">載入中...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <?!= include('Scripts'); ?>
     <?!= HtmlService.createHtmlOutputFromFile('Activity_JS').getContent(); ?>
+    <?!= includeFooter(); ?>
   </body>
 </html>

@@ -1,4 +1,22 @@
 /**
+ * 取得桌面版與手機版模板 HTML
+ */
+function getSearchSTemplates() {
+  return {
+    desktop: HtmlService.createHtmlOutputFromFile("SearchS_Desktop_Body").getContent(),
+    mobile: HtmlService.createHtmlOutputFromFile("SearchS_Mobile_Body").getContent(),
+  };
+}
+
+/**
+ * 取得模板 HTML 內容（桌面版/手機版）
+ */
+function getSearchSTemplate(version) {
+  var name = version === "mobile" ? "SearchS_Mobile_Body" : "SearchS_Desktop_Body";
+  return HtmlService.createHtmlOutputFromFile(name).getContent();
+}
+
+/**
  * 獲取所有環境參數欄位清單 (從 AllData 工作表標題列獲取)
  * 用於 SearchS.html 的 SecField 下拉選單
  */

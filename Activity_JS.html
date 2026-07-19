@@ -3,45 +3,55 @@
    * Activity 活性分析報告專屬邏輯
    */
 
-  // --- 獨立主題控制邏輯 ---
-  window.applyActivityTheme = function (theme) {
-    document.documentElement.setAttribute("data-bs-theme", theme);
-    localStorage.setItem("activity_theme", theme);
-    const $icon = $("#activityThemeToggle i");
-    if (theme === "dark") {
-      $icon.removeClass("bi-moon-stars").addClass("bi-sun");
-      $("body").removeClass("bg-light").css("background-color", "#121212");
-    } else {
-      $icon.removeClass("bi-sun").addClass("bi-moon-stars");
-      $("body").addClass("bg-light").css("background-color", "");
-    }
-  };
+  var _pageLotto, _pageDate, _pageMethodSN;
 
-  window.toggleActivityTheme = function () {
-    const current = document.documentElement.getAttribute("data-bs-theme") || "light";
-    const next = current === "dark" ? "light" : "dark";
-    window.applyActivityTheme(next);
-  };
-
-  // 立即執行初始化
-  (function initActivityTheme() {
-    const savedTheme = localStorage.getItem("activity_theme");
-    const theme = savedTheme || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    document.documentElement.setAttribute("data-bs-theme", theme);
-  })();
+  function _restoreMissDataParams() {
+    try {
+      var stored = sessionStorage.getItem("_missDataParams");
+      if (stored) {
+        var p = JSON.parse(stored);
+        sessionStorage.removeItem("_missDataParams");
+        return p;
+      }
+    } catch(e) {}
+    return null;
+  }
 
   $(document).ready(function () {
-    // 同步圖示與背景狀態
-    const currentTheme = document.documentElement.getAttribute("data-bs-theme") || "light";
-    window.applyActivityTheme(currentTheme);
-    // 1. 從網址取得參數 (例如 ?lotto=L539&date=2024-05-01&method=1)
-    const urlParams = new URLSearchParams(window.location.search);
-    const lotto = urlParams.get("lotto") || "L539";
-    const date = urlParams.get("date") || "";
-    const method = urlParams.get("method") || "V1";
+    // 1. 從 URL 參數、sessionStorage（SearchS 傳遞）、或自有快取（重整還原）依序讀取
+    var urlParams = new URLSearchParams(window.location.search);
+    var stored = _restoreMissDataParams();
+    var cached = null;
+    try { var c = sessionStorage.getItem("_activityParams"); if (c) cached = JSON.parse(c); } catch(e) {}
+    var lotto, date, methodSN;
+
+    if (window.location.search.indexOf("createOAuthDialog") !== -1 && stored) {
+      lotto = stored.lotto || "L539";
+      date = stored.date;
+      methodSN = String(stored.methodSN || "1");
+    } else {
+      lotto = urlParams.get("lotto") || (stored ? stored.lotto : (cached ? cached.lotto : "L539"));
+      date = urlParams.get("date") || (stored ? stored.date : (cached ? cached.date : ""));
+      methodSN = urlParams.get("methodSN") || (stored ? String(stored.methodSN) : (cached ? String(cached.methodSN) : "1"));
+    }
+
+    if (!date) {
+      date = new Date().toISOString().split("T")[0];
+    }
+
+    // 儲存至 sessionStorage 供重整還原
+    try { sessionStorage.setItem("_activityParams", JSON.stringify({ lotto: lotto, date: date, methodSN: methodSN })); } catch(e) {}
+
+    // 儲存至全域變數供 renderReport 使用
+    _pageLotto = lotto;
+    _pageDate = date;
+    _pageMethodSN = methodSN;
 
     $("#lblMethod").html(
-      `<i class="bi bi-cpu me-1"></i> 分析核心：${method} (${lotto})`,
+      `<i class="bi bi-cpu me-1"></i> 正在計算... (${lotto})`,
+    );
+    $("#AreaTable").html(
+      '<div class="text-center py-5" style="color:var(--bs-secondary-color);"><div class="spinner-border text-primary mb-2" role="status"></div><div>活性統計載入中...</div></div>',
     );
 
     // 2. 呼叫 GAS 後端獲取報告資料
@@ -52,7 +62,7 @@
           `<div class="alert alert-danger m-3">載入失敗：${err.message}</div>`,
         );
       })
-      .getActivityReport(lotto, date, method);
+      .getActivityReport(lotto, date, methodSN);
   });
 
   /**
@@ -66,89 +76,165 @@
       return;
     }
 
-    // A. 渲染環境參數與開獎紀錄 (垂直表格)
-    renderEnvironmentTable(res.envData);
-
-    // B. 渲染統計分析結果 (水平表格)
-    renderStatsTable(res.statsData);
-  }
-
-  /**
-   * 渲染環境參數區塊
-   */
-  function renderEnvironmentTable(data) {
-    if (!data || data.length === 0) {
-      $("#AeraAll").html('<div class="p-3 text-muted">無環境參數資料</div>');
-      return;
-    }
-
-    let html = '<table class="table table-bordered mb-0">';
-    data.forEach((item) => {
-      let displayValue = item.value;
-
-      // 如果是開獎號碼，套用圓圈樣式
-      if (item.isBall && item.value) {
-        displayValue = `<span class="num-circle">${item.value}</span>`;
+    // 顯示方法描述
+    var methodLabel = "一般";
+    if (res.method) {
+      if (res.method.FieldMode && res.method.strCompares) {
+        methodLabel = "相同欄位 : " + res.method.strCompares;
       }
+      if (res.method.NextNumsMode && res.method.intNextNums > 0) {
+        methodLabel = "托牌設定 : " + res.method.intNextNums + " 星，間隔 " + res.method.intNextStep + " 期";
+      }
+    }
+    $("#lblMethod").html(
+      '<i class="bi bi-cpu me-1"></i> ' + methodLabel + ' (' + _pageLotto + ')',
+    );
 
-      html += `
-        <tr>
-          <th>${item.label}</th>
-          <td class="${item.isChanged ? "table-warning fw-bold" : ""}">${displayValue || "-"}</td>
-        </tr>`;
-    });
-    html += "</table>";
-    $("#AeraAll").html(html);
+    // 填充摘要欄位
+    $("#summaryLotto").text(_pageLotto);
+    $("#summaryDate").text(_pageDate);
+    $("#summaryMethodSN").text(_pageMethodSN + ' (' + methodLabel + ')');
+    $("#summaryCount").text(res.statsRows ? res.statsRows.length : 0);
+
+    // 載入當日號碼
+    google.script.run
+      .withSuccessHandler(function (nr) {
+        if (nr && nr.status === "success" && nr.numbers && nr.numbers.length > 0) {
+          var html = nr.numbers.map(function (n) {
+            return '<span class="summary-num-ball">' + n + "</span>";
+          }).join(" ");
+          $("#summaryDrawNumbers").html(html);
+        } else {
+          $("#summaryDrawNumbers").text("無資料");
+        }
+      })
+      .withFailureHandler(function () {
+        $("#summaryDrawNumbers").text("載入失敗");
+      })
+      .getMissDataDrawNumbers(_pageLotto, _pageDate);
+
+    // 載入環境參數 (舊有 summaryAllData)
+    google.script.run
+      .withSuccessHandler(function (er) {
+        if (!er || er.status !== "success" || !er.data) {
+          $("#summaryAllData").text("無法載入");
+          return;
+        }
+        var d = er.data;
+        var items = [
+          "年天干", "年地支", "月天干", "月地支", "日天干", "日地支",
+          "時柱", "日五形", "日十二建除", "日九星", "日二十八星宿", "時二十八星宿",
+          "日八掛", "本命", "父母", "福德", "田宅", "官祿", "奴僕", "遷移", "疾厄", "財帛", "子女", "夫妻", "兄弟", "命重"
+        ];
+        var html = items.map(function(f) {
+          return '<span class="me-3 mb-1 d-inline-block"><strong class="text-secondary">' + f + '：</strong>' + (d[f] || "-") + '</span>';
+        }).join("");
+        $("#summaryAllData").html(html);
+      })
+      .withFailureHandler(function () {
+        $("#summaryAllData").text("載入失敗");
+      })
+      .getMissDataAllData(_pageDate);
+
+    // 渲染統計分析結果 (水平表格)
+    renderStatsTable(res);
   }
 
-  /**
-   * 渲染統計分析結果表格
-   */
-  function renderStatsTable(data) {
-    if (!data || !data.rows || data.rows.length === 0) {
+  var _sortCol = -1;
+  var _sortAsc = true;
+  var _sortedRows = [];
+
+  function renderStatsTable(res) {
+    if (!res.statsRows || res.statsRows.length === 0) {
       $("#AreaTable").html(
-        '<div class="p-3 text-center text-muted">無統計數據</div>',
+        '<div class="p-3 text-center" style="color:var(--bs-secondary-color);">無統計數據</div>',
       );
       return;
     }
 
-    let html = `
-      <table class="table table-hover table-striped mb-0">
-        <thead>
-          <tr>`;
+    var headerMap = {
+      intN:"號碼", intM:"遺漏",
+      intMinM:"遺小", intMaxM:"遺大", sngAvgM:"遺均", sngACM:"遺標差",
+      intFreq05:"頻05", intMin05:"05小", intMax05:"05大", sngAvg05:"05均", sngAC05:"05標差",
+      intFreq10:"頻10", intMin10:"10小", intMax10:"10大", sngAvg10:"10均", sngAC10:"10標差",
+      intFreq25:"頻25", intMin25:"25小", intMax25:"25大", sngAvg25:"25均", sngAC25:"25標差",
+      intFreq50:"頻50", intMin50:"50小", intMax50:"50大", sngAvg50:"50均", sngAC50:"50標差",
+      intFreq100:"頻100", intMin100:"100小", intMax100:"100大", sngAvg100:"100均", sngAC100:"100標差"
+    };
 
-    // 渲染表頭
-    data.headers.forEach((h) => {
-      html += `<th>${h}</th>`;
-    });
+    var ws = res.windowSize || 200;
+    var headerTips = {
+      intN:"星球代碼",
+      intM:"該號碼最新一期遺漏數",
+      intMinM:"近"+ws+"期遺漏最小值", intMaxM:"近"+ws+"期遺漏最大值",
+      sngAvgM:"近"+ws+"期遺漏平均值", sngACM:"近"+ws+"期遺漏標準差",
+      intFreq05:"最近5期(不含當期)該號碼出現次數",
+      intMin05:"近"+ws+"期頻05最小值", intMax05:"近"+ws+"期頻05最大值",
+      sngAvg05:"近"+ws+"期頻05平均值", sngAC05:"近"+ws+"期頻05標準差",
+      intFreq10:"最近10期(不含當期)該號碼出現次數",
+      intMin10:"近"+ws+"期頻10最小值", intMax10:"近"+ws+"期頻10最大值",
+      sngAvg10:"近"+ws+"期頻10平均值", sngAC10:"近"+ws+"期頻10標準差",
+      intFreq25:"最近25期(不含當期)該號碼出現次數",
+      intMin25:"近"+ws+"期頻25最小值", intMax25:"近"+ws+"期頻25最大值",
+      sngAvg25:"近"+ws+"期頻25平均值", sngAC25:"近"+ws+"期頻25標準差",
+      intFreq50:"最近50期(不含當期)該號碼出現次數",
+      intMin50:"近"+ws+"期頻50最小值", intMax50:"近"+ws+"期頻50最大值",
+      sngAvg50:"近"+ws+"期頻50平均值", sngAC50:"近"+ws+"期頻50標準差",
+      intFreq100:"最近100期(不含當期)該號碼出現次數",
+      intMin100:"近"+ws+"期頻100最小值", intMax100:"近"+ws+"期頻100最大值",
+      sngAvg100:"近"+ws+"期頻100平均值", sngAC100:"近"+ws+"期頻100標準差"
+    };
 
-    html += `
-          </tr>
-        </thead>
-        <tbody>`;
+    var headers = res.fieldHeaders;
+    _sortedRows = res.statsRows.slice();
+    _sortCol = -1;
+    _sortAsc = true;
 
-    // 渲染資料列
-    data.rows.forEach((row) => {
-      html += "<tr>";
-      row.forEach((cell, idx) => {
-        let content = cell;
-
-        // 針對「號碼」欄位進行特殊處理
-        if (data.headers[idx] === "號碼") {
-          content = `<span class="num-circle" style="background-color:#6c757d;">${cell}</span>`;
-        }
-
-        // 命中標記處理
-        if (data.headers[idx] === "狀態" && cell === "命中") {
-          content = `<span class="badge bg-success">命中</span>`;
-        }
-
-        html += `<td>${content}</td>`;
+    function sortRows(col) {
+      if (col === _sortCol) _sortAsc = !_sortAsc;
+      else { _sortCol = col; _sortAsc = true; }
+      _sortedRows.sort(function(a, b) {
+        var va = a[col], vb = b[col];
+        if (typeof va === 'number' && typeof vb === 'number')
+          return _sortAsc ? va - vb : vb - va;
+        return _sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
       });
-      html += "</tr>";
-    });
+    }
 
-    html += "</tbody></table>";
-    $("#AreaTable").html(html);
+    function buildTable() {
+      var html = '<table class="table table-hover table-striped mb-0" id="statsTable">';
+      html += '<thead><tr>';
+      headers.forEach(function(h, i) {
+        var tip = headerTips[h] || "";
+        var display = headerMap[h] || h;
+        if (i === _sortCol) display += _sortAsc ? ' ▲' : ' ▼';
+        html += '<th scope="col" data-col="' + i + '" title="' + tip + '" style="cursor:pointer;user-select:none;">' + display + '</th>';
+      });
+      html += '</tr></thead><tbody>';
+      _sortedRows.forEach(function(row) {
+        html += '<tr>';
+        row.forEach(function(cell, ci) {
+          var content = cell;
+          if (ci === 0) {
+            content = '<span class="num-circle" style="background-color:#6c757d;">' + cell + '</span>';
+          } else if (typeof cell === 'number' && !Number.isInteger(cell)) {
+            content = cell.toFixed(3);
+          }
+          html += '<td>' + content + '</td>';
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      if (res.totalPeriods) {
+        html += '<div class="text-end p-2 small" style="color:var(--bs-secondary-color);">統計基數：' + res.totalPeriods + ' 期，分析窗口：' + ws + ' 期</div>';
+      }
+      $("#AreaTable").html(html);
+    }
+
+    buildTable();
+    $("#AreaTable").on("click", "#statsTable th[data-col]", function() {
+      sortRows(parseInt($(this).data("col")));
+      buildTable();
+    });
   }
 </script>

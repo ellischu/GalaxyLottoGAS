@@ -200,8 +200,9 @@
 
           const startProcess = () => {
             // 啟動前先清空該任務的舊進度，確保是全新開始
-            const jobKey = type === "Cmb" ? "Update_JOB" : "Miss_JOB";
+            var jobKey = type === "Cmb" ? "Combine_JOB_" + lotto : "Miss_JOB_" + lotto;
             google.script.run.clearProgress(jobKey);
+            if (type !== "Cmb") google.script.run.clearProgress("GENMISS_JOB_" + lotto + "_1");
             $("#queueStatus").addClass("d-none"); // 單一任務隱藏佇列狀態
 
             $("#progressArea").show();
@@ -240,8 +241,11 @@
               completedBatchTasks = 0;
 
               // 批次啟動前先清除所有相關進度快取
-              google.script.run.clearProgress("Update_JOB");
-              google.script.run.clearProgress("Miss_JOB");
+              allLotteries.forEach(function(l) {
+                google.script.run.clearProgress("Combine_JOB_" + l);
+                google.script.run.clearProgress("Miss_JOB_" + l);
+                google.script.run.clearProgress("GENMISS_JOB_" + l + "_1");
+              });
 
               allLotteries.forEach((lotto) => {
                 updateQueue.push({ lotto: lotto, type: "Cmb", retry: 0 });
@@ -358,7 +362,8 @@
         // 更新處理進程的通用函式，增加 isBatchUpdate 參數
         window.callUpdateProcess = function (type, lotto, isBatchUpdate, retry = 0) {
           const UpdateStatus = sessionStorage.getItem("UpdateStatus");
-          const jobKey = type === "Cmb" ? "Update_JOB" : "Miss_JOB";
+          var jobKey = type === "Cmb" ? "Combine_JOB_" + lotto : "Miss_JOB_" + lotto;
+          var missGenKey = type !== "Cmb" ? "GENMISS_JOB_" + lotto + "_1" : null;
 
           if (UpdateStatus === "stop") {
             AppUI.error("處理停止", "任務已由使用者手動終止").then(() => {
@@ -371,6 +376,7 @@
                 )
                 .withFailureHandler(window.showError)
                 .clearProgress(jobKey);
+              if (missGenKey) google.script.run.clearProgress(missGenKey);
             });
             return;
           }
@@ -441,6 +447,23 @@
                 } else {
                   AppUI.error("處理失敗", res.message || "未知錯誤").then(() => {
                     isUpdatingAll = false;
+                    window.resetUI();
+                  });
+                }
+              } else {
+                // 兼容模式：genMissData 傳回陣列而非 {status} 物件，視為完成
+                if (isBatchUpdate) {
+                  completedBatchTasks++;
+                  let overallPercent = Math.round((completedBatchTasks / totalBatchTasks) * 100);
+                  updateProgressBar(overallPercent, 100, "處理完成");
+                  if (currentTaskStartTime) {
+                    batchTaskDurations.push(Date.now() - currentTaskStartTime);
+                  }
+                  startNextQueuedUpdate();
+                } else {
+                  updateProgressBar(100, 100, "處理完成");
+                  AppUI.success("處理完成", "").then(() => {
+                    sessionStorage.removeItem("UpdateStatus");
                     window.resetUI();
                   });
                 }

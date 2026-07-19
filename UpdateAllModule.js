@@ -4,15 +4,22 @@
  * @returns
  */
 function combineData(sheetname) {
-  const trObj = getTargetsheet("Sheets", sheetname);
-  const trspreadsheet = trObj.spreadsheet;
-  let trsheet = trspreadsheet.getSheetByName("All");
+  startTime = new Date().getTime();
 
-  if (!trsheet) {
-    trsheet = trspreadsheet.insertSheet("All");
-  }
+  try {
+    const trObj = getTargetsheet("Sheets", sheetname);
+    const trspreadsheet = trObj.spreadsheet;
+    let trsheet = trspreadsheet.getSheetByName("All");
 
-  const srsheet1 = mainspreadsheet.getSheetByName(sheetname);
+    if (!trsheet) {
+      trsheet = trspreadsheet.insertSheet("All");
+    }
+
+    const srsheet1 = mainspreadsheet.getSheetByName(sheetname);
+    if (!srsheet1) {
+      logSystemError("combineData", "找不到來源工作表: " + sheetname, "ERROR", "請先執行更新號碼", { sheetname: sheetname });
+      return { status: "error", message: "找不到來源工作表: " + sheetname };
+    }
 
   // --- 自動偵測與修復 (Repair Logic) ---
   let lastRow = trsheet.getLastRow();
@@ -71,26 +78,32 @@ function combineData(sheetname) {
     Logger.log("已成功建立 'All' 工作表標頭。");
   }
 
-  const allDataMap = {};
+  var allDataMap = {};
   if (allDataSheet) {
-    const adValues = allDataSheet.getDataRange().getValues();
-    adValues.forEach((row, idx) => {
-      if (idx === 0 || !row[0]) return;
-      // 使用與 Utility.js 相同的日期格式化邏輯作為 Key
-      const dObj =
-        row[0] instanceof Date
-          ? row[0]
-          : new Date(String(row[0]).replace(/-/g, "/"));
-      const dateKey = Utilities.formatDate(dObj, "Asia/Taipei", "yyyy-MM-dd");
-      allDataMap[dateKey] = row;
-    });
+    var cache = CacheService.getScriptCache();
+    var cached = cache.get("combine_AllDataMap");
+    if (cached) {
+      allDataMap = JSON.parse(cached);
+    } else {
+      const adValues = allDataSheet.getDataRange().getValues();
+      adValues.forEach((row, idx) => {
+        if (idx === 0 || !row[0]) return;
+        const dObj =
+          row[0] instanceof Date
+            ? row[0]
+            : new Date(String(row[0]).replace(/-/g, "/"));
+        const dateKey = Utilities.formatDate(dObj, "Asia/Taipei", "yyyy-MM-dd");
+        allDataMap[dateKey] = row;
+      });
+      try { cache.put("combine_AllDataMap", JSON.stringify(allDataMap), 600); } catch(e) {}
+    }
   }
 
   // --- 批次處理邏輯 (支援續傳) ---
-  var progress = getProgress("Update_JOB");
+  var progress = getProgress("Combine_JOB_" + sheetname);
   var currentIndex = 1;
   var rowsToAdd = [];
-  const batchSize = 100; // 稍微增加批次大小以減少 API 呼叫次數
+  const batchSize = 50;
 
   if (progress) {
     currentIndex = progress.currentIndex || 1;
@@ -101,7 +114,11 @@ function combineData(sheetname) {
   for (var i = currentIndex; i < srData.length; i++) {
     var row = srData[i];
     var d = row[dateCol];
-    if (lastdate && d <= lastdate) continue;
+    if (lastdate) {
+      var dTime = d instanceof Date ? d.getTime() : new Date(String(d).replace(/-/g, "/")).getTime();
+      var lastTime = lastdate instanceof Date ? lastdate.getTime() : new Date(String(lastdate).replace(/-/g, "/")).getTime();
+      if (!isNaN(dTime) && !isNaN(lastTime) && dTime <= lastTime) continue;
+    }
 
     Logger.log("date: " + d + ", index: " + i);
     var nums = lCols.map((idx) => row[idx]).sort((a, b) => a - b); // N1...Nn
@@ -149,28 +166,24 @@ function combineData(sheetname) {
         }
       }
 
-      // 2. 寫入成功或接近超時，立即更新續傳進度快照
-      saveProgress("Update_JOB", {
+      // 2. 寫入成功，立即保存進度並返回續傳，確保每次呼叫都在30秒內
+      saveProgress("Combine_JOB_" + sheetname, {
         status: "continue",
         currentIndex: nextIndex,
         total: srData.length,
       });
 
-      // 3. 偵測到即將超時或執行時間已久(15秒)，中斷迴圈返回前端更新進度，以維持 UI 響應
-      const elapsed = new Date().getTime() - startTime;
-      if (elapsed > 15000 || isNearTimeout()) {
-        return {
-          status: "continue",
-          message:
-            "合併表格處理中 " +
-            nextIndex +
-            " / " +
-            srData.length +
-            "，正在續傳...",
-          currentIndex: nextIndex,
-          total: srData.length,
-        };
-      }
+      return {
+        status: "continue",
+        message:
+          "合併表格處理中 " +
+          nextIndex +
+          " / " +
+          srData.length +
+          "，正在續傳...",
+        currentIndex: nextIndex,
+        total: srData.length,
+      };
     }
   }
 
@@ -188,8 +201,12 @@ function combineData(sheetname) {
   }
 
   // 全部完成
-  clearProgress("Update_JOB");
+  clearProgress("Combine_JOB_" + sheetname);
   return { status: "complete", message: "全部處理完成！", btntext: "確定" };
+  } catch (e) {
+    logSystemError("combineData", e.toString(), "ERROR", `${sheetname} 合併失敗`, { sheetname: sheetname });
+    return { status: "error", message: "合併失敗：" + e };
+  }
 }
 
 /**
@@ -198,6 +215,8 @@ function combineData(sheetname) {
  * @returns
  */
 function genMissData_legacy(sheetname) {
+  startTime = new Date().getTime();
+
   const trObj = getTargetsheet("Sheets", sheetname);
   const trspreadsheet = trObj.spreadsheet;
   let trsheet = trspreadsheet.getSheetByName("Miss");
@@ -296,12 +315,12 @@ function genMissData_legacy(sheetname) {
   }
 
   // 4. 批次處理邏輯 (支援中斷續傳)
-  var progress = getProgress("Miss_JOB");
+  var progress = getProgress("Miss_JOB_" + sheetname);
   var currentIndex = 1;
   var rowsToAdd = [];
-  const batchSize = 500; // 每 500 筆強制寫入一次，避免記憶體壓力
+  const batchSize = 500;
 
-  if (progress && progress.sheetname === sheetname) {
+  if (progress) {
     currentIndex = progress.currentIndex || 1;
     lastMissValues = progress.lastMissValues || [];
     lastSpecialMissValues = progress.lastSpecialMissValues || [];
@@ -311,7 +330,11 @@ function genMissData_legacy(sheetname) {
   for (var i = currentIndex; i < srData.length; i++) {
     var row = srData[i];
     var d = row[dateCol];
-    if (lastDate && d <= lastDate) continue;
+    if (lastDate) {
+      var dTime = d instanceof Date ? d.getTime() : new Date(String(d).replace(/-/g, "/")).getTime();
+      var lastTime = lastDate instanceof Date ? lastDate.getTime() : new Date(String(lastDate).replace(/-/g, "/")).getTime();
+      if (!isNaN(dTime) && !isNaN(lastTime) && dTime <= lastTime) continue;
+    }
 
     var drawnNums = nCols.map((idx) => row[idx]);
     var s1Val = s1Col > -1 ? row[s1Col] : null;
@@ -384,7 +407,7 @@ function genMissData_legacy(sheetname) {
       }
 
       // 2. 寫入成功或接近超時，立即更新續傳進度快照
-      saveProgress("Miss_JOB", {
+      saveProgress("Miss_JOB_" + sheetname, {
         status: "continue",
         sheetname: sheetname,
         currentIndex: nextIndex,
@@ -415,7 +438,7 @@ function genMissData_legacy(sheetname) {
   }
   logSystemError("genMissData", `${sheetname} 遺漏表更新成功`, "INFO");
 
-  clearProgress("Miss_JOB");
+  clearProgress("Miss_JOB_" + sheetname);
   return { status: "complete", message: "全部處理完成！", btntext: "確定" };
 }
 
@@ -430,8 +453,10 @@ function cleanupAllLotteryCaches() {
   // 1. 強制清理 PropertiesService 中的全局任務進度 (斷點續傳快取)
   // 這確保了所有彩種的「合併表格」與「遺漏表」任務都會重新開始
   try {
-    clearProgress("Update_JOB");
-    clearProgress("Miss_JOB");
+    lottos.forEach(function(l) {
+      clearProgress("Combine_JOB_" + l);
+      clearProgress("Miss_JOB_" + l);
+    });
   } catch (e) {
     Logger.log("清理全局進度標記時發生錯誤: " + e.message);
   }

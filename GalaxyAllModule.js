@@ -1,4 +1,6 @@
 function combineData_Legacy(sheetname) {
+  startTime = new Date().getTime();
+
   const trObj = getTargetsheet("Sheets", sheetname);
   const trspreadsheet = trObj.spreadsheet;
   let trsheet = trspreadsheet.getSheetByName("All");
@@ -36,7 +38,7 @@ function combineData_Legacy(sheetname) {
   // 取得 srsheet1 的 L1,L2,L3,L4,L5 (L6: L649,L638,Lsix 要一起排序 )(S1:L649,L638,Lsix不排序) ,轉成 N1,N2,N3,N4,N5,N6,S1
 
   // --- 批次處理邏輯 (支援續傳) ---
-  var progress = getProgress("Update_JOB");
+  var progress = getProgress("Combine_JOB_" + sheetname);
   var currentIndex = 1;
   var rowsToAdd = [];
 
@@ -47,7 +49,11 @@ function combineData_Legacy(sheetname) {
   for (var i = currentIndex; i < srData.length; i++) {
     var row = srData[i];
     var d = row[dateCol];
-    if (lastdate && d <= lastdate) continue;
+    if (lastdate) {
+      var dTime = d instanceof Date ? d.getTime() : new Date(String(d).replace(/-/g, "/")).getTime();
+      var lastTime = lastdate instanceof Date ? lastdate.getTime() : new Date(String(lastdate).replace(/-/g, "/")).getTime();
+      if (!isNaN(dTime) && !isNaN(lastTime) && dTime <= lastTime) continue;
+    }
 
     logSystemError("combineData_Legacy", "date: " + d + ", index: " + i, "INFO", "正在処理歴弹數檓");
     var nums = lCols.map((idx) => row[idx]).sort((a, b) => a - b); // N1...Nn
@@ -69,7 +75,7 @@ function combineData_Legacy(sheetname) {
 
     // 每 50 筆資料 update 一次    // 檢查是否快要超時
     if (isNearTimeout()) {
-      saveProgress("Update_JOB", {
+      saveProgress("Combine_JOB_" + sheetname, {
         status: "continue",
         currentIndex: i,
         total: srData.length,
@@ -118,7 +124,7 @@ function combineData_Legacy(sheetname) {
   }
 
   // 全部完成
-  clearProgress("Update_JOB");
+  clearProgress("Combine_JOB_" + sheetname);
   return {
     status: "complete",
     message: "全部處理完成！",
@@ -127,6 +133,8 @@ function combineData_Legacy(sheetname) {
 }
 
 function genMissData_Legacy(sheetname) {
+  startTime = new Date().getTime();
+
   const trObj = getTargetsheet("Sheets", sheetname);
   const trspreadsheet = trObj.spreadsheet;
   let trsheet = trspreadsheet.getSheetByName("Miss");
@@ -214,11 +222,11 @@ function genMissData_Legacy(sheetname) {
   }
 
   // 4. 批次處理邏輯 (支援中斷續傳)
-  var progress = getProgress("Miss_JOB");
+  var progress = getProgress("Miss_JOB_" + sheetname);
   var currentIndex = 1;
   var rowsToAdd = [];
 
-  if (progress && progress.sheetname === sheetname) {
+  if (progress) {
     currentIndex = progress.currentIndex || 1;
     lastMissValues = progress.lastMissValues || [];
     lastSpecialMissValues = progress.lastSpecialMissValues || [];
@@ -227,7 +235,11 @@ function genMissData_Legacy(sheetname) {
   for (var i = currentIndex; i < srData.length; i++) {
     var row = srData[i];
     var d = row[dateCol];
-    if (lastDate && d <= lastDate) continue;
+    if (lastDate) {
+      var dTime = d instanceof Date ? d.getTime() : new Date(String(d).replace(/-/g, "/")).getTime();
+      var lastTime = lastDate instanceof Date ? lastDate.getTime() : new Date(String(lastDate).replace(/-/g, "/")).getTime();
+      if (!isNaN(dTime) && !isNaN(lastTime) && dTime <= lastTime) continue;
+    }
 
     var drawnNums = nCols.map((idx) => row[idx]);
     var s1Val = s1Col > -1 ? row[s1Col] : null;
@@ -280,7 +292,7 @@ function genMissData_Legacy(sheetname) {
 
     // 檢查超時，執行儲存並返回續傳訊號
     if (isNearTimeout()) {
-      saveProgress("Miss_JOB", {
+      saveProgress("Miss_JOB_" + sheetname, {
         status: "continue",
         sheetname: sheetname,
         currentIndex: i,
@@ -315,7 +327,7 @@ function genMissData_Legacy(sheetname) {
       .setValues(rowsToAdd);
   }
 
-  clearProgress("Miss_JOB");
+  clearProgress("Miss_JOB_" + sheetname);
   return {
     status: "complete",
     message: "全部處理完成！",

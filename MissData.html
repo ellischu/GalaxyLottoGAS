@@ -27,26 +27,6 @@
     <?!= includeNav(); ?>
 
     <div class="container-fluid py-4">
-      <div class="card shadow-sm mb-3">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center py-2" data-bs-toggle="collapse" data-bs-target="#queryCollapse" role="button" style="cursor:pointer;">
-          <span class="fw-bold"><i class="bi bi-chevron-down me-1"></i>遺漏表查詢</span>
-        </div>
-        <div id="queryCollapse" class="collapse">
-          <div class="card-body">
-            <div id="querySummary" class="row g-3 small">
-              <div class="col-auto"><strong>彩種：</strong><span id="summaryLotto" class="text-primary">-</span></div>
-              <div class="col-auto"><strong>基準日期：</strong><span id="summaryDate" class="text-primary">-</span></div>
-              <div class="col-auto"><strong>方法序號：</strong><span id="summaryMethodSN" class="text-primary">-</span></div>
-              <div class="col-auto"><strong>資料筆數：</strong><span id="summaryCount" class="text-primary">-</span></div>
-              <div class="col-12">
-                <strong>欄位值：</strong>
-                <span id="summaryAllData" class="text-muted">載入中...</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div id="debugCard" class="card shadow-sm mb-3 border-warning" style="display:none">
         <div class="card-header bg-warning text-dark fw-bold small">
           <i class="bi bi-bug me-1"></i>Debug
@@ -72,9 +52,7 @@
               <span id="sortLabel" class="small ms-1">倒序</span>
             </button>
             <button id="btnReload" class="btn btn-sm btn-outline-light" title="重新載入"><i class="bi bi-arrow-clockwise"></i></button>
-            <label class="text-light small me-1">M ≥</label>
-            <input type="number" id="missFilter" class="form-control form-control-sm" style="width:60px" value="0" min="0" />
-            <button id="btnApplyFilter" class="btn btn-sm btn-outline-light"><i class="bi bi-funnel"></i></button>
+
           </div>
         </div>
         <div class="card-body p-0">
@@ -82,6 +60,28 @@
             <div class="text-center py-5 text-muted">
               <div class="spinner-border text-primary mb-2" role="status"></div>
               <div>正在載入遺漏資料...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 當日環境參數 (預設收合，置底) -->
+      <div class="card shadow-sm mt-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-2" data-bs-toggle="collapse" data-bs-target="#queryCollapse" role="button" style="cursor:pointer;">
+          <span class="fw-bold"><i class="bi bi-chevron-down me-1"></i>當日環境參數</span>
+        </div>
+        <div id="queryCollapse" class="collapse">
+          <div class="card-body">
+            <div id="querySummary" class="row g-3 small">
+              <div class="col-auto"><strong>彩種：</strong><span id="summaryLotto" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>基準日期：</strong><span id="summaryDate" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>方法序號：</strong><span id="summaryMethodSN" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>資料筆數：</strong><span id="summaryCount" class="text-primary">-</span></div>
+              <div class="col-auto"><strong>當日號碼：</strong><span id="summaryDrawNumbers" class="text-primary"></span></div>
+              <div class="col-12">
+                <strong>欄位值：</strong>
+                <span id="summaryAllData" class="text-muted">載入中...</span>
+              </div>
             </div>
           </div>
         </div>

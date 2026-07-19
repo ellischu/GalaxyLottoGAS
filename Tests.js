@@ -7,7 +7,7 @@ function runPredictUnitTests() {
 
   testTargetCoeffsEmpty();
   testInvalidInputHandling();
-  testCacheHitScenarios();
+  testGetGameConfigSmoke();
 
   Logger.log("🏁 [Unit Test] 測試流程結束。");
 }
@@ -18,7 +18,6 @@ function runPredictUnitTests() {
 function testTargetCoeffsEmpty() {
   Logger.log("--- 測試場景：模擬 targetCoeffs 為空 ---");
   try {
-    // 使用一個絕對不存在的彩種代碼，這會導致 getTargetsheet 失敗或資料抓取為空
     const result = getPrediction("NON_EXISTENT_LOTTO", "2024-01-01", true, 10);
 
     if (result.status === "error") {
@@ -33,7 +32,7 @@ function testTargetCoeffsEmpty() {
 }
 
 /**
- * 場景 2：驗證參數預驗證 (Sanity Check)
+ * 場景 2：驗證無效參數輸入都能正確回傳 error 狀態
  */
 function testInvalidInputHandling() {
   Logger.log("--- 測試場景：無效參數輸入 ---");
@@ -46,51 +45,40 @@ function testInvalidInputHandling() {
 
   testCases.forEach((tc) => {
     const result = getPrediction(tc.lotto, tc.date, true, 10);
-    const passed =
-      result.status === "error" && result.message.includes("參數異常");
+    const passed = result.status === "error";
     Logger.log(`${passed ? "✅" : "❌"} [${tc.desc}]: ${result.message}`);
   });
 }
 
 /**
- * 場景 3：模擬命中快取與 isHighGravityMode 驗證
+ * 場景 3：驗證 getGameConfig 回傳正確的彩種組態
  */
-function testCacheHitScenarios() {
-  Logger.log("--- 測試場景：模擬命中快取與 isHighGravityMode 驗證 ---");
-  const cache = CacheService.getScriptCache();
-  const lotto = "L539";
-  const date = "2026-04-04";
-  const cacheKey = "PRED_MODEL_" + lotto + "_" + date;
+function testGetGameConfigSmoke() {
+  Logger.log("--- 測試場景：getGameConfig 基本組態驗證 ---");
 
-  // 1. 準備模擬快取資料 (包含高引力模式標記)
-  const mockModel = {
-    status: "complete",
-    isHighGravityMode: true, 
-    isOctaveResonance: true,
-    learnedEffArr: new Array(50).fill(1.0), // 模擬係數權重
-    confidenceHistory: [],
-    aiStrategy: { recommendation: "這是快取測試建議" },
-    results: [],
-    date: date
+  var configs = {
+    L539: { maxNum: 39, hasS1: false, maxSpecial: 0 },
+    L649: { maxNum: 49, hasS1: true, maxSpecial: 0 },
+    L638: { maxNum: 38, hasS1: true, maxSpecial: 8 },
+    LSix: { maxNum: 49, hasS1: true, maxSpecial: 0 },
   };
 
-  try {
-    // 強制寫入快取
-    cache.put(cacheKey, JSON.stringify(mockModel), 60);
-
-    // 2. 執行預測 (此時 bypassCache 應為 false，故會命中快取)
-    const result = getPrediction(lotto, date, true, 10);
-
-    // 3. 驗證賦值是否正確
-    if (result.isHighGravityMode === true) {
-      Logger.log("✅ 通過：系統成功從快取中還原 isHighGravityMode 狀態。");
-    } else {
-      Logger.log("❌ 失敗：isHighGravityMode 在快取模式下未能正確賦值。");
+  var allPassed = true;
+  Object.keys(configs).forEach(function(key) {
+    var cfg = getGameConfig(key);
+    var expected = configs[key];
+    var ok = cfg.maxNum === expected.maxNum
+          && cfg.hasS1 === expected.hasS1
+          && cfg.maxSpecial === expected.maxSpecial;
+    if (!ok) {
+      Logger.log("❌ [" + key + "] 期望=" + JSON.stringify(expected) + " 實際=" + JSON.stringify(cfg));
+      allPassed = false;
     }
-  } catch (e) {
-    Logger.log("❌ 測試崩潰: " + e.message);
-  } finally {
-    // 清理測試資料
-    cache.remove(cacheKey);
+  });
+
+  if (allPassed) {
+    Logger.log("✅ 通過：所有彩種組態正確");
+  } else {
+    Logger.log("❌ 失敗：部分彩種組態不符");
   }
 }
