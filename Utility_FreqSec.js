@@ -246,6 +246,229 @@ function computeFreqSecData(lotto, dateStr, methodSN) {
 }
 
 /**
+ * 回溯測試：計算各條件對出現率的實際影響（差異值）
+ * 遍歷全歷史，對每個號碼、每期、每個分區追蹤 rolling freq，
+ * 當 freq == max/min 時檢查下一期該號碼是否出現。
+ * 結果 cache 至 ScriptProperties (BACKTEST_{lotto}_{methodSN})。
+ */
+function backtestFreqSec(lotto, methodSN) {
+  var config = getGameConfig(lotto);
+  var maxNum = config.maxNum, hasS1 = config.hasS1, nCount = (lotto === "L539" ? 5 : 6);
+  var baseRate = nCount / maxNum;
+
+  // 讀取全歷史 Miss 資料（ASC 排序，不限量）
+  var merged = getMissDataTable(lotto, "2099-12-31", Number(methodSN), "ASC", -1);
+  if (merged.status !== "success" || !merged.rows || merged.rows.length < 100) {
+    return { status: "error", message: "資料不足 (" + (merged.rows ? merged.rows.length : 0) + " 期)" };
+  }
+
+  var rows = merged.rows;
+  var headers = merged.headers;
+  var totalPeriods = rows.length;
+
+  var nIndices = [];
+  for (var k = 1; k <= nCount; k++) { var idx = headers.indexOf("N" + k); if (idx !== -1) nIndices.push(idx); }
+  var s1Idx = hasS1 ? headers.indexOf("S1") : -1;
+
+  var appearAll = [];
+  for (var n = 1; n <= maxNum; n++) appearAll.push(new Array(totalPeriods).fill(false));
+  for (var p = 0; p < totalPeriods; p++) {
+    var row = rows[p];
+    for (var ni = 0; ni < nIndices.length; ni++) {
+      var val = Number(row[nIndices[ni]]);
+      if (val >= 1 && val <= maxNum) appearAll[val - 1][p] = true;
+    }
+    if (hasS1 && lotto !== "L638" && s1Idx !== -1) {
+      var s1Val = Number(row[s1Idx]);
+      if (s1Val >= 1 && s1Val <= maxNum) appearAll[s1Val - 1][p] = true;
+    }
+  }
+
+  var zones = [5, 10, 25, 50, 100];
+  var zoneColStarts = { 5: 6, 10: 11, 25: 16, 50: 21, 100: 26 };
+
+  // 匯總統計: Freq05_max, Freq05_min, ..., M_max, M_avg
+  var stats = {};
+
+  function initStat(key) { if (!stats[key]) stats[key] = { total: 0, hit: 0 }; }
+
+  zones.forEach(function(z) { initStat("Freq" + z + "_max"); initStat("Freq" + z + "_min"); });
+  initStat("M_max"); initStat("M_avg");
+
+  for (var intN = 1; intN <= maxNum; intN++) {
+    var appearArr = appearAll[intN - 1];
+
+    // 頻率追蹤
+    var freqRoll = {};
+    var freqMax = {};
+    var freqMin = {};
+    zones.forEach(function(z) { freqRoll[z] = 0; freqMax[z] = 0; freqMin[z] = z + 1; });
+
+    // 遺漏追蹤
+    var rollMiss = 0;
+    var maxMiss = 0;
+    var cumMiss = 0;
+
+    for (var p = 0; p < totalPeriods - 1; p++) {  // p+1 必須存在
+      // 更新頻率
+      zones.forEach(function(z) {
+        if (p >= z) freqRoll[z] -= (appearArr[p - z] ? 1 : 0);
+        freqRoll[z] += (appearArr[p] ? 1 : 0);
+        if (p >= z - 1) {
+          if (freqRoll[z] > freqMax[z]) freqMax[z] = freqRoll[z];
+          if (freqRoll[z] < freqMin[z]) freqMin[z] = freqRoll[z];
+          if (freqRoll[z] === freqMax[z]) { stats["Freq" + z + "_max"].total++; if (appearArr[p + 1]) stats["Freq" + z + "_max"].hit++; }
+          if (freqRoll[z] === freqMin[z]) { stats["Freq" + z + "_min"].total++; if (appearArr[p + 1]) stats["Freq" + z + "_min"].hit++; }
+        }
+      });
+
+      // 更新遺漏
+      if (appearArr[p]) rollMiss = 0; else rollMiss++;
+      cumMiss += rollMiss;
+      var avgMiss = cumMiss / (p + 1);
+
+      if (rollMiss >= maxMiss) maxMiss = rollMiss;
+      if (rollMiss >= maxMiss) { stats.M_max.total++; if (appearArr[p + 1]) stats.M_max.hit++; }
+      if (rollMiss >= avgMiss) { stats.M_avg.total++; if (appearArr[p + 1]) stats.M_avg.hit++; }
+    }
+  }
+
+  // 計算各條件差異值
+  var diffs = {};
+  var backtestRows = [];
+  Object.keys(stats).forEach(function(key) {
+    var s = stats[key];
+    var actualRate = s.total > 0 ? s.hit / s.total : baseRate;
+    var diff = actualRate - baseRate;
+    diffs[key] = Math.round(diff * 100000) / 100000; // 保留 5 位小數
+    backtestRows.push({
+      key: key, total: s.total, hit: s.hit,
+      actualRate: Math.round(actualRate * 10000) / 10000,
+      baseRate: Math.round(baseRate * 10000) / 10000,
+      diff: Math.round(diff * 100000) / 100000,
+    });
+  });
+
+  // 寫入 ScriptProperties cache（含版本戳記）
+  try {
+    var appVersion = getCacheVersion();
+    var cacheData = { version: appVersion, diffs: diffs, rows: backtestRows, baseRate: baseRate, timestamp: new Date().getTime() };
+    PropertiesService.getScriptProperties().setProperty("BACKTEST_" + lotto + "_" + methodSN, JSON.stringify(cacheData));
+  } catch(e) { logSystemError("backtestFreqSec", e.toString(), "ERROR", "寫入 cache 失敗"); }
+
+  return { status: "success", diffs: diffs, rows: backtestRows, baseRate: baseRate };
+}
+
+/**
+ * 套用回溯測試的差異值至當期統計資料，對所有號碼評分排名
+ */
+function scoreWithDiffs(lotto, dateStr, methodSN) {
+  var config = getGameConfig(lotto);
+  var maxNum = config.maxNum, nCount = (lotto === "L539" ? 5 : 6);
+  var baseRate = nCount / maxNum;
+
+  // 讀取 cache diffs
+  var cacheKey = "BACKTEST_" + lotto + "_" + methodSN;
+  var cached = null;
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(cacheKey);
+    if (raw) cached = JSON.parse(raw);
+  } catch(e) {}
+  if (!cached || !cached.diffs) {
+    return { status: "error", message: "請先執行回溯測試" };
+  }
+  var diffs = cached.diffs;
+
+  // 取得當期統計資料
+  var stats = computeFreqSecData(lotto, dateStr, methodSN);
+  if (stats.status !== "success") return stats;
+
+  var zones = [5, 10, 25, 50, 100];
+  var zoneColStarts = { 5: 6, 10: 11, 25: 16, 50: 21, 100: 26 };
+  var scored = [];
+
+  stats.statsRows.forEach(function(row) {
+    var intN = row[0];
+    var intM = row[1];
+    var intMaxM = row[3];
+    var sngAvgM = row[4];
+    var adj = 0;
+    var details = [];
+
+    zones.forEach(function(z) {
+      var ci = zoneColStarts[z];
+      var freq = row[ci];
+      var minFreq = row[ci + 1];
+      var maxFreq = row[ci + 2];
+      if (freq === maxFreq) {
+        var d = diffs["Freq" + z + "_max"];
+        if (d !== undefined) { adj += d; details.push("頻" + z + "=max:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
+      } else if (freq === minFreq) {
+        var d = diffs["Freq" + z + "_min"];
+        if (d !== undefined) { adj += d; details.push("頻" + z + "=min:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
+      }
+    });
+
+    if (intM >= intMaxM) {
+      var d = diffs.M_max;
+      if (d !== undefined) { adj += d; details.push("M>=maxM:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
+    } else if (intM >= sngAvgM) {
+      var d = diffs.M_avg;
+      if (d !== undefined) { adj += d; details.push("M>=avgM:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
+    }
+
+    var finalScore = baseRate + adj;
+    scored.push({
+      number: intN, miss: intM,
+      adj: Math.round(adj * 100000) / 100000,
+      score: Math.round(finalScore * 100000) / 100000,
+      details: details.join("、"),
+    });
+  });
+
+  scored.sort(function(a, b) { return b.score - a.score; });
+  scored.forEach(function(s, i) { s.rank = i + 1; });
+
+  return {
+    status: "success", baseRate: baseRate, scored: scored,
+    lotto: lotto, dateStr: dateStr, methodSN: methodSN,
+  };
+}
+
+/**
+ * 協調函數：backtest（含 cache）+ score
+ */
+function getBacktestAndScore(lotto, dateStr, methodSN) {
+  var cacheKey = "BACKTEST_" + lotto + "_" + methodSN;
+  var backtestResult = null;
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(cacheKey);
+    if (raw) {
+      var cached = JSON.parse(raw);
+      // 檢查版本是否一致
+      var appVersion = getCacheVersion();
+      if (cached.version === appVersion) {
+        backtestResult = { status: "success", diffs: cached.diffs, rows: cached.rows, baseRate: cached.baseRate };
+      }
+    }
+  } catch(e) {}
+
+  if (!backtestResult) {
+    backtestResult = backtestFreqSec(lotto, methodSN);
+    if (backtestResult.status !== "success") return backtestResult;
+  }
+
+  var scoreResult = scoreWithDiffs(lotto, dateStr, methodSN);
+  if (scoreResult.status !== "success") return scoreResult;
+
+  return {
+    status: "success",
+    backtest: { diffs: backtestResult.diffs, rows: backtestResult.rows, baseRate: backtestResult.baseRate },
+    ranking: { baseRate: scoreResult.baseRate, scored: scoreResult.scored },
+  };
+}
+
+/**
  * FreqSec 查詢流程（組合 Step1~3）
  *
  * Step 1: 比對主試算表 lotto 表 vs 子試算表 All 表的最後日期

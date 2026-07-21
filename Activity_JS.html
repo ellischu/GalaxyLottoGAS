@@ -237,4 +237,74 @@
       buildTable();
     });
   }
+
+  /* 回溯測試 + 評分排名 */
+  $(document).on("click", "#btnBacktest", function() {
+    var btn = $(this);
+    btn.prop("disabled", true).html('<span class="spinner-border spinner-border-sm me-1"></span>計算中...');
+    $("#backtestCollapse").collapse("show");
+    $("#backtestDiffsTable").html('<div class="text-center py-3 text-muted"><span class="spinner-border spinner-border-sm me-1"></span>回溯測試執行中...</div>');
+    $("#backtestRankTable").html('<div class="text-center py-3 text-muted">等待回溯測試完成...</div>');
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        btn.prop("disabled", false).html('<i class="bi bi-graph-up"></i> 回溯測試');
+        if (!res || res.status !== "success") {
+          $("#backtestDiffsTable").html('<div class="alert alert-warning m-2">執行失敗：' + (res ? res.message : "無回應") + '</div>');
+          return;
+        }
+        renderBacktestDiffs(res.backtest);
+        renderBacktestRank(res.ranking);
+      })
+      .withFailureHandler(function(err) {
+        btn.prop("disabled", false).html('<i class="bi bi-graph-up"></i> 回溯測試');
+        $("#backtestDiffsTable").html('<div class="alert alert-danger m-2">錯誤：' + err.message + '</div>');
+      })
+      .getBacktestAndScore(_pageLotto, _pageDate, _pageMethodSN);
+  });
+
+  function renderBacktestDiffs(bt) {
+    if (!bt || !bt.rows || bt.rows.length === 0) {
+      $("#backtestDiffsTable").html('<div class="text-muted p-2">無回溯測試結果</div>');
+      return;
+    }
+    var labelMap = {
+      Freq5_max:"頻05=歷史最高", Freq5_min:"頻05=歷史最低",
+      Freq10_max:"頻10=歷史最高", Freq10_min:"頻10=歷史最低",
+      Freq25_max:"頻25=歷史最高", Freq25_min:"頻25=歷史最低",
+      Freq50_max:"頻50=歷史最高", Freq50_min:"頻50=歷史最低",
+      Freq100_max:"頻100=歷史最高", Freq100_min:"頻100=歷史最低",
+      M_max:"M>=歷史最高", M_avg:"M>=歷史平均",
+    };
+    var html = '<table class="table table-sm table-bordered mb-0" style="min-width:600px;">';
+    html += '<thead class="table-dark"><tr><th>類別</th><th>條件</th><th>觸發次數</th><th>命中率</th><th>基底率</th><th>差異</th></tr></thead><tbody>';
+    bt.rows.forEach(function(r) {
+      var label = labelMap[r.key] || r.key;
+      var diffStr = (r.diff >= 0 ? "+" : "") + (r.diff * 100).toFixed(2) + "%";
+      var diffColor = r.diff > 0 ? "text-success" : (r.diff < 0 ? "text-danger" : "");
+      var cat = r.key.indexOf("Freq") === 0 ? "頻率" : "遺漏";
+      html += '<tr><td>' + cat + '</td><td>' + label + '</td><td>' + r.total + '</td><td>' + (r.actualRate * 100).toFixed(2) + '%</td><td>' + (r.baseRate * 100).toFixed(2) + '%</td><td class="fw-bold ' + diffColor + '">' + diffStr + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div class="text-end small text-muted mt-1">基底率：' + (bt.baseRate * 100).toFixed(2) + '%（' + _pageLotto + '）</div>';
+    $("#backtestDiffsTable").html(html);
+  }
+
+  function renderBacktestRank(rk) {
+    if (!rk || !rk.scored || rk.scored.length === 0) {
+      $("#backtestRankTable").html('<div class="text-muted p-2">無評分資料</div>');
+      return;
+    }
+    var html = '<table class="table table-sm table-hover mb-0" style="min-width:500px;">';
+    html += '<thead class="table-dark"><tr><th>排名</th><th>號碼</th><th>遺漏</th><th>基準率</th><th>調整值</th><th>最終分數</th><th>明細</th></tr></thead><tbody>';
+    rk.scored.forEach(function(s) {
+      var adjStr = (s.adj >= 0 ? "+" : "") + (s.adj * 100).toFixed(2) + "%";
+      var adjColor = s.adj > 0 ? "text-success" : (s.adj < 0 ? "text-danger" : "");
+      var scoreStr = (s.score * 100).toFixed(2) + "%";
+      var topClass = s.rank <= 5 ? "table-primary" : (s.rank <= 10 ? "" : "");
+      html += '<tr class="' + topClass + '"><td>' + s.rank + '</td><td><span class="num-circle" style="background-color:#6c757d;">' + s.number + '</span></td><td>' + s.miss + '</td><td>' + (rk.baseRate * 100).toFixed(2) + '%</td><td class="fw-bold ' + adjColor + '">' + adjStr + '</td><td class="fw-bold">' + scoreStr + '</td><td class="text-muted" style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + s.details + '">' + (s.details || "-") + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    $("#backtestRankTable").html(html);
+  }
 </script>
