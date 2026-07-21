@@ -402,7 +402,7 @@ function scoreWithDiffs(lotto, dateStr, methodSN) {
       var maxFreq = row[ci + 2];
       if (freq === maxFreq) {
         var d = diffs["Freq" + z + "_max"];
-        if (d !== undefined) { adj += d; details.push("頻" + z + "=max:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
+        if (d !== undefined) { var adjVal = -Math.abs(d); adj += adjVal; details.push("頻" + z + "=max:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
       } else if (freq === minFreq) {
         var d = diffs["Freq" + z + "_min"];
         if (d !== undefined) { adj += d; details.push("頻" + z + "=min:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
@@ -411,10 +411,10 @@ function scoreWithDiffs(lotto, dateStr, methodSN) {
 
     if (intM >= intMaxM) {
       var d = diffs.M_max;
-      if (d !== undefined) { adj += d; details.push("M>=maxM:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
+      if (d !== undefined) { var adjVal = Math.abs(d); adj += adjVal; details.push("M>=maxM:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
     } else if (intM >= sngAvgM) {
       var d = diffs.M_avg;
-      if (d !== undefined) { adj += d; details.push("M>=avgM:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
+      if (d !== undefined) { var adjVal = Math.abs(d); adj += adjVal; details.push("M>=avgM:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
     }
 
     var finalScore = baseRate + adj;
