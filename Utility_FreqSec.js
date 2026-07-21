@@ -409,9 +409,12 @@ function scoreWithDiffs(lotto, dateStr, methodSN) {
       }
     });
 
-    if (intM >= intMaxM) {
+    if (intM > intMaxM) {
       var d = diffs.M_max;
-      if (d !== undefined) { var adjVal = Math.abs(d); adj += adjVal; details.push("M>=maxM:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
+      if (d !== undefined) { var adjVal = Math.abs(d) * 1.5; adj += adjVal; details.push("M>maxM×1.5:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
+    } else if (intM === intMaxM) {
+      var d = diffs.M_max;
+      if (d !== undefined) { var adjVal = Math.abs(d); adj += adjVal; details.push("M=maxM:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
     } else if (intM >= sngAvgM) {
       var d = diffs.M_avg;
       if (d !== undefined) { var adjVal = Math.abs(d); adj += adjVal; details.push("M>=avgM:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
