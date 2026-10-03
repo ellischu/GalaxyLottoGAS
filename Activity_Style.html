@@ -5,7 +5,6 @@
 
   #AeraAll table {
     margin-bottom: 0;
-    font-size: 0.85rem;
   }
   #AeraAll th {
     background-color: #f8f9fa;
@@ -20,7 +19,6 @@
   }
   #AreaTable table {
     margin-bottom: 0;
-    font-size: 0.85rem;
     text-align: center;
   }
   #AreaTable thead th {
@@ -38,10 +36,11 @@
 
   /* 針對數字欄位的特殊樣式 */
   .num-circle {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 24px;
     height: 24px;
-    line-height: 24px;
     border-radius: 50%;
     background-color: #0d6efd;
     color: white;
@@ -67,10 +66,21 @@
     justify-content: center;
     width: 30px; height: 30px;
     border-radius: 50%;
-    background: #e74c3c;
-    color: #fff;
     font-weight: 800;
     font-size: 0.85rem;
+  }
+  .num-n1 { background: #fffcbc; color: #111; }
+  .num-n2 { background: rgba(201, 194, 255, 0.80); color: #111; }
+  .num-n3 { background: rgba(172, 255, 255, 0.80); color: #111; }
+  .num-n4 { background: rgba(255, 221, 255, 0.80); color: #111; }
+  .num-n5 { background: rgba(206, 255, 189, 0.80); color: #111; }
+
+  /* 收合圖示旋轉 */
+  .collapse-icon {
+    transition: transform 0.3s ease;
+  }
+  .collapsed .collapse-icon {
+    transform: rotate(-90deg);
   }
 
   @media (max-width: 768px) {

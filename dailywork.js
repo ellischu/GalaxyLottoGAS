@@ -25,6 +25,16 @@ function dailyupdate(isUI) {
   lottos.forEach((l) =>
     tasks.push({ name: "Update_" + l, run: () => updatenumber(l) }),
   );
+  if (isWithinArclinkWindow()) {
+    tasks.splice(1, 0, {
+      name: "Arclink_L539",
+      run: () => {
+        var data = scrapeL539Arclink();
+        if (data && data.length > 0) writeArclinkData("L539", data);
+        return { status: "complete" };
+      },
+    });
+  }
   lottos.forEach((l) =>
     tasks.push({ name: "Combine_" + l, run: () => combineData(l) }),
   );
@@ -67,7 +77,16 @@ function dailyupdate(isUI) {
     let task = tasks[i];
     logSystemError("dailyupdate", "正在執行: " + task.name);
 
-    let result = task.run();
+    var result;
+    try {
+      result = task.run();
+    } catch (e) {
+      logSystemError("dailyupdate", "任務 " + task.name + " 發生錯誤: " + e.message, "ERROR", e.stack);
+      if (isUI === true) {
+        return { status: "error", message: "任務 " + task.name + " 執行失敗: " + e.message };
+      }
+      continue;
+    }
 
     if (result && result.status === "continue") {
       saveProgress(stateKey, { step: i });
@@ -451,6 +470,7 @@ function updatenumber(sheetName) {
     sheet
       .getRange(lastRow + 1, 1, dataToWrite.length, dataToWrite[0].length)
       .setValues(dataToWrite);
+    SpreadsheetApp.flush();
 
     logSystemError("updatenumber", "成功寫入 " + dataToWrite.length + " 筆資料到 " + sheetName);
   }
@@ -743,4 +763,81 @@ function getendPeriod(sheetName, url00, url01, startperiod) {
   } else {
     return startperiod;
   }
+}
+
+function isWithinArclinkWindow() {
+  var now = new Date();
+  var day = now.getDay();
+  var mins = now.getHours() * 60 + now.getMinutes();
+  return day >= 1 && day <= 6 && mins >= 20 * 60 + 40;
+}
+
+function scrapeL539Arclink() {
+  var url = "https://lotto.arclink.com.tw/039.html";
+  try {
+    var response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Referer: "https://lotto.arclink.com.tw/",
+        "Accept-Language": "zh-TW,zh;q=0.9",
+      },
+    });
+    if (response.getResponseCode() !== 200) return [];
+    var html = response.getBlob().getDataAsString("Big5");
+    var periodMatch = html.match(/期號[：:]\s*(\d+)/);
+    var dateMatch = html.match(/日期[：:]\s*(\d{4}\/\d{2}\/\d{2})/);
+    var numMatch = html.match(/獎號[：:](?:<[^>]*>)*\s*([\d,]+)/);
+    if (!numMatch) numMatch = html.match(/號碼[：:](?:<[^>]*>)*\s*([\d,]+)/);
+    if (!numMatch) numMatch = html.match(/開獎號碼[：:](?:<[^>]*>)*\s*([\d,]+)/);
+    if (!periodMatch || !dateMatch || !numMatch) return [];
+    var arclinkPeriod = periodMatch[1].trim();
+    var yearCode = arclinkPeriod.slice(0, 3);
+    var series = arclinkPeriod.slice(3);
+    var gasPeriod = yearCode + "000" + series;
+    var dateStr = dateMatch[1].trim();
+    var numStr = numMatch[1].trim();
+    var nums = numStr.split(",").map(function (n) { return parseInt(n.trim(), 10); });
+    if (nums.length < 5) return [];
+    return [{
+      period: gasPeriod,
+      lotteryDate: dateStr,
+      drawNumberAppear: nums.slice(0, 5),
+    }];
+  } catch (e) {
+    logSystemError("scrapeL539Arclink", "發生錯誤: " + e.toString(), "ERROR");
+    return [];
+  }
+}
+
+function writeArclinkData(sheetName, data) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) {
+    logSystemError("writeArclinkData", "找不到工作表 " + sheetName, "ERROR");
+    return;
+  }
+  var headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var lastRow = sheet.getLastRow();
+  var periodCol = headerRow.indexOf("period") + 1;
+  var lastPeriod = lastRow > 1 && periodCol > 0 ? String(sheet.getRange(lastRow, periodCol).getValue()) : "0";
+  var newData = data.filter(function (item) {
+    return parseInt(item.period, 10) > parseInt(lastPeriod, 10);
+  });
+  if (newData.length === 0) return;
+  var rows = newData.map(function (item) {
+    var nums = item.drawNumberAppear;
+    var sum = nums.reduce(function (a, b) { return a + b; }, 0);
+    var series = parseInt(String(item.period).slice(-3), 10);
+    return [
+      item.period,
+      item.lotteryDate,
+      nums[0], nums[1], nums[2], nums[3], nums[4],
+      sum,
+      series,
+    ];
+  });
+  sheet.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
+  SpreadsheetApp.flush();
+  logSystemError("writeArclinkData", "寫入 " + newData.length + " 筆 Arclink 資料到 " + sheetName + "，起始期號=" + newData[0].period, "INFO");
 }

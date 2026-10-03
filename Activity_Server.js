@@ -98,3 +98,39 @@ function getActivityReport(lotto, dateStr, methodSN) {
     totalPeriods: freqData.totalPeriods, windowSize: freqData.windowSize,
   };
 }
+
+/**
+ * 取得往前第 N 期的開獎號碼（N=5,10,25,50,100）
+ */
+function getHistoryNumbers(lotto, dateStr, methodSN) {
+  try {
+    var missResult = getMissDataTable(lotto, dateStr, methodSN, "DESC", -1);
+    if (!missResult || missResult.status !== "success" || !missResult.rows) return [];
+
+    var rows = missResult.rows;
+    var headers = missResult.headers;
+    var nCols = [];
+    for (var ci = 0; ci < headers.length; ci++) {
+      var h = String(headers[ci] || "").trim();
+      if (h.match(/^N[1-5]$/)) nCols.push(ci);
+    }
+
+    var result = [];
+    var offsets = [5, 10, 25, 50, 100];
+    offsets.forEach(function(off) {
+      var idx = off - 1;
+      if (idx < rows.length) {
+        var row = rows[idx];
+        var nums = [];
+        nCols.forEach(function(nci) { if (row[nci] !== undefined && row[nci] !== null && row[nci] !== "") nums.push(Number(row[nci])); });
+        var rawDate = row[1];
+        var dateStr = rawDate instanceof Date ? Utilities.formatDate(rawDate, "Asia/Taipei", "yyyy-MM-dd") : String(rawDate || "").substring(0, 10);
+        result.push({ offset: off, numbers: nums, date: dateStr });
+      }
+    });
+    return result;
+  } catch (e) {
+    logSystemError("getHistoryNumbers", e.toString(), "ERROR", "取得歷史號碼失敗", { lotto: lotto, dateStr: dateStr });
+    return [];
+  }
+}

@@ -18,28 +18,44 @@
     <div class="container-fluid py-4">
       <!-- 結果資料區 -->
       <div class="card shadow-sm">
-        <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center">
-          <span><i class="bi bi-table me-2"></i>活性統計表</span>
-          <span>
+        <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center small">
+          <span id="statsTitle" data-bs-toggle="collapse" data-bs-target="#collapseStats" role="button" style="cursor:pointer;">
+            <i class="bi bi-chevron-down me-1 collapse-icon"></i>活性統計表
+          </span>
+          <span class="d-flex align-items-center flex-shrink-0">
             <button id="btnBacktest" class="btn btn-sm btn-outline-light me-2" title="回溯測試 + 評分排名">
               <i class="bi bi-graph-up"></i> 回溯測試
             </button>
-            <span id="lblMethod" class="badge bg-primary fs-6 p-2 shadow-sm">正在載入方法...</span>
+            <div class="form-check form-switch m-0 me-2" style="font-size:0.7rem;line-height:1;white-space:nowrap;">
+              <input class="form-check-input" type="checkbox" id="toggleBallColor" checked style="font-size:0.7rem;margin-top:2px;">
+              <label class="form-check-label" for="toggleBallColor" style="font-size:0.7rem;">標色</label>
+            </div>
+            <span id="lblMethod" class="badge bg-primary p-2 shadow-sm">正在載入方法...</span>
           </span>
         </div>
         <div class="card-body p-0">
-          <div id="AreaTable" class="table-responsive">
-            <!-- 由 JS 動態渲染統計表格 -->
+          <div id="collapseStats" class="collapse show">
+            <div id="AreaTable" class="table-responsive">
+              <!-- 由 JS 動態渲染統計表格 -->
+            </div>
           </div>
           <div id="backtestCollapse" class="collapse border-top">
             <div class="p-3">
-              <h6 class="fw-bold mb-2"><i class="bi bi-bar-chart-fill me-1"></i>條件差異表（回溯測試結果）</h6>
-              <div id="backtestDiffsTable" class="small mb-3">
-                <div class="text-center py-3 text-muted">請點擊「回溯測試」按鈕執行</div>
+              <h6 class="fw-bold mb-2 small" data-bs-toggle="collapse" data-bs-target="#collapseDiffs" role="button" style="cursor:pointer;">
+                <i class="bi bi-chevron-down me-1 collapse-icon"></i>條件差異表（回溯測試結果）
+              </h6>
+              <div id="collapseDiffs" class="collapse">
+                <div id="backtestDiffsTable" class="small mb-3">
+                  <div class="text-center py-3 text-muted">請點擊「回溯測試」按鈕執行</div>
+                </div>
               </div>
-              <h6 class="fw-bold mb-2"><i class="bi bi-sort-numeric-down me-1"></i>號碼排名表</h6>
-              <div id="backtestRankTable" class="small">
-                <div class="text-center py-3 text-muted">請先執行回溯測試</div>
+              <h6 class="fw-bold mb-2 small" data-bs-toggle="collapse" data-bs-target="#collapseRank" role="button" style="cursor:pointer;">
+                <i class="bi bi-chevron-down me-1 collapse-icon"></i>號碼排名表
+              </h6>
+              <div id="collapseRank" class="collapse show">
+                <div id="backtestRankTable" class="small">
+                  <div class="text-center py-3 text-muted">請先執行回溯測試</div>
+                </div>
               </div>
             </div>
           </div>
@@ -49,7 +65,7 @@
       <!-- 當日環境參數 (預設收合，置底) -->
       <div class="card shadow-sm mt-4">
         <div class="card-header d-flex justify-content-between align-items-center py-2" data-bs-toggle="collapse" data-bs-target="#collapseAeraAll" role="button" style="cursor:pointer;">
-          <span class="fw-bold"><i class="bi bi-chevron-down me-1"></i>當日環境參數</span>
+          <span class="fw-bold small"><i class="bi bi-chevron-down me-1"></i>當日環境參數</span>
         </div>
         <div id="collapseAeraAll" class="collapse">
           <div class="card-body">
@@ -64,6 +80,18 @@
                 <span id="summaryAllData" class="text-muted">載入中...</span>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 歷史期數號碼 (置底) -->
+      <div class="card shadow-sm mt-2">
+        <div class="card-header d-flex justify-content-between align-items-center py-2" data-bs-toggle="collapse" data-bs-target="#collapseHistory" role="button" style="cursor:pointer;">
+          <span class="fw-bold small"><i class="bi bi-chevron-down me-1"></i>歷史期數號碼</span>
+        </div>
+        <div id="collapseHistory" class="collapse">
+          <div class="card-body small">
+            <div id="summaryHistoryNumbers" class="text-muted">載入中...</div>
           </div>
         </div>
       </div>

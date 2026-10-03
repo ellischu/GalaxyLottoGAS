@@ -60,6 +60,92 @@
 
 `getFreqSecData` 會經 `Activity_Server.js` → `getActivityReport()` 被 Activity 頁面呼叫。Activity 頁面透過 `google.script.run.getActivityReport(lotto, date, methodSN)` 取得完整報告（含環境參數 + FreqSec 統計）。
 
+### 回溯測試與評分
+
+在活性分析基礎上，新增兩層運算：
+
+| 函數 | 說明 |
+|---|---|
+| `backtestFreqSec(lotto, methodSN)` | 全歷史回溯：遍歷每期每號碼，當條件觸發時記錄下一期是否出現，計算條件真實出現率與基底率的差異 |
+| `scoreWithDiffs(lotto, dateStr, methodSN)` | 套用回溯差異值至當期，對所有號碼評分排名 |
+| `getBacktestAndScore(lotto, dateStr, methodSN)` | 協調函數：先檢查快取 → 無快取則跑回溯 → 再評分 |
+
+#### 回溯條件
+
+`backtestFreqSec` 追蹤以下條件：
+
+| 條件 | 觸發時機 | 調整方向 |
+|---|---|---|
+| `Freq{z}_max` | 滾動頻率達到歷史最高 | 負（頻率過高→機率↓） |
+| `Freq{z}_min` | 滾動頻率達到歷史最低 | 依實際回測 |
+| `M_max` | 目前遺漏 ≥ 歷史最高遺漏 | 正（遺漏大→機率↑） |
+| `M_avg` | 目前遺漏 ≥ 歷史平均遺漏 | 正（遺漏大→機率↑） |
+| `Centroid_B1~B5` | 頻率分布重心落入該動態分桶 | 依桶而定（重心偏右→正加分） |
+| `Centroid_Zero` | 近 100 期從未出現 | 依實際回測 |
+
+{z} 為 5/10/25/50/100 五個窗口。
+
+#### 重心 (Centroid) 演算法
+
+```
+c05  = 頻05 (近 5 期出現次數)
+c10  = 頻10 - 頻05 (第 6-10 期)
+c25  = 頻25 - 頻10 (第 11-25 期)
+c50  = 頻50 - 頻25 (第 26-50 期)
+c100 = 頻100 - 頻50 (第 51-100 期)
+
+總次數 = c05 + c10 + c25 + c50 + c100
+
+若總次數 = 0 → 歸類 Centroid_Zero
+否則:
+  重心 = (c05×3 + c10×8 + c25×18 + c50×38 + c100×75) / 總次數 / 100
+  (範圍 0~1，越接近 0 表示近期越活躍)
+```
+
+動態分桶：非零次樣本按重心排序後均分 5 桶（`Centroid_B1`~`Centroid_B5`），每桶樣本數盡量相等。桶範圍隨數據自動調整，每次回溯重新計算。
+
+#### 快取機制
+
+```
+ScriptProperties key: BACKTEST_{lotto}_{methodSN}
+```
+
+| 欄位 | 說明 |
+|---|---|
+| `btVersion` | 版本號（目前 4），演算法變更時遞增使舊快取失效 |
+| `version` | appVersion（semver），版本遞增時失效 |
+| `diffs` | 各條件差異值 `{Freq5_max: 0.01234, ...}` |
+| `rows` | 差異表列（含 key/total/hit/actualRate/baseRate/diff） |
+| `baseRate` | 基底率（`nCount / maxNum`） |
+| `centRanges` | 重心分桶範圍 `{Centroid_B1: {min, max}, ...}` |
+| `timestamp` | 快取建立時間 |
+
+#### 評分公式
+
+```
+對每個號碼:
+  adj = 0
+  
+  頻max調整: 若 freq{z} == 歷史最大 → adj -= |diffs["Freq{z}_max"]|
+  例外: freq=max 且號碼不在歷史號碼中 → nearZero=true → 分數極低
+  
+  Miss比調整: 若 M ≥ 平均遺漏 →
+    ratio = (M - 平均) / (最大 - 平均)
+    adj += |diffs.M_max| × ratio
+  
+  重心調整: 
+    計算重心 → 找出所屬桶 → adj += diffs["Centroid_{桶}"]
+  
+  finalScore = nearZero ? baseRate × 0.01 : baseRate + adj
+```
+
+#### 前端排名表 (Active.html)
+
+- **因子切換按鈕列**：Miss、重心、頻max 可多重選擇，選中的因子調整值加總後重新排名
+- **號碼著色**：按當期開獎位置以 `num-n1`~`num-n5` 樣式標示，可透過 `#toggleBallColor` 開關
+- **歷史期數號碼**：顯示 5/10/25/50/100 期前的開獎號碼與日期
+- **可排序表格**：點擊活性統計表標題可排序（▲/↓）
+
 ### 工作表實際儲存格式
 
 儲存時前綴 `lngMethodSN` 與 `Date`，後接 26 個統計欄位（與文件表格順序一致）：

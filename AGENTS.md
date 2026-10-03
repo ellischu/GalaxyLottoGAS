@@ -193,6 +193,12 @@ runPredictUnitTests()
 
 **部署規則**：`npm run deploy:ver -- -d "測試版"` 部署到測試版，部署說明一律設為 `'測試版'`。若需部署到正式版，必須先向使用者確認。
 
+**重要**：部署前務必確認 `clasp` 已登入正確的帳號 **ellischang2021@gmail.com**（非 ellischu2017@gmail.com）。若帳號不對，執行 `clasp logout` → `clasp login` 重新登入。
+
+**部署設定**：
+- 執行身分：我（使用者帳戶）
+- 誰可以存取：所有人
+
 ## 有用的參考
 
 - **路由入口**: `Utility.js` → `doGet(e)` — 根據 `?page=` 參數分流

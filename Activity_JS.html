@@ -4,6 +4,11 @@
    */
 
   var _pageLotto, _pageDate, _pageMethodSN;
+  var _drawPosMap = {};
+  var _savedDrawPosMap = {};
+  var _colorEnabled = true;
+  var _savedRanking = null;
+  var _selectedFactors = { miss: true, centroid: true, freqMax: true };
 
   function _restoreMissDataParams() {
     try {
@@ -54,6 +59,9 @@
       '<div class="text-center py-5" style="color:var(--bs-secondary-color);"><div class="spinner-border text-primary mb-2" role="status"></div><div>活性統計載入中...</div></div>',
     );
 
+    // 立即設定分頁標題（後端回呼後再根據 method 細化）
+    document.title = "活性表-" + lotto + "-" + date.replace(/-/g, "");
+
     // 2. 呼叫 GAS 後端獲取報告資料
     google.script.run
       .withSuccessHandler(renderReport)
@@ -90,6 +98,21 @@
       '<i class="bi bi-cpu me-1"></i> ' + methodLabel + ' (' + _pageLotto + ')',
     );
 
+    // 設定活性統計表標題
+    $("#statsTitle").html('<i class="bi bi-chevron-down me-1 collapse-icon"></i>活性統計表 ' + _pageLotto + '-' + _pageDate + '-' + _pageMethodSN);
+
+    // 設定瀏覽器分頁標題
+    try {
+      var shortLabel = "一般";
+      if (res.method) {
+        if (res.method.FieldMode && res.method.strCompares) shortLabel = res.method.strCompares;
+        else if (res.method.NextNumsMode && res.method.intNextNums > 0) shortLabel = "托牌" + res.method.intNextNums;
+      }
+      document.title = "活性表-" + _pageLotto + "-" + String(_pageDate).replace(/-/g, "") + "-" + _pageMethodSN + "(" + shortLabel + ")";
+    } catch(e) {
+      document.title = "活性表-" + _pageLotto;
+    }
+
     // 填充摘要欄位
     $("#summaryLotto").text(_pageLotto);
     $("#summaryDate").text(_pageDate);
@@ -100,13 +123,21 @@
     google.script.run
       .withSuccessHandler(function (nr) {
         if (nr && nr.status === "success" && nr.numbers && nr.numbers.length > 0) {
+          var posMap = {};
+          nr.numbers.forEach(function(n, idx) { posMap[parseInt(n)] = idx + 1; });
+          _savedDrawPosMap = posMap;
+          _drawPosMap = _colorEnabled ? posMap : {};
           var html = nr.numbers.map(function (n) {
-            return '<span class="summary-num-ball">' + n + "</span>";
+            var pos = posMap[parseInt(n)];
+            return '<span class="summary-num-ball num-n' + pos + '">' + n + "</span>";
           }).join(" ");
           $("#summaryDrawNumbers").html(html);
         } else {
+          _savedDrawPosMap = {};
+          _drawPosMap = {};
           $("#summaryDrawNumbers").text("無資料");
         }
+        if (_rebuildStatsTable) _rebuildStatsTable();
       })
       .withFailureHandler(function () {
         $("#summaryDrawNumbers").text("載入失敗");
@@ -136,6 +167,29 @@
       })
       .getMissDataAllData(_pageDate);
 
+    // 載入歷史期數號碼
+    google.script.run
+      .withSuccessHandler(function (hn) {
+        if (!hn || hn.length === 0) {
+          $("#summaryHistoryNumbers").text("無資料");
+          return;
+        }
+        var html = '<div class="d-flex flex-wrap gap-3">';
+        hn.forEach(function(h) {
+          html += '<div class="border rounded p-2 text-center" style="min-width:120px;background:var(--bs-tertiary-bg);">';
+          html += '<div class="fw-bold small mb-1" style="color:var(--bs-secondary-color);">' + h.offset + '期前<br>' + h.date + '</div>';
+          html += '<div class="d-flex gap-1 justify-content-center">';
+          h.numbers.forEach(function(n) { html += '<span class="num-circle" style="background-color:#6c757d;">' + n + '</span>'; });
+          html += '</div></div>';
+        });
+        html += '</div>';
+        $("#summaryHistoryNumbers").html(html);
+      })
+      .withFailureHandler(function () {
+        $("#summaryHistoryNumbers").text("載入失敗");
+      })
+      .getHistoryNumbers(_pageLotto, _pageDate, _pageMethodSN);
+
     // 渲染統計分析結果 (水平表格)
     renderStatsTable(res);
   }
@@ -143,6 +197,7 @@
   var _sortCol = -1;
   var _sortAsc = true;
   var _sortedRows = [];
+  var _rebuildStatsTable = null;
 
   function renderStatsTable(res) {
     if (!res.statsRows || res.statsRows.length === 0) {
@@ -202,7 +257,7 @@
     }
 
     function buildTable() {
-      var html = '<table class="table table-hover table-striped mb-0" id="statsTable">';
+      var html = '<div class="small"><table class="table table-sm table-hover table-striped mb-0" id="statsTable">';
       html += '<thead><tr>';
       headers.forEach(function(h, i) {
         var tip = headerTips[h] || "";
@@ -216,7 +271,12 @@
         row.forEach(function(cell, ci) {
           var content = cell;
           if (ci === 0) {
-            content = '<span class="num-circle" style="background-color:#6c757d;">' + cell + '</span>';
+            var pos = _drawPosMap[cell];
+            if (pos) {
+              content = '<span class="num-circle num-n' + pos + '">' + cell + '</span>';
+            } else {
+              content = '<span class="num-circle" style="background-color:#6c757d;">' + cell + '</span>';
+            }
           } else if (typeof cell === 'number' && !Number.isInteger(cell)) {
             content = cell.toFixed(3);
           }
@@ -224,7 +284,7 @@
         });
         html += '</tr>';
       });
-      html += '</tbody></table>';
+      html += '</tbody></table></div>';
       if (res.totalPeriods) {
         html += '<div class="text-end p-2 small" style="color:var(--bs-secondary-color);">統計基數：' + res.totalPeriods + ' 期，分析窗口：' + ws + ' 期</div>';
       }
@@ -232,11 +292,20 @@
     }
 
     buildTable();
+    _rebuildStatsTable = buildTable;
     $("#AreaTable").on("click", "#statsTable th[data-col]", function() {
       sortRows(parseInt($(this).data("col")));
       buildTable();
     });
   }
+
+  /* 標色開關 */
+  $(document).on("change", "#toggleBallColor", function() {
+    _colorEnabled = $(this).is(":checked");
+    _drawPosMap = _colorEnabled ? _savedDrawPosMap : {};
+    if (_rebuildStatsTable) _rebuildStatsTable();
+    if (_savedRanking) renderBacktestRank(_savedRanking);
+  });
 
   /* 回溯測試 + 評分排名 */
   $(document).on("click", "#btnBacktest", function() {
@@ -250,7 +319,9 @@
       .withSuccessHandler(function(res) {
         btn.prop("disabled", false).html('<i class="bi bi-graph-up"></i> 回溯測試');
         if (!res || res.status !== "success") {
-          $("#backtestDiffsTable").html('<div class="alert alert-warning m-2">執行失敗：' + (res ? res.message : "無回應") + '</div>');
+          var msg = res ? res.message : "無回應";
+          $("#backtestDiffsTable").html('<div class="alert alert-warning m-2">' + msg + '</div>');
+          $("#backtestRankTable").html('<div class="alert alert-warning m-2">' + msg + '</div>');
           return;
         }
         renderBacktestDiffs(res.backtest);
@@ -261,6 +332,19 @@
         $("#backtestDiffsTable").html('<div class="alert alert-danger m-2">錯誤：' + err.message + '</div>');
       })
       .getBacktestAndScore(_pageLotto, _pageDate, _pageMethodSN);
+  });
+
+  /* 因子切換 (多重選擇) */
+  $(document).on("click", "#factorFilterGroup .btn", function() {
+    var f = $(this).data("factor");
+    if (f === "all") {
+      // 全部：切換所有
+      var allOn = Object.keys(_selectedFactors).every(function(k) { return _selectedFactors[k]; });
+      Object.keys(_selectedFactors).forEach(function(k) { _selectedFactors[k] = !allOn; });
+    } else {
+      _selectedFactors[f] = !_selectedFactors[f];
+    }
+    if (_savedRanking) renderBacktestRank(_savedRanking);
   });
 
   function renderBacktestDiffs(bt) {
@@ -280,7 +364,7 @@
     html += '<thead class="table-dark"><tr><th>類別</th><th>條件</th><th>觸發次數</th><th>命中率</th><th>基底率</th><th>差異</th></tr></thead><tbody>';
     bt.rows.forEach(function(r) {
       var label = labelMap[r.key] || r.key;
-      var diffStr = (r.diff >= 0 ? "+" : "") + (r.diff * 100).toFixed(2) + "%";
+      var diffStr = (r.diff >= 0 ? "+" : "") + (r.diff * 100).toFixed(4) + "%";
       var diffColor = r.diff > 0 ? "text-success" : (r.diff < 0 ? "text-danger" : "");
       var cat = r.key.indexOf("Freq") === 0 ? "頻率" : "遺漏";
       html += '<tr><td>' + cat + '</td><td>' + label + '</td><td>' + r.total + '</td><td>' + (r.actualRate * 100).toFixed(2) + '%</td><td>' + (r.baseRate * 100).toFixed(2) + '%</td><td class="fw-bold ' + diffColor + '">' + diffStr + '</td></tr>';
@@ -291,18 +375,43 @@
   }
 
   function renderBacktestRank(rk) {
+    _savedRanking = rk;
     if (!rk || !rk.scored || rk.scored.length === 0) {
       $("#backtestRankTable").html('<div class="text-muted p-2">無評分資料</div>');
       return;
     }
-    var html = '<table class="table table-sm table-hover mb-0" style="min-width:500px;">';
+
+    // 複製並套用所選因子
+    var scored = rk.scored.map(function(s) {
+      var f = s.factors || {};
+      var adjVal = 0;
+      Object.keys(_selectedFactors).forEach(function(k) { if (_selectedFactors[k]) adjVal += (f[k] || 0); });
+      var nearZero = f.nearZero && _selectedFactors.freqMax;
+      var scoreVal = nearZero ? rk.baseRate * 0.01 : rk.baseRate + adjVal;
+      var adjDisplay = nearZero ? rk.baseRate * 0.01 - rk.baseRate : adjVal;
+      return { number: s.number, miss: s.miss, details: s.details, adj: adjDisplay, score: scoreVal };
+    });
+
+    scored.sort(function(a, b) { return b.score - a.score; });
+    scored.forEach(function(s, i) { s.rank = i + 1; });
+
+    var allOn = Object.keys(_selectedFactors).every(function(k) { return _selectedFactors[k]; });
+    var html = '';
+    html += '<div class="btn-group btn-group-sm mb-2" role="group" id="factorFilterGroup">';
+    html += '<button class="btn btn-outline-secondary' + (allOn ? ' active' : '') + '" data-factor="all">全部</button>';
+    html += '<button class="btn btn-outline-secondary' + (_selectedFactors.miss ? ' active' : '') + '" data-factor="miss">Miss</button>';
+    html += '<button class="btn btn-outline-secondary' + (_selectedFactors.centroid ? ' active' : '') + '" data-factor="centroid">重心</button>';
+    html += '<button class="btn btn-outline-secondary' + (_selectedFactors.freqMax ? ' active' : '') + '" data-factor="freqMax">頻max</button>';
+    html += '</div>';
+
+    html += '<table class="table table-sm table-hover mb-0" style="min-width:500px;">';
     html += '<thead class="table-dark"><tr><th>排名</th><th>號碼</th><th>遺漏</th><th>基準率</th><th>調整值</th><th>最終分數</th><th>明細</th></tr></thead><tbody>';
-    rk.scored.forEach(function(s) {
-      var adjStr = (s.adj >= 0 ? "+" : "") + (s.adj * 100).toFixed(2) + "%";
+    scored.forEach(function(s) {
+      var adjStr = (s.adj >= 0 ? "+" : "") + (s.adj * 100).toFixed(4) + "%";
       var adjColor = s.adj > 0 ? "text-success" : (s.adj < 0 ? "text-danger" : "");
-      var scoreStr = (s.score * 100).toFixed(2) + "%";
+      var scoreStr = (s.score * 100).toFixed(4) + "%";
       var topClass = s.rank <= 5 ? "table-primary" : (s.rank <= 10 ? "" : "");
-      html += '<tr class="' + topClass + '"><td>' + s.rank + '</td><td><span class="num-circle" style="background-color:#6c757d;">' + s.number + '</span></td><td>' + s.miss + '</td><td>' + (rk.baseRate * 100).toFixed(2) + '%</td><td class="fw-bold ' + adjColor + '">' + adjStr + '</td><td class="fw-bold">' + scoreStr + '</td><td class="text-muted" style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + s.details + '">' + (s.details || "-") + '</td></tr>';
+      html += '<tr class="' + topClass + '"><td>' + s.rank + '</td><td>' + (function(){ var p = _drawPosMap[s.number]; return '<span class="num-circle' + (p ? ' num-n' + p : '') + '" style="' + (p ? '' : 'background-color:#6c757d;') + '">' + s.number + '</span>'; })() + '</td><td>' + s.miss + '</td><td>' + (rk.baseRate * 100).toFixed(4) + '%</td><td class="fw-bold ' + adjColor + '">' + adjStr + '</td><td class="fw-bold">' + scoreStr + '</td><td class="text-muted" style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + s.details + '">' + (s.details || "-") + '</td></tr>';
     });
     html += '</tbody></table>';
     $("#backtestRankTable").html(html);

@@ -2,9 +2,21 @@ const mainspreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
 function doGet(e) {
   var page = e.parameter.page || "Index";
+  var pageTitle = "Galaxy Lotto Observer";
+  if (page === "Activity") {
+    var aLotto = e.parameter.lotto || "";
+    var aDate = e.parameter.date || "";
+    var aSN = e.parameter.methodSN || "";
+    pageTitle = "活性表";
+    if (aLotto) pageTitle += "-" + aLotto;
+    if (aDate) pageTitle += "-" + String(aDate).replace(/-/g, "");
+    if (aSN) pageTitle += "-" + aSN;
+  } else if (page === "SearchS") {
+    pageTitle = "GalaxyLotto 參數設定";
+  }
   return HtmlService.createTemplateFromFile(page)
     .evaluate()
-    .setTitle("Galaxy Lotto Observer")
+    .setTitle(pageTitle)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 

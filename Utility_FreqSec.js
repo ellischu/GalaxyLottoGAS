@@ -19,6 +19,55 @@ function _normDate(v) {
   return Utilities.formatDate(d, "Asia/Taipei", "yyyy-MM-dd");
 }
 
+function _getBacktestCache(lotto, methodSN) {
+  try {
+    var trObj = getTargetsheet("Sheets", lotto);
+    if (!trObj || !trObj.spreadsheet) return null;
+    var sheet = trObj.spreadsheet.getSheetByName("FreqSecTest");
+    if (!sheet) return null;
+    var data = sheet.getDataRange().getValues();
+    if (data.length < 2) return null;
+    var h = data[0].map(function(v) { return String(v || "").trim(); });
+    var snCol = h.indexOf("lngMethodSN");
+    var cacheCol = h.indexOf("cacheData");
+    if (snCol === -1 || cacheCol === -1) return null;
+    for (var i = 1; i < data.length; i++) {
+      if (Number(data[i][snCol]) === Number(methodSN)) {
+        return JSON.parse(data[i][cacheCol]);
+      }
+    }
+  } catch(e) { logSystemError("_getBacktestCache", e.toString(), "ERROR", "讀取 FreqSecTest 失敗"); }
+  return null;
+}
+
+function _setBacktestCache(lotto, methodSN, cacheData) {
+  try {
+    var trObj = getTargetsheet("Sheets", lotto);
+    if (!trObj || !trObj.spreadsheet) return;
+    var sheet = trObj.spreadsheet.getSheetByName("FreqSecTest");
+    if (!sheet) {
+      sheet = trObj.spreadsheet.insertSheet("FreqSecTest");
+      sheet.appendRow(["lngMethodSN", "cacheData", "updatedAt"]);
+    }
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(function(v) { return String(v || "").trim(); });
+    var snCol = h.indexOf("lngMethodSN");
+    var cacheCol = h.indexOf("cacheData");
+    var updatedCol = h.indexOf("updatedAt");
+    if (snCol === -1) { snCol = 0; cacheCol = 1; updatedCol = 2; }
+    var jsonStr = JSON.stringify(cacheData);
+    var now = new Date();
+    for (var i = 1; i < data.length; i++) {
+      if (Number(data[i][snCol]) === Number(methodSN)) {
+        sheet.getRange(i + 1, cacheCol + 1).setValue(jsonStr);
+        if (updatedCol >= 0) sheet.getRange(i + 1, updatedCol + 1).setValue(now);
+        return;
+      }
+    }
+    sheet.appendRow([Number(methodSN), jsonStr, now]);
+  } catch(e) { logSystemError("_setBacktestCache", e.toString(), "ERROR", "寫入 FreqSecTest 失敗"); }
+}
+
 function getFreqSecTable(lotto, dateStr, methodSN) {
   try {
     var trObj = getTargetsheet("Sheets", lotto);
@@ -287,6 +336,9 @@ function backtestFreqSec(lotto, methodSN) {
   var zones = [5, 10, 25, 50, 100];
   var zoneColStarts = { 5: 6, 10: 11, 25: 16, 50: 21, 100: 26 };
 
+  // 重心樣本收集
+  var centroidSamples = [];
+
   // 匯總統計: Freq05_max, Freq05_min, ..., M_max, M_avg
   var stats = {};
 
@@ -322,16 +374,77 @@ function backtestFreqSec(lotto, methodSN) {
         }
       });
 
+      // 計算重心（所有 window 填滿後才計算）
+      if (p >= 99) {
+        var c05 = freqRoll[5];
+        var c10_val = freqRoll[10] - freqRoll[5];
+        var c25_val = freqRoll[25] - freqRoll[10];
+        var c50_val = freqRoll[50] - freqRoll[25];
+        var c100_val = freqRoll[100] - freqRoll[50];
+        var totalC = c05 + c10_val + c25_val + c50_val + c100_val;
+        if (totalC === 0) {
+          centroidSamples.push({ num: intN, centroid: -1, nextAppear: appearArr[p + 1], period: p });
+        } else {
+          var centVal = (c05 * 3 + c10_val * 8 + c25_val * 18 + c50_val * 38 + c100_val * 75) / totalC / 100;
+          centroidSamples.push({ num: intN, centroid: centVal, nextAppear: appearArr[p + 1], period: p });
+        }
+      }
+
       // 更新遺漏
       if (appearArr[p]) rollMiss = 0; else rollMiss++;
       cumMiss += rollMiss;
       var avgMiss = cumMiss / (p + 1);
 
-      if (rollMiss >= maxMiss) maxMiss = rollMiss;
-      if (rollMiss >= maxMiss) { stats.M_max.total++; if (appearArr[p + 1]) stats.M_max.hit++; }
+      if (rollMiss >= maxMiss) {
+        maxMiss = rollMiss;
+        stats.M_max.total++;
+        if (appearArr[p + 1]) stats.M_max.hit++;
+      }
       if (rollMiss >= avgMiss) { stats.M_avg.total++; if (appearArr[p + 1]) stats.M_avg.hit++; }
     }
   }
+
+  // ── 重心分桶 ──
+  var centKeys = [], centBuckets = {}, centRanges = {};
+  centKeys.push("Centroid_Zero");
+  centBuckets["Centroid_Zero"] = { total: 0, hit: 0, label: "Centroid_Zero" };
+
+  // 分離零次與非零次
+  var zeroSamples = centroidSamples.filter(function(s) { return s.centroid === -1; });
+  var nonZero = centroidSamples.filter(function(s) { return s.centroid !== -1; });
+
+  // 零次桶
+  zeroSamples.forEach(function(s) {
+    centBuckets["Centroid_Zero"].total++;
+    if (s.nextAppear) centBuckets["Centroid_Zero"].hit++;
+  });
+
+  // 非零次排序
+  nonZero.sort(function(a, b) { return a.centroid - b.centroid; });
+
+  // 均分 5 桶
+  var bucketSize = Math.ceil(nonZero.length / 5);
+  for (var bi = 0; bi < 5; bi++) {
+    var bStart = bi * bucketSize;
+    var bEnd = Math.min(bStart + bucketSize, nonZero.length);
+    if (bStart >= nonZero.length) break;
+    var bucketSamples = nonZero.slice(bStart, bEnd);
+    var bKey = "Centroid_B" + (bi + 1);
+    var bMin = bucketSamples[0].centroid;
+    var bMax = bucketSamples[bucketSamples.length - 1].centroid;
+    centKeys.push(bKey);
+    centRanges[bKey] = { min: bMin, max: bMax };
+    centBuckets[bKey] = { total: 0, hit: 0, label: bKey + "(" + Number(bMin).toFixed(4) + "-" + Number(bMax).toFixed(4) + ")" };
+    bucketSamples.forEach(function(s) {
+      centBuckets[bKey].total++;
+      if (s.nextAppear) centBuckets[bKey].hit++;
+    });
+  }
+
+  // 加入 stats
+  centKeys.forEach(function(key) {
+    stats[key] = { total: centBuckets[key].total, hit: centBuckets[key].hit };
+  });
 
   // 計算各條件差異值
   var diffs = {};
@@ -341,19 +454,20 @@ function backtestFreqSec(lotto, methodSN) {
     var actualRate = s.total > 0 ? s.hit / s.total : baseRate;
     var diff = actualRate - baseRate;
     diffs[key] = Math.round(diff * 100000) / 100000; // 保留 5 位小數
+    var displayKey = centBuckets[key] ? centBuckets[key].label : key;
     backtestRows.push({
-      key: key, total: s.total, hit: s.hit,
+      key: displayKey, total: s.total, hit: s.hit,
       actualRate: Math.round(actualRate * 10000) / 10000,
       baseRate: Math.round(baseRate * 10000) / 10000,
       diff: Math.round(diff * 100000) / 100000,
     });
   });
 
-  // 寫入 ScriptProperties cache（含版本戳記）
+  // 寫入 FreqSecTest 工作表 cache
   try {
     var appVersion = getCacheVersion();
-    var cacheData = { version: appVersion, diffs: diffs, rows: backtestRows, baseRate: baseRate, timestamp: new Date().getTime() };
-    PropertiesService.getScriptProperties().setProperty("BACKTEST_" + lotto + "_" + methodSN, JSON.stringify(cacheData));
+    var cacheData = { btVersion: 4, version: appVersion, diffs: diffs, rows: backtestRows, baseRate: baseRate, centRanges: centRanges, timestamp: new Date().getTime() };
+    _setBacktestCache(lotto, methodSN, cacheData);
   } catch(e) { logSystemError("backtestFreqSec", e.toString(), "ERROR", "寫入 cache 失敗"); }
 
   return { status: "success", diffs: diffs, rows: backtestRows, baseRate: baseRate };
@@ -367,21 +481,22 @@ function scoreWithDiffs(lotto, dateStr, methodSN) {
   var maxNum = config.maxNum, nCount = (lotto === "L539" ? 5 : 6);
   var baseRate = nCount / maxNum;
 
-  // 讀取 cache diffs
-  var cacheKey = "BACKTEST_" + lotto + "_" + methodSN;
-  var cached = null;
-  try {
-    var raw = PropertiesService.getScriptProperties().getProperty(cacheKey);
-    if (raw) cached = JSON.parse(raw);
-  } catch(e) {}
+  // 讀取 FreqSecTest 工作表 cache
+  var cached = _getBacktestCache(lotto, methodSN);
   if (!cached || !cached.diffs) {
     return { status: "error", message: "請先執行回溯測試" };
   }
   var diffs = cached.diffs;
+  var centRanges = cached.centRanges || {};
 
   // 取得當期統計資料
   var stats = computeFreqSecData(lotto, dateStr, methodSN);
   if (stats.status !== "success") return stats;
+
+  // 取得歷史期數號碼（5/10/25/50）
+  var historyData = getHistoryNumbers(lotto, dateStr, methodSN);
+  var historyMap = {};
+  historyData.forEach(function(h) { historyMap[h.offset] = h.numbers; });
 
   var zones = [5, 10, 25, 50, 100];
   var zoneColStarts = { 5: 6, 10: 11, 25: 16, 50: 21, 100: 26 };
@@ -394,6 +509,8 @@ function scoreWithDiffs(lotto, dateStr, methodSN) {
     var sngAvgM = row[4];
     var adj = 0;
     var details = [];
+    var nearZero = false;
+    var adjFreqMax = 0, adjMissRatio = 0, adjCentroid = 0;
 
     zones.forEach(function(z) {
       var ci = zoneColStarts[z];
@@ -401,31 +518,51 @@ function scoreWithDiffs(lotto, dateStr, methodSN) {
       var minFreq = row[ci + 1];
       var maxFreq = row[ci + 2];
       if (freq === maxFreq) {
-        var d = diffs["Freq" + z + "_max"];
-        if (d !== undefined) { var adjVal = -Math.abs(d); adj += adjVal; details.push("頻" + z + "=max:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
-      } else if (freq === minFreq) {
-        var d = diffs["Freq" + z + "_min"];
-        if (d !== undefined) { adj += d; details.push("頻" + z + "=min:" + (d >= 0 ? "+" : "") + (d * 100).toFixed(2) + "%"); }
+        if (z !== 100 && historyMap[z] && historyMap[z].indexOf(intN) === -1) {
+          nearZero = true;
+          details.push("頻" + z + "=max且非" + z + "期前號碼");
+        } else {
+          var d = diffs["Freq" + z + "_max"];
+          if (d !== undefined) { var adjVal = -Math.abs(d); adj += adjVal; adjFreqMax += adjVal; details.push("頻" + z + "=max:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(4) + "%"); }
+        }
       }
     });
 
-    if (intM > intMaxM) {
+    if (intM >= sngAvgM) {
       var d = diffs.M_max;
-      if (d !== undefined) { var adjVal = Math.abs(d) * 1.5; adj += adjVal; details.push("M>maxM×1.5:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
-    } else if (intM === intMaxM) {
-      var d = diffs.M_max;
-      if (d !== undefined) { var adjVal = Math.abs(d); adj += adjVal; details.push("M=maxM:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
-    } else if (intM >= sngAvgM) {
-      var d = diffs.M_avg;
-      if (d !== undefined) { var adjVal = Math.abs(d); adj += adjVal; details.push("M>=avgM:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(2) + "%"); }
+      if (d !== undefined) { var ratio = Math.max(0, (intM - sngAvgM) / (intMaxM - sngAvgM)); var adjVal = Math.abs(d) * ratio; adj += adjVal; adjMissRatio = adjVal; details.push("Miss比=" + ratio.toFixed(4) + "x:" + (adjVal >= 0 ? "+" : "") + (adjVal * 100).toFixed(4) + "%"); }
     }
 
-    var finalScore = baseRate + adj;
+    // 重心評分
+    var c05 = row[6], c10 = row[11], c25 = row[16], c50 = row[21], c100 = row[26];
+    var c10_val = c10 - c05, c25_val = c25 - c10, c50_val = c50 - c25, c100_val = c100 - c50;
+    var totalC = c05 + c10_val + c25_val + c50_val + c100_val;
+    var centroid, centBucket = "Centroid_Zero";
+    if (totalC === 0) {
+      centroid = -1;
+    } else {
+      centroid = (c05 * 3 + c10_val * 8 + c25_val * 18 + c50_val * 38 + c100_val * 75) / totalC / 100;
+      // 找所屬桶
+      for (var bk = 1; bk <= 5; bk++) {
+        var bKey = "Centroid_B" + bk;
+        var r = centRanges[bKey];
+        if (r && centroid >= r.min && centroid <= r.max) { centBucket = bKey; break; }
+      }
+    }
+    var centDiff = diffs[centBucket];
+    if (centDiff !== undefined) {
+      adj += centDiff;
+      adjCentroid = centDiff;
+      details.push("重心:" + (centroid >= 0 ? Number(centroid).toFixed(4) : "零次") + " " + centBucket + ":" + (centDiff >= 0 ? "+" : "") + (centDiff * 100).toFixed(4) + "%");
+    }
+
+    var finalScore = nearZero ? baseRate * 0.01 : baseRate + adj;
     scored.push({
       number: intN, miss: intM,
-      adj: Math.round(adj * 100000) / 100000,
-      score: Math.round(finalScore * 100000) / 100000,
+      adj: (finalScore - baseRate),
+      score: finalScore,
       details: details.join("、"),
+      factors: { freqMax: adjFreqMax, miss: adjMissRatio, centroid: adjCentroid, nearZero: nearZero },
     });
   });
 
@@ -442,15 +579,12 @@ function scoreWithDiffs(lotto, dateStr, methodSN) {
  * 協調函數：backtest（含 cache）+ score
  */
 function getBacktestAndScore(lotto, dateStr, methodSN) {
-  var cacheKey = "BACKTEST_" + lotto + "_" + methodSN;
   var backtestResult = null;
   try {
-    var raw = PropertiesService.getScriptProperties().getProperty(cacheKey);
-    if (raw) {
-      var cached = JSON.parse(raw);
-      // 檢查版本是否一致
+    var cached = _getBacktestCache(lotto, methodSN);
+    if (cached) {
       var appVersion = getCacheVersion();
-      if (cached.version === appVersion) {
+      if (cached.btVersion === 4 && cached.version === appVersion) {
         backtestResult = { status: "success", diffs: cached.diffs, rows: cached.rows, baseRate: cached.baseRate };
       }
     }
