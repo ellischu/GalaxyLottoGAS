@@ -217,10 +217,11 @@ function combineData(sheetname) {
 function genMissData_legacy(sheetname) {
   startTime = new Date().getTime();
 
-  const trObj = getTargetsheet("Sheets", sheetname);
-  const trspreadsheet = trObj.spreadsheet;
-  let trsheet = trspreadsheet.getSheetByName("Miss");
-  const srsheet = trspreadsheet.getSheetByName("All");
+  // 新架構：All ← {lotto} 試算表；Miss ← {lotto}_Miss 試算表
+  const allSS = getMissSpreadsheetEntry(sheetname);
+  const missSS = getMissSpreadsheetEntry(sheetname + "_Miss");
+  let trsheet = missSS.getSheetByName("Miss");
+  const srsheet = allSS.getSheetByName("All");
 
   if (!srsheet) {
     return {
@@ -230,7 +231,7 @@ function genMissData_legacy(sheetname) {
   }
 
   if (!trsheet) {
-    trsheet = trspreadsheet.insertSheet("Miss");
+    trsheet = missSS.insertSheet("Miss");
   }
 
   // 1. 遊戲規格組態化：未來若 L638 特別號增加，僅需修改 maxSpecial 數值
@@ -466,11 +467,12 @@ function cleanupAllLotteryCaches() {
   // 2. 遍歷各彩種進行深層資料維護
   lottos.forEach((lotto) => {
     try {
-      const trObj = getTargetsheet("Sheets", lotto);
+      // 新架構：V1 屬性位於 {lotto}_Prediction1 試算表 > predic1_Property 工作表
+      const trObj = getTargetsheet("Sheets", lotto + "_Prediction1");
       const ss = trObj.spreadsheet;
 
       // 呼叫 Prediction1_Server.js 中的版本自動管理邏輯
-      // 這會移除 prct1_Property 中除最新 2 個演算法版本以外的所有過期數據
+      // 這會移除 predic1_Property 中除最新 2 個演算法版本以外的所有過期數據
       if (typeof managePrct1PropertyVersions === "function") {
         managePrct1PropertyVersions(ss);
       }

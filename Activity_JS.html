@@ -122,15 +122,18 @@
     // 載入當日號碼
     google.script.run
       .withSuccessHandler(function (nr) {
-        if (nr && nr.status === "success" && nr.numbers && nr.numbers.length > 0) {
+        if (nr && nr.status === "success" && ((nr.numbers && nr.numbers.length > 0) || (nr.special !== null && nr.special !== undefined && nr.special !== ""))) {
           var posMap = {};
-          nr.numbers.forEach(function(n, idx) { posMap[parseInt(n)] = idx + 1; });
+          (nr.numbers || []).forEach(function(n, idx) { posMap[parseInt(n)] = idx + 1; });
           _savedDrawPosMap = posMap;
           _drawPosMap = _colorEnabled ? posMap : {};
-          var html = nr.numbers.map(function (n) {
+          var html = (nr.numbers || []).map(function (n) {
             var pos = posMap[parseInt(n)];
             return '<span class="summary-num-ball num-n' + pos + '">' + n + "</span>";
           }).join(" ");
+          if (nr.special !== null && nr.special !== undefined && nr.special !== "") {
+            html += ' <span class="summary-num-ball bg-info" title="特別號">' + nr.special + "</span>";
+          }
           $("#summaryDrawNumbers").html(html);
         } else {
           _savedDrawPosMap = {};
@@ -179,7 +182,10 @@
           html += '<div class="border rounded p-2 text-center" style="min-width:120px;background:var(--bs-tertiary-bg);">';
           html += '<div class="fw-bold small mb-1" style="color:var(--bs-secondary-color);">' + h.offset + '期前<br>' + h.date + '</div>';
           html += '<div class="d-flex gap-1 justify-content-center">';
-          h.numbers.forEach(function(n) { html += '<span class="num-circle" style="background-color:#6c757d;">' + n + '</span>'; });
+          (h.numbers || []).forEach(function(n, idx) { html += '<span class="num-circle num-n' + (idx + 1) + '">' + n + '</span>'; });
+          if (h.special !== null && h.special !== undefined && h.special !== "") {
+            html += '<span class="num-circle bg-info" title="特別號">' + h.special + '</span>';
+          }
           html += '</div></div>';
         });
         html += '</div>';

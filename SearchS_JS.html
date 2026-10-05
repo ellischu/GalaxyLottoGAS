@@ -42,9 +42,174 @@
     bindEvents();
   }
 
+  /**
+   * 日期規則：今日之前必須是該彩種實際開獎日（取自主試算表 L539/L649/L638/LSix
+   * 工作表 Date 欄，自動回推對齊），今日之後不限日期。
+   * 注意：不可用星期規則 fallback（例假日可能停開，如 LSix 2026/10/01 週四無開獎），
+   * 清單未載入或後端無資料時一律不對齊。
+   */
+  window._drawDatesCache = window._drawDatesCache || {};
+  window._drawDatesSet = window._drawDatesSet || {};
+
+  function getDrawDayHintText(lotto) {
+    var map = {
+      L539: "今彩 539",
+      L649: "大樂透",
+      L638: "威力彩",
+      LSix: "六合彩",
+    };
+    return map[lotto] || lotto || "";
+  }
+
+  function fmtLocalYMD(d) {
+    return (
+      d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0")
+    );
+  }
+
+  function todayStr() {
+    var t = new Date();
+    t.setHours(0, 0, 0, 0);
+    return fmtLocalYMD(t);
+  }
+
+  function updateDrawDayHint(loading) {
+    var lotto = $("#SecLotto").val();
+    var base = getDrawDayHintText(lotto);
+    var text;
+    var arr = window._drawDatesCache[lotto];
+    if (loading) {
+      text = base + "：開獎日載入中…｜今日之前僅限實際開獎日（自動對齊），今日之後不限日期。";
+    } else if (arr && arr.length > 0) {
+      text = base + "：共 " + arr.length + " 個開獎日（" + arr[0] + "～" +
+        arr[arr.length - 1] + "）｜今日之前僅限開獎日（自動對齊），今日之後不限日期。";
+    } else if (arr) {
+      text = base + "：無法取得開獎日清單（暫不限制，請檢查網路後切換彩種重試）｜今日之後不限日期。";
+    } else {
+      text = base + "｜今日之前僅限實際開獎日（自動對齊），今日之後不限日期。";
+    }
+    var $hint = $("#drawDayHint");
+    if ($hint.length === 0) {
+      $hint = $('<div id="drawDayHint" class="form-text text-muted mt-1"></div>');
+      $("#INDate").after($hint);
+    }
+    $hint.text(text);
+  }
+
+  function toastDrawDaySnapped(date) {
+    var msg = "已自動對齊至最近開獎日：" + date;
+    try {
+      if (window.AppUI && window.AppUI.toast) window.AppUI.toast(msg, "info");
+      else if (window.Swal && window.Swal.fire) {
+        window.Swal.mixin({
+          toast: true, position: "top-end", showConfirmButton: false,
+          timer: 2500, timerProgressBar: true,
+        }).fire({ icon: "info", title: msg });
+      }
+    } catch (e) { console.log(msg); }
+  }
+
+  /** 在已快取的實際開獎日中找 <= dateStr 的最近一筆；無則回傳 null */
+  function findPrevDrawDate(lotto, dateStr) {
+    var arr = window._drawDatesCache[lotto];
+    if (!arr || arr.length === 0) return null;
+    if (window._drawDatesSet[lotto] && window._drawDatesSet[lotto][dateStr]) return dateStr;
+    // 二分搜尋最後一個 <= dateStr 者
+    var lo = 0, hi = arr.length - 1, ans = -1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (arr[mid] <= dateStr) { ans = mid; lo = mid + 1; }
+      else { hi = mid - 1; }
+    }
+    return ans >= 0 ? arr[ans] : null;
+  }
+
+  function enforceDrawDayRule(showToast) {
+    var lotto = $("#SecLotto").val();
+    var dateStr = $("#INDate").val();
+    if (!lotto || !dateStr) return dateStr;
+    if (dateStr >= todayStr()) return dateStr; // 今日之後：所有日期皆可
+    // 今日之前：必須是該彩種工作表的實際開獎日
+    var arr = window._drawDatesCache[lotto];
+    if (arr && arr.length > 0) {
+      if (window._drawDatesSet[lotto] && window._drawDatesSet[lotto][dateStr]) return dateStr;
+      var prev = findPrevDrawDate(lotto, dateStr);
+      if (prev && prev !== dateStr) {
+        $("#INDate").val(prev);
+        if (showToast !== false) toastDrawDaySnapped(prev);
+        return prev;
+      }
+      if (!prev) {
+        // 比最早開獎日還早：對齊到最早一筆
+        $("#INDate").val(arr[0]);
+        if (showToast !== false) toastDrawDaySnapped(arr[0]);
+        return arr[0];
+      }
+      return dateStr;
+    }
+    // 清單尚未載入：觸發載入，載入完成後自動校正並重載（此處不猜測、不對齊）
+    if (!arr) loadDrawDates(lotto, { realign: true, toast: showToast !== false, reload: true });
+    return dateStr;
+  }
+
+  /** 向後端取得該彩種實際開獎日；完成後更新 hint、min 並可選擇自動校正 */
+  function loadDrawDates(lotto, opts) {
+    opts = opts || {};
+    if (!lotto) return;
+    if (window._drawDatesCache[lotto]) {
+      updateDrawDayHint(false);
+      applyDrawDatesMin(lotto);
+      if (opts.realign) {
+        var cur = $("#INDate").val();
+        var snapped = enforceDrawDayRule(opts.toast === true);
+        if (snapped !== cur && opts.reload) { loadPreviewData(); updateNextCombos(); }
+      }
+      if (opts.done) opts.done(window._drawDatesCache[lotto]);
+      return;
+    }
+    updateDrawDayHint(true);
+    google.script.run
+      .withSuccessHandler(function (dates) {
+        dates = dates || [];
+        window._drawDatesCache[lotto] = dates;
+        var set = {};
+        dates.forEach(function (d) { set[d] = 1; });
+        window._drawDatesSet[lotto] = set;
+        // 避免彩種已切換：只在仍是同一彩種時更新 UI
+        if ($("#SecLotto").val() !== lotto) { if (opts.done) opts.done(dates); return; }
+        updateDrawDayHint(false);
+        applyDrawDatesMin(lotto);
+        if (opts.realign) {
+          var cur2 = $("#INDate").val();
+          var snapped2 = enforceDrawDayRule(opts.toast === true);
+          if (snapped2 !== cur2 && opts.reload) { loadPreviewData(); updateNextCombos(); }
+          else if (opts.reload) { loadPreviewData(); updateNextCombos(); }
+        }
+        if (opts.done) opts.done(dates);
+      })
+      .withFailureHandler(function () {
+        if ($("#SecLotto").val() !== lotto) return;
+        updateDrawDayHint(false);
+        if (opts.reload) { loadPreviewData(); updateNextCombos(); }
+      })
+      .getAvailableDrawDates(lotto);
+  }
+
+  /** 以最早開獎日設定 date input 下限，避免選到無資料的過去日期 */
+  function applyDrawDatesMin(lotto) {
+    var arr = window._drawDatesCache[lotto];
+    if (arr && arr.length > 0) $("#INDate").attr("min", arr[0]);
+    else $("#INDate").removeAttr("min");
+  }
+
   function initPage() {
     var today = new Date().toISOString().split("T")[0];
     $("#INDate").val(today);
+    $("#INDate").removeAttr("min");
+    updateDrawDayHint(true);
+    loadDrawDates($("#SecLotto").val() || "L539", { realign: false });
 
     google.script.run
       .withSuccessHandler(function (fields) {
@@ -74,13 +239,26 @@
       $("#AreaTable, #AreaDebug").slideToggle(this.checked);
     });
 
-    // 3. 資料預覽更新監聽
-    $("#INDate, #SecLotto").on("change", function () {
+    // 3. 資料預覽更新監聽（含實際開獎日規則）
+    $("#INDate, #SecLotto").on("change", function (e) {
+      var changedId = e && e.target ? e.target.id : "";
       const isL638 = $("#SecLotto").val() === "L638";
       $("#ColNextSpe").toggle(isL638);
       $("#ColNextCombo")
         .toggleClass("col-md-6", !isL638)
         .toggleClass("col-md-4", isL638);
+      if (changedId === "SecLotto") {
+        // 切換彩種：先載入該彩種實際開獎日，再對齊日期並重載
+        loadDrawDates($("#SecLotto").val(), { realign: true, toast: true, reload: true });
+        return;
+      }
+      // 今日之前必須是實際開獎日：自動回推對齊；今日之後不限
+      // 清單載入中時由 enforce 觸發載入，完成後自動校正並重載，此處先返回避免用未對齊日期查詢
+      if (!window._drawDatesCache[$("#SecLotto").val()]) {
+        enforceDrawDayRule(true);
+        return;
+      }
+      enforceDrawDayRule(true);
       loadPreviewData();
       updateNextCombos();
     });
@@ -106,6 +284,7 @@
   }
 
   function loadPreviewData() {
+    enforceDrawDayRule(false);
     const lotto = $("#SecLotto").val();
     const date = $("#INDate").val();
     const $container = $("#AeraAllData");
@@ -148,6 +327,7 @@
    * 動態獲取托牌組合並填充下拉選單
    */
   function updateNextCombos() {
+    enforceDrawDayRule(false);
     const isNext = $("#chkNext").is(":checked");
     if (!isNext) return;
 
@@ -207,6 +387,15 @@
   }
 
   function startGalaxySearch() {
+    if (!window._drawDatesCache[$("#SecLotto").val()]) {
+      enforceDrawDayRule(false); // 觸發載入，完成後自動校正；此次先不送出
+      try {
+        if (window.AppUI && window.AppUI.toast) window.AppUI.toast("開獎日載入中，請稍後再按一次查詢", "info");
+        else Swal.fire({ icon: "info", title: "開獎日載入中", text: "請稍後再按一次查詢" });
+      } catch (e) {}
+      return;
+    }
+    enforceDrawDayRule(true);
     const date = $("#INDate").val();
     if (!date) {
       Swal.fire({ icon: "warning", title: "請選擇預測日期", text: "日期欄位不可為空" });
@@ -258,6 +447,11 @@
   }
 
   function showDataPreview() {
+    if (!window._drawDatesCache[$("#SecLotto").val()]) {
+      enforceDrawDayRule(false); // 觸發載入，完成後自動校正並重載；此次先返回
+      return;
+    }
+    enforceDrawDayRule(true);
     const nextMode = $("#chkNext").is(":checked");
     const rangeMode = $("#chkRange").is(":checked");
     const fieldMode = _fieldMode();

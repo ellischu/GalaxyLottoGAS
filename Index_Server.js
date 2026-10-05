@@ -23,9 +23,10 @@ function getSystemHealthStats() {
     const lottos = ["L539", "L649", "L638", "LSix"];
     lottos.forEach((lotto) => {
       try {
-        const trObj = getTargetsheet("Sheets", lotto);
+        // 新架構：Prediction2 存檔位於 {lotto}_Prediction2 試算表 > predic2_History_Archive 工作表
+        const trObj = getTargetsheet("Sheets", lotto + "_Prediction2");
         const archiveSheet = trObj.spreadsheet.getSheetByName(
-          "predic1_Settings_Archive",
+          "predic2_History_Archive",
         );
         if (archiveSheet) {
           const lastRow = archiveSheet.getLastRow();

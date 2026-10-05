@@ -1,6 +1,6 @@
 <script>
   /**
-   * Predict 頁面專屬邏輯
+    * Prediction2 頁面專屬邏輯
    */
   (function ($) {
     $(document).ready(function () {
@@ -43,6 +43,23 @@
         "change",
         loadHistoryStats,
       );
+
+      // 開獎日期集預載（主試算表實際日期）：切換彩種後集到後再精確對齊，並設日期下限
+      window.ensureDrawDates($("#lottoSelect").val()).then(function () {
+        window.DrawDayRule.applyMin($("#lottoSelect").val(), "#predictDate");
+      });
+      $("#lottoSelect").on("change", function () {
+        var lotto = $(this).val();
+        window.ensureDrawDates(lotto).then(function () {
+          window.DrawDayRule.applyMin(lotto, "#predictDate");
+          var cur = $("#predictDate").val();
+          var s = window.snapPastDateToDrawDay(lotto, cur);
+          if (s.snapped) {
+            $("#predictDate").val(s.date);
+            if (window.loadHistoryStats) window.loadHistoryStats();
+          }
+        });
+      });
 
       // 還原上次清理快取前的備份設定
       var backup = JSON.parse(
@@ -201,9 +218,24 @@
 
     window.handlePredict = function () {
       var lotto = $("#lottoSelect").val();
+      // 日期集未載入時先等待（確保對齊用實際開獎日，而非後備星期規則）
+      if (lotto && !window.DrawDayRule.has(lotto)) {
+        window.ensureDrawDates(lotto).then(function () {
+          if (window.handlePredict) window.handlePredict();
+        });
+        return;
+      }
       var date = $("#predictDate").val();
       var useTrend = $("#useTrend").is(":checked");
       var topN = $("#topNSelect").val();
+
+      // 日期規則：今日之前必須是該彩種開獎日，自動回推對齊；今日之後不限
+      var snap = window.snapPastDateToDrawDay(lotto, date);
+      if (snap.snapped) {
+        date = snap.date;
+        $("#predictDate").val(date);
+        AppUI.toast("已自動對齊至最近開獎日：" + date, "info");
+      }
 
       if (!lotto || !date) {
         AppUI.toast("請確認彩種與日期是否正確", "warning");
@@ -310,10 +342,25 @@
      * 載入並渲染近 30 期歷史準確度圖表 (受開關控制)
      */
     window.loadHistoryStats = function () {
+      var lottoG = $("#lottoSelect").val();
+      // 日期集未載入時先等待，確保對齊用實際開獎日
+      if (lottoG && !window.DrawDayRule.has(lottoG)) {
+        window.ensureDrawDates(lottoG).then(function () {
+          if (window.loadHistoryStats) window.loadHistoryStats();
+        });
+        return;
+      }
       var lotto = $("#lottoSelect").val();
       var topN = $("#topNSelect").val();
       var date = $("#predictDate").val();
       var useTrend = $("#useTrend").is(":checked");
+
+      // 日期規則：過去日期自動對齊該彩種開獎日後再載入統計
+      var snap = window.snapPastDateToDrawDay(lotto, date);
+      if (snap.snapped) {
+        date = snap.date;
+        $("#predictDate").val(date);
+      }
 
       if (!lotto || !date) return; // 避免無效的初始化請求
 

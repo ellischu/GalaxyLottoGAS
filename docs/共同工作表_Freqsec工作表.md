@@ -1,10 +1,17 @@
-# FreqSec 工作表
+活性表相關訊息
 
-分區頻率活性提供工作表。
+# 試算表
+- Name : L539_FreqSec ,L649_FreqSec ,L638_FreqSec ,LSix_FreqSec
+- Describe : 活性表資料庫。
+
+## 工作表
+- Name : Freqsec。
+- 工作表說明 : 分區頻率活性提供工作表。
+
 
 | 欄位名稱    | 數值型態 | 預設值 | 顯示標題  | 說明            |
 | :---------- | :------- | :----- | :-------- | :-------------- |
-| lngMethodSN | Binint   | null   | 方法序號  | 方法序號        |
+| lngMethodSN | Bigint   | null   | 方法序號  | 方法序號        |
 | Date        | Date     | null   | 日數      | 格式為YYYYmmdd  |
 | intN        | Int      | 0      | 號碼      | 號碼            |
 | intM        | Int      | 0      | 遺漏數    | 遺漏數值        |

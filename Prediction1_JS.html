@@ -42,6 +42,23 @@
       loadV1HistoryStats,
     );
 
+    // 開獎日期集預載（主試算表實際日期）：切換彩種後集到後再精確對齊，並設日期下限
+    window.ensureDrawDates($("#lottoType").val()).then(function () {
+      window.DrawDayRule.applyMin($("#lottoType").val(), "#predDate");
+    });
+    $("#lottoType").on("change", function () {
+      var lotto = $(this).val();
+      window.ensureDrawDates(lotto).then(function () {
+        window.DrawDayRule.applyMin(lotto, "#predDate");
+        var cur = $("#predDate").val();
+        var s = window.snapPastDateToDrawDay(lotto, cur);
+        if (s.snapped) {
+          $("#predDate").val(s.date);
+          if (window.loadV1HistoryStats) window.loadV1HistoryStats();
+        }
+      });
+    });
+
     // 切換彩種時立即更新快取資訊，避免等待定時器
     $("#lottoType").on("change", updateCacheInfo);
 
@@ -142,6 +159,19 @@
 
   // 修改 runPrediction 接受一個選擇性的回呼函式
   window.runPrediction = function (callback) {
+    var lotto0 = $("#lottoType").val();
+    // 日期集未載入時先等待（確保對齊用實際開獎日，而非後備星期規則）
+    if (lotto0 && !window.DrawDayRule.has(lotto0)) {
+      window.ensureDrawDates(lotto0).then(function () {
+        if (window.runPrediction) window.runPrediction(callback);
+      });
+      return;
+    }
+    var snap0 = window.snapPastDateToDrawDay($("#lottoType").val(), $("#predDate").val());
+    if (snap0.snapped) {
+      $("#predDate").val(snap0.date);
+      AppUI.toast("已自動對齊至最近開獎日：" + snap0.date, "info");
+    }
     const data = {
       date: $("#predDate").val(),
       lotto: $("#lottoType").val(),
@@ -1271,9 +1301,22 @@
    * 載入並渲染 V1 歷史命中趨勢圖表
    */
   window.loadV1HistoryStats = function () {
+    var lottoG = $("#lottoType").val();
+    // 日期集未載入時先等待，確保對齊用實際開獎日
+    if (lottoG && !window.DrawDayRule.has(lottoG)) {
+      window.ensureDrawDates(lottoG).then(function () {
+        if (window.loadV1HistoryStats) window.loadV1HistoryStats();
+      });
+      return;
+    }
     const lotto = $("#lottoType").val();
     const topN = $("#topN").val();
     const useTrend = $("#useTrend").is(":checked");
+    // 日期規則：過去日期自動對齊該彩種開獎日後再載入統計
+    var snapH = window.snapPastDateToDrawDay(lotto, $("#predDate").val());
+    if (snapH.snapped) {
+      $("#predDate").val(snapH.date);
+    }
     const predDate = $("#predDate").val();
     const historyPeriod = $("#historyPeriod").val() || 30;
 

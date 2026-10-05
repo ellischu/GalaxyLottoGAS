@@ -12,11 +12,13 @@ function ping() {
 function getMissDataLight(lotto) {
   try {
     lotto = lotto || "L539";
-    var lottoSS = _getLottoSS(lotto);
-    if (!lottoSS) return { status: "error", message: "no " + lotto + " sub-SS" };
-    var missSheet = lottoSS.getSheetByName("Miss");
+    // 新架構：Miss ← {lotto}_Miss 試算表
+    var missSS = _getMissSS(lotto);
+    if (!missSS) return { status: "error", message: "no " + lotto + "_Miss sub-SS" };
+    var missSheet = missSS.getSheetByName("Miss");
     if (!missSheet) {
-      var allSheet = lottoSS.getSheetByName("All");
+      var allSS = _getAllSS(lotto);
+      var allSheet = allSS ? allSS.getSheetByName("All") : null;
       if (!allSheet) return { status: "error", message: "no Miss/All sheet" };
       return { status: "success", rows: 0, cols: 0, fromAll: true };
     }
@@ -36,22 +38,37 @@ function getMissDataLight(lotto) {
  * @param {number} limit 筆數
  * @returns {Object} { status, headers, rows, method, summary, dateCol }
  */
-function _getLottoSS(lotto) {
-  var sheetsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sheets");
-  if (!sheetsSheet) return null;
-  var sData = sheetsSheet.getDataRange().getValues();
-  for (var si = 1; si < sData.length; si++) {
-    if (String(sData[si][0]).trim() === lotto) {
-      var url = String(sData[si][1] || "").trim();
-      var id = url.match(/[-\w]{25,}/);
-      if (id) return SpreadsheetApp.openById(id[0]);
-    }
+/**
+ * 新架構試算表解析（資料夾 > 試算表 > 工作表），Miss 模組查詢端專用：
+ *   All  ← {lotto} 試算表
+ *   Miss ← {lotto}_Miss 試算表
+ * 查詢失敗回傳 null（由呼叫端轉為 {status:"error"}，不拋錯以維持前端相容）。
+ */
+function _getMissSS(lotto) {
+  try {
+    var trObj = getTargetsheet("Sheets", lotto + "_Miss");
+    return trObj ? trObj.spreadsheet : null;
+  } catch (e) {
+    return null;
   }
-  return null;
 }
 
-function _readMissData(lottoSS, methodSN) {
-  var missSheet = lottoSS.getSheetByName("Miss");
+function _getAllSS(lotto) {
+  try {
+    var trObj = getTargetsheet("Sheets", lotto);
+    return trObj ? trObj.spreadsheet : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** 舊名相容：過去 All/Miss 同試算表，現轉向 {lotto}_Miss 試算表 */
+function _getLottoSS(lotto) {
+  return _getMissSS(lotto);
+}
+
+function _readMissData(missSS, methodSN) {
+  var missSheet = missSS.getSheetByName("Miss");
   if (!missSheet) return null;
   var raw = missSheet.getDataRange().getValues();
   if (raw.length <= 1) return null;
@@ -65,9 +82,9 @@ function _readMissData(lottoSS, methodSN) {
 }
 
 function _ensureMissData(lotto, methodSN) {
-  var lottoSS = _getLottoSS(lotto);
-  if (!lottoSS) return null;
-  var info = _readMissData(lottoSS, methodSN);
+  var missSS = _getMissSS(lotto);
+  if (!missSS) return null;
+  var info = _readMissData(missSS, methodSN);
   if (info && info.count > 0) return info;
   Logger.log("[_ensureMissData] lotto=%s methodSN=%s starting genMissData", lotto, methodSN);
   var result = genMissData(lotto, new Date(), methodSN, "ASC", -1);
@@ -82,12 +99,13 @@ function _ensureMissData(lotto, methodSN) {
   } else if (result && result.status === "error") {
     Logger.log("[_ensureMissData] lotto=%s methodSN=%s error=%s", lotto, methodSN, result.message);
   }
-  return _readMissData(lottoSS, methodSN);
+  return _readMissData(missSS, methodSN);
 }
 
 function getMissDataDrawNumbers(lotto, dateStr) {
   try {
     var date = new Date(String(dateStr).replace(/-/g, "/"));
+    // 新架構：All ← {lotto} 試算表（開獎號碼查詢不動）
     var trObj = getTargetsheet("Sheets", lotto);
     if (!trObj) return { status: "error", message: "no sheet" };
     var allSheet = trObj.spreadsheet.getSheetByName("All");
@@ -101,11 +119,12 @@ function getMissDataDrawNumbers(lotto, dateStr) {
       var r = data[di];
       if (r[dateCol] instanceof Date && r[dateCol].getTime() === date.getTime()) {
         var nums = [];
-        for (var ni = 1; ni <= 5; ni++) {
+        var nCount = (lotto === "L539") ? 5 : 6;
+        for (var ni = 1; ni <= nCount; ni++) {
           var idx = h.indexOf("N" + ni);
           if (idx > -1) nums.push(r[idx]);
         }
-        return { status: "success", numbers: nums };
+        return { status: "success", numbers: nums, special: _getDrawSpecial(h, r) };
       }
     }
     // 如果日期沒有完全吻合，額外一天的範圍比對
@@ -116,11 +135,12 @@ function getMissDataDrawNumbers(lotto, dateStr) {
         var diff = Math.abs(d2.getTime() - date.getTime());
         if (diff < 86400000) { // 24小時內
           var nums2 = [];
-          for (var ni2 = 1; ni2 <= 5; ni2++) {
+          var nCount2 = (lotto === "L539") ? 5 : 6;
+          for (var ni2 = 1; ni2 <= nCount2; ni2++) {
             var idx2 = h.indexOf("N" + ni2);
             if (idx2 > -1) nums2.push(r2[idx2]);
           }
-          if (nums2.length > 0) return { status: "success", numbers: nums2 };
+          if (nums2.length > 0) return { status: "success", numbers: nums2, special: _getDrawSpecial(h, r2) };
         }
       }
     }
@@ -129,6 +149,17 @@ function getMissDataDrawNumbers(lotto, dateStr) {
     logSystemError("getMissDataDrawNumbers", e.toString(), "ERROR", "取得當日號碼失敗", { lotto: lotto, dateStr: dateStr });
     return { status: "error", message: e.toString() };
   }
+}
+
+/**
+ * 取開獎列的特別號（無 S1 欄或空值回傳 null；L539 無特別號）
+ */
+function _getDrawSpecial(headers, row) {
+  var s1Idx = headers.indexOf("S1");
+  if (s1Idx === -1) return null;
+  var v = row[s1Idx];
+  if (v === null || v === undefined || v === "") return null;
+  return v;
 }
 
 function getMissDataAllData(dateStr) {
@@ -156,7 +187,7 @@ function getMissDataAllData(dateStr) {
   }
 }
 
-function getMissData(lotto, dateStr, methodSN, limit) {
+function getMissData(lotto, dateStr, methodSN, limit, withDiag) {
   try {
     Logger.log("[getMissData] lotto=%s date=%s methodSN=%s limit=%s", lotto, dateStr, methodSN, limit);
     limit = parseInt(limit, 10);
@@ -224,11 +255,128 @@ function getMissData(lotto, dateStr, methodSN, limit) {
       headers: keepHeaders,
       rows: outputRows,
       method: methodInfo,
-      summary: { lotto: lotto, date: dateStr, methodSN: methodSN, rowCount: outputRows.length },
+      summary: getMissDataSummary(lotto, dateStr, methodSN, outputRows.length, withDiag),
       dateCol: 1,
     };
   } catch (e) {
     logSystemError("getMissData", e.toString(), "ERROR", "取得遺漏表資料失敗", { lotto: lotto, dateStr: dateStr, methodSN: methodSN });
     return { status: "error", message: e.toString() };
   }
+}
+
+/**
+ * 組裝 getMissData 回傳的 summary；withDiag=true 時才附三層日期診斷（除錯用）。
+ */
+function getMissDataSummary(lotto, dateStr, methodSN, rowCount, withDiag) {
+  var summary = { lotto: lotto, date: dateStr, methodSN: methodSN, rowCount: rowCount };
+  if (withDiag === true) {
+    var d = collectMissDiag(lotto, dateStr, methodSN);
+    summary.diag = d.status === "success"
+      ? { raw: d.raw, all: d.all, miss: d.miss, branch: d.branch }
+      : { error: d.message };
+  }
+  return summary;
+}
+/**
+ * 唯讀診斷核心：比對 原始開獎 / All / Miss 三層最新日期，定位「日期沒對上」卡在哪一層。
+ * 不寫入任何工作表。
+ * @param {string} lotto 彩種
+ * @param {string} dateStr 基準日期
+ * @param {number} methodSN 方法序號
+ * @returns {Object} { status, raw, all, miss, sourceCount, missCount, branch }
+ */
+function collectMissDiag(lotto, dateStr, methodSN) {
+  try {
+    lotto = lotto || "L539";
+    methodSN = Number(methodSN) || 1;
+
+    var fmt = function(v) {
+      if (!v) return null;
+      var d = v instanceof Date ? v : new Date(String(v).replace(/-/g, "/"));
+      if (isNaN(d.getTime())) return String(v);
+      return Utilities.formatDate(d, "Asia/Taipei", "yyyy-MM-dd");
+    };
+    var toTime = function(v) {
+      if (!v) return -1;
+      var d = v instanceof Date ? v : new Date(String(v).replace(/-/g, "/"));
+      return isNaN(d.getTime()) ? -1 : d.getTime();
+    };
+    // 輕量讀取：標頭列 + 最後一列（開獎/All 皆按日期附加，最新即最後一列）
+    var lastDateOf = function(sheet, sheetLabel) {
+      var info = { rows: 0, latest: null, latestT: -1 };
+      if (!sheet || sheet.getLastRow() <= 1) return info;
+      var lastRow = sheet.getLastRow();
+      var lastCol = sheet.getLastColumn();
+      var h = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+        .map(function(c) { return String(c || "").trim(); });
+      var dateCol = h.indexOf("Date");
+      if (dateCol === -1) return info;
+      info.rows = lastRow - 1;
+      var v = sheet.getRange(lastRow, dateCol + 1, 1, 1).getValue();
+      var t = toTime(v);
+      // 最後一列若無日期（極少數髒資料），往前找 5 列
+      var r = lastRow;
+      while (t === -1 && r > Math.max(1, lastRow - 5)) {
+        r--;
+        t = toTime(sheet.getRange(r, dateCol + 1, 1, 1).getValue());
+      }
+      if (t > -1) { info.latestT = t; info.latest = fmt(new Date(t)); }
+      return info;
+    };
+
+    // 第 1 層：主試算表原始開獎
+    var rawSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(lotto);
+    var rawInfo = lastDateOf(rawSheet);
+
+    // 第 2/3 層：新架構 All ← {lotto}；Miss ← {lotto}_Miss
+    var sheets = getMissSpreadsheets(lotto);
+    var allInfo = lastDateOf(sheets.allSS.getSheetByName("All"));
+
+    // Miss 依 methodSN 交錯存放，只讀前兩欄掃描（新格式：lngMethodSN, Date, ...）
+    var missInfo = { rows: 0, latest: null, latestT: -1 };
+    var missSheet = sheets.missSS.getSheetByName("Miss");
+    if (missSheet && missSheet.getLastRow() > 1) {
+      var mLastRow = missSheet.getLastRow();
+      var mH = missSheet.getRange(1, 1, 1, missSheet.getLastColumn()).getValues()[0]
+        .map(function(c) { return String(c || "").trim(); });
+      var mSnCol = mH.indexOf("lngMethodSN");
+      var mDateCol = mH.indexOf("Date");
+      if (mDateCol > -1) {
+        var cols = Math.max(mDateCol + 1, 2);
+        var md = missSheet.getRange(2, 1, mLastRow - 1, cols).getValues();
+        var cnt = 0, bestT = -1;
+        for (var mi = 0; mi < md.length; mi++) {
+          if (mSnCol > -1 && Number(md[mi][mSnCol]) !== methodSN) continue;
+          cnt++;
+          var t = toTime(md[mi][mDateCol]);
+          if (t > bestT) bestT = t;
+        }
+        missInfo.rows = cnt;
+        if (bestT > -1) { missInfo.latestT = bestT; missInfo.latest = fmt(new Date(bestT)); }
+      }
+    }
+
+    // 以日期推斷查詢分支（與 getMissDataTable 等長/補齊條件同義）
+    var branch = (allInfo.latestT === missInfo.latestT) ? "equal(直接回傳Miss)"
+      : (allInfo.latestT > missInfo.latestT ? "fill(增量補齊並寫回)" : "stale(Miss比All新,不應發生)");
+
+    return {
+      status: "success",
+      lotto: lotto, date: dateStr, methodSN: methodSN,
+      raw: { rows: rawInfo.rows, latest: rawInfo.latest },
+      all: { rows: allInfo.rows, latest: allInfo.latest },
+      miss: { rows: missInfo.rows, latest: missInfo.latest },
+      branch: branch,
+    };
+  } catch (e) {
+    return { status: "error", message: e.toString() };
+  }
+}
+
+/**
+ * 唯讀診斷（供 DevTools Console 直接呼叫）：
+ *   google.script.run.withSuccessHandler(function(r){console.log(JSON.stringify(r))}).getMissDiag("L539","2026-10-05",1);
+ */
+function getMissDiag(lotto, dateStr, methodSN) {
+  return collectMissDiag(lotto, dateStr, methodSN);
 }

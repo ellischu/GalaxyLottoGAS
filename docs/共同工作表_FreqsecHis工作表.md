@@ -1,10 +1,18 @@
-# FreqSecHis 工作表
+活性表相關訊息
 
-分區歷史遺漏數工作表，由 FreqSec 工作表提供把已開出的號碼拷貝而來。
+# 試算表
+- Name : L539_FreqSec ,L649_FreqSec ,L638_FreqSec ,LSix_FreqSec
+- Describe : 活性表資料庫。
+
+## 工作表
+- Name : FreqSecHis
+- Describe : 分區歷史遺漏數工作表，由 FreqSec 工作表提供把已開出的號碼拷貝而來。
+
+
 
 | 欄位名稱    | 數值型態 | 預設值 | 顯示標題  | 說明            |
 | :---------- | -------- | :----- | :-------- | :-------------- |
-| lngMethodSN | Binint   | null   | 方法序號  | 方法序號        |
+| lngMethodSN | Bigint   | null   | 方法序號  | 方法序號        |
 | Date        | Date     | null   | 日數      | 格式為YYYYmmdd  |
 | intN        | Int      | 0      | 號碼      | 號碼            |
 | intM        | Int      | 0      | 遺漏數    | 遺漏數值        |

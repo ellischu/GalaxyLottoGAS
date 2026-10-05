@@ -109,11 +109,14 @@ function getHistoryNumbers(lotto, dateStr, methodSN) {
 
     var rows = missResult.rows;
     var headers = missResult.headers;
+    // L539 取 N1~N5，其餘彩種取 N1~N6；S1 特別號獨立回傳（L539 無 S1）
+    var nCount = (lotto === "L539") ? 5 : 6;
     var nCols = [];
-    for (var ci = 0; ci < headers.length; ci++) {
-      var h = String(headers[ci] || "").trim();
-      if (h.match(/^N[1-5]$/)) nCols.push(ci);
+    for (var ni = 1; ni <= nCount; ni++) {
+      var nIdx = headers.indexOf("N" + ni);
+      if (nIdx > -1) nCols.push(nIdx);
     }
+    var s1Idx = headers.indexOf("S1");
 
     var result = [];
     var offsets = [5, 10, 25, 50, 100];
@@ -123,9 +126,11 @@ function getHistoryNumbers(lotto, dateStr, methodSN) {
         var row = rows[idx];
         var nums = [];
         nCols.forEach(function(nci) { if (row[nci] !== undefined && row[nci] !== null && row[nci] !== "") nums.push(Number(row[nci])); });
+        var special = null;
+        if (s1Idx > -1 && row[s1Idx] !== undefined && row[s1Idx] !== null && row[s1Idx] !== "") special = Number(row[s1Idx]);
         var rawDate = row[1];
         var dateStr = rawDate instanceof Date ? Utilities.formatDate(rawDate, "Asia/Taipei", "yyyy-MM-dd") : String(rawDate || "").substring(0, 10);
-        result.push({ offset: off, numbers: nums, date: dateStr });
+        result.push({ offset: off, numbers: nums, special: special, date: dateStr });
       }
     });
     return result;

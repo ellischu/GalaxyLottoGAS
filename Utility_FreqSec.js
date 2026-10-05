@@ -1,6 +1,12 @@
 /**
  * FreqSec 工作表緩存與計算模組
  *
+ * 新架構（資料夾 > 試算表 > 工作表），FreqSec 模組專用：
+ *   All  ← {lotto} 試算表
+ *   Miss ← {lotto}_Miss 試算表（computeFreqSecData 經 getMissDataTable 間接使用）
+ *   FreqSec / FreqSecTest / FreqSecHis ← {lotto}_FreqSec 試算表
+ * 每彩種需 Sheets 註冊表含 {lotto}、{lotto}_Miss、{lotto}_FreqSec 三筆（4 彩種共 12 筆）。
+ *
  * FreqSec 工作表格式：
  *   [lngMethodSN, Date, N, intM, intMinM, intMaxM, sngAvgM, sngACM,
  *    intFreq05, intMin05, intMax05, sngAvg05, sngAC05,
@@ -19,11 +25,106 @@ function _normDate(v) {
   return Utilities.formatDate(d, "Asia/Taipei", "yyyy-MM-dd");
 }
 
+/**
+ * 新架構試算表解析（資料夾 > 試算表 > 工作表），FreqSec 模組專用。
+ * 本模組每彩種需 Sheets 註冊表含 {lotto}、{lotto}_Miss、{lotto}_FreqSec 三筆（4 彩種共 12 筆）。
+ */
+function getFreqSecSpreadsheets(lotto) {
+  var allSS = getFreqSecSpreadsheetEntry(lotto);
+  var missSS = getFreqSecSpreadsheetEntry(lotto + "_Miss");
+  var freqSS = getFreqSecSpreadsheetEntry(lotto + "_FreqSec");
+  return { allSS: allSS, missSS: missSS, freqSS: freqSS };
+}
+
+/**
+ * 開啟 Sheets 註冊表指定鍵的試算表；鍵缺失或 URL 無效時拋出可讀錯誤。
+ * FreqSec 模組專用（鍵為 {lotto} / {lotto}_Miss / {lotto}_FreqSec）。
+ */
+function getFreqSecSpreadsheetEntry(key) {
+  var trObj = null;
+  try {
+    trObj = getTargetsheet("Sheets", key);
+  } catch (e) {
+    throw new Error("Sheets 註冊表缺少 FreqSec 專用鍵 [" + key + "] 或開啟失敗（" + e.message + "），請補上每彩種 {彩種}、{彩種}_Miss、{彩種}_FreqSec 共 12 筆註冊");
+  }
+  if (!trObj || !trObj.spreadsheet) {
+    throw new Error("Sheets 註冊表缺少 FreqSec 專用鍵 [" + key + "]，請補上每彩種 {彩種}、{彩種}_Miss、{彩種}_FreqSec 共 12 筆註冊");
+  }
+  return trObj.spreadsheet;
+}
+
+/**
+ * 新架構建表（FreqSec 模組專用，操作對象限 {lotto}_FreqSec 試算表）。
+ * 確保 FreqSec / FreqSecTest 存在且含標頭；FreqSecHis 僅確保存在（由 FreqSec 拷貝已開出號碼，寫入邏輯另行補上）。
+ */
+function ensureFreqSecSheets(freqSS) {
+  var freqSheet = freqSS.getSheetByName("FreqSec");
+  if (!freqSheet) {
+    freqSheet = freqSS.insertSheet("FreqSec");
+    freqSheet.appendRow(["lngMethodSN", "Date", "intN", "intM", "intMinM", "intMaxM", "sngAvgM", "sngACM",
+      "intFreq05", "intMin05", "intMax05", "sngAvg05", "sngAC05",
+      "intFreq10", "intMin10", "intMax10", "sngAvg10", "sngAC10",
+      "intFreq25", "intMin25", "intMax25", "sngAvg25", "sngAC25",
+      "intFreq50", "intMin50", "intMax50", "sngAvg50", "sngAC50",
+      "intFreq100", "intMin100", "intMax100", "sngAvg100", "sngAC100"]);
+    freqSheet.setFrozenRows(1);
+  }
+  var testSheet = freqSS.getSheetByName("FreqSecTest");
+  if (!testSheet) {
+    testSheet = freqSS.insertSheet("FreqSecTest");
+    testSheet.appendRow(["lngMethodSN", "cacheData", "updatedAt"]);
+    testSheet.setFrozenRows(1);
+  }
+  var hisSheet = freqSS.getSheetByName("FreqSecHis");
+  if (!hisSheet) {
+    hisSheet = freqSS.insertSheet("FreqSecHis");
+    hisSheet.appendRow(["lngMethodSN", "Date", "intN", "intM", "intMinM", "intMaxM", "sngAvgM", "sngACM",
+      "intFreq05", "intMin05", "intMax05", "sngAvg05", "sngAC05",
+      "intFreq10", "intMin10", "intMax10", "sngAvg10", "sngAC10",
+      "intFreq25", "intMin25", "intMax25", "sngAvg25", "sngAC25",
+      "intFreq50", "intMin50", "intMax50", "sngAvg50", "sngAC50",
+      "intFreq100", "intMin100", "intMax100", "sngAvg100", "sngAC100"]);
+    hisSheet.setFrozenRows(1);
+  }
+  SpreadsheetApp.flush();
+  return { freqSheet: freqSheet, testSheet: testSheet, hisSheet: hisSheet };
+}
+
+/**
+ * 驗證 FreqSec 新架構 Sheets 註冊表（唯讀，不寫入）。
+ * 僅檢查本模組所需的 4 彩種 × 3 筆：{lotto}、{lotto}_Miss、{lotto}_FreqSec（共 12 筆）。
+ * 部署前在 GAS 編輯器執行一次即可。
+ * @returns {Object} { status, checked, missing }
+ */
+function verifyFreqSecRegistry() {
+  var lottos = ["L539", "L649", "L638", "LSix"];
+  var suffixes = ["", "_Miss", "_FreqSec"];
+  var missing = [];
+  var checked = 0;
+  lottos.forEach(function(lotto) {
+    suffixes.forEach(function(sfx) {
+      var key = lotto + sfx;
+      checked++;
+      try {
+        var trObj = getTargetsheet("Sheets", key);
+        if (!trObj || !trObj.spreadsheet) missing.push(key);
+      } catch (e) {
+        missing.push(key + " (" + e.message + ")");
+      }
+    });
+  });
+  if (missing.length > 0) {
+    return { status: "error", checked: checked, missing: missing };
+  }
+  return { status: "success", checked: checked, missing: [] };
+}
+
 function _getBacktestCache(lotto, methodSN) {
   try {
-    var trObj = getTargetsheet("Sheets", lotto);
-    if (!trObj || !trObj.spreadsheet) return null;
-    var sheet = trObj.spreadsheet.getSheetByName("FreqSecTest");
+    // 新架構：FreqSecTest ← {lotto}_FreqSec 試算表
+    var freqSS = getFreqSecSpreadsheetEntry(lotto + "_FreqSec");
+    if (!freqSS) return null;
+    var sheet = freqSS.getSheetByName("FreqSecTest");
     if (!sheet) return null;
     var data = sheet.getDataRange().getValues();
     if (data.length < 2) return null;
@@ -42,11 +143,12 @@ function _getBacktestCache(lotto, methodSN) {
 
 function _setBacktestCache(lotto, methodSN, cacheData) {
   try {
-    var trObj = getTargetsheet("Sheets", lotto);
-    if (!trObj || !trObj.spreadsheet) return;
-    var sheet = trObj.spreadsheet.getSheetByName("FreqSecTest");
+    // 新架構：FreqSecTest ← {lotto}_FreqSec 試算表
+    var freqSS = getFreqSecSpreadsheetEntry(lotto + "_FreqSec");
+    if (!freqSS) return;
+    var sheet = freqSS.getSheetByName("FreqSecTest");
     if (!sheet) {
-      sheet = trObj.spreadsheet.insertSheet("FreqSecTest");
+      sheet = freqSS.insertSheet("FreqSecTest");
       sheet.appendRow(["lngMethodSN", "cacheData", "updatedAt"]);
     }
     var data = sheet.getDataRange().getValues();
@@ -70,9 +172,10 @@ function _setBacktestCache(lotto, methodSN, cacheData) {
 
 function getFreqSecTable(lotto, dateStr, methodSN) {
   try {
-    var trObj = getTargetsheet("Sheets", lotto);
-    if (!trObj || !trObj.spreadsheet) return { rows: [], headers: [] };
-    var sheet = trObj.spreadsheet.getSheetByName("FreqSec");
+    // 新架構：FreqSec ← {lotto}_FreqSec 試算表
+    var freqSS = getFreqSecSpreadsheetEntry(lotto + "_FreqSec");
+    if (!freqSS) return { rows: [], headers: [] };
+    var sheet = freqSS.getSheetByName("FreqSec");
     if (!sheet) return { rows: [], headers: [] };
 
     var allData = sheet.getDataRange().getValues();
@@ -608,16 +711,18 @@ function getBacktestAndScore(lotto, dateStr, methodSN) {
 /**
  * FreqSec 查詢流程（組合 Step1~3）
  *
- * Step 1: 比對主試算表 lotto 表 vs 子試算表 All 表的最後日期
+ * 新架構：All ← {lotto} 試算表；FreqSec ← {lotto}_FreqSec 試算表。
+ * Step 1: 比對主試算表 lotto 表 vs {lotto} 試算表 All 表的最後日期
  *         不同則呼叫 combineData→回傳 error 若續傳中
  * Step 2: 查 FreqSec 快取 → 無資料則計算+寫入
  * Step 3: 檢查列數 → 不足則清除→重算→寫入；正確則直接回傳
  */
 function getFreqSecData(lotto, dateStr, methodSN) {
-  // Step 1: combineData 檢查
+  // Step 1: combineData 檢查（新架構：All ← {lotto} 試算表）
   var srcSheet = mainspreadsheet.getSheetByName(lotto);
-  var trObj = getTargetsheet("Sheets", lotto);
-  var allSheet = trObj.spreadsheet.getSheetByName("All");
+  var freqSS = getFreqSecSpreadsheetEntry(lotto + "_FreqSec");
+  var allSS = getFreqSecSpreadsheetEntry(lotto);
+  var allSheet = allSS.getSheetByName("All");
 
   if (srcSheet && allSheet) {
     var srcHeaders = srcSheet.getRange(1, 1, 1, srcSheet.getLastColumn()).getValues()[0];
@@ -649,11 +754,11 @@ function getFreqSecData(lotto, dateStr, methodSN) {
   var cached = getFreqSecTable(lotto, dateStr, methodSN);
 
   if (cached.rows.length === 0) {
-    // Step 2a: 無快取 → 計算 + 寫入
+    // Step 2a: 無快取 → 計算 + 寫入（新架構：FreqSec ← {lotto}_FreqSec 試算表）
     Logger.log("[getFreqSecData] no cache, computing...");
     var computed = computeFreqSecData(lotto, dateStr, methodSN);
     if (computed.status !== "success") return computed;
-    writeFreqSecBatch(trObj.spreadsheet, lotto, methodSN, dateStr, computed.statsHeaders, computed.statsRows);
+    writeFreqSecBatch(freqSS, lotto, methodSN, dateStr, computed.statsHeaders, computed.statsRows);
     return computed;
   }
 
@@ -677,11 +782,11 @@ function getFreqSecData(lotto, dateStr, methodSN) {
     };
   }
 
-  // Step 3: 不足 → 清除 → 重算 → 寫入
+  // Step 3: 不足 → 清除 → 重算 → 寫入（新架構：FreqSec ← {lotto}_FreqSec 試算表）
   Logger.log("[getFreqSecData] cache incomplete: %d rows, expected %d, recomputing...", cached.rows.length, maxNum);
-  clearFreqSecData(trObj.spreadsheet, lotto, methodSN, dateStr);
+  clearFreqSecData(freqSS, lotto, methodSN, dateStr);
   var computed = computeFreqSecData(lotto, dateStr, methodSN);
   if (computed.status !== "success") return computed;
-  writeFreqSecBatch(trObj.spreadsheet, lotto, methodSN, dateStr, computed.statsHeaders, computed.statsRows);
+  writeFreqSecBatch(freqSS, lotto, methodSN, dateStr, computed.statsHeaders, computed.statsRows);
   return computed;
 }

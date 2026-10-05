@@ -36,6 +36,7 @@
       $("#summaryDate").text(date);
     }
     try { sessionStorage.setItem("_missDataCached", JSON.stringify({ lotto: lotto, date: date, methodSN: method })); } catch(e) {}
+    $("#missTableTitle").text("遺漏數統計表 - " + lotto + " - " + date + " - " + method);
     $("#summaryLotto").text(lotto);
     $("#summaryMethodSN").text(method);
 
@@ -160,10 +161,13 @@
                 // 載入當日號碼
                 google.script.run
                   .withSuccessHandler(function (nr) {
-                    if (nr && nr.status === "success" && nr.numbers && nr.numbers.length > 0) {
-                      var html = nr.numbers.map(function (n) {
+                    if (nr && nr.status === "success" && ((nr.numbers && nr.numbers.length > 0) || (nr.special !== null && nr.special !== undefined && nr.special !== ""))) {
+                      var html = (nr.numbers || []).map(function (n) {
                         return '<span class="summary-num-ball">' + n + "</span>";
                       }).join(" ");
+                      if (nr.special !== null && nr.special !== undefined && nr.special !== "") {
+                        html += ' <span class="summary-num-ball bg-info" title="特別號">' + nr.special + "</span>";
+                      }
                       $("#summaryDrawNumbers").html(html);
                     } else {
                       $("#summaryDrawNumbers").text("無資料");
@@ -275,7 +279,7 @@
     rows.forEach(function (row, ri) {
       var ballToPos = {};
       headers.forEach(function(h, ci) {
-        if (h.match(/^N[1-5]$/)) {
+        if (h.match(/^N[1-6]$/)) {
           ballToPos[parseInt(row[ci])] = parseInt(h.substring(1));
         }
       });

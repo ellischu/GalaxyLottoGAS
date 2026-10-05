@@ -1,13 +1,139 @@
 /** 演算法邏輯版本：當修改 corePredict 權重或公式後，請遞增此版本號以自動失效舊快取 */
 const PRCT1_ALGO_VERSION = "A147"; // 實作紫微共振能量歸一化與顯示精度優化
 
-/** 執行緒級別快取，用於減少試算表讀取次數 (效能優化) */
-var _prct1_propertyCache = {};
+/** 執行緒級別快取，用於減少試算表讀取次數 (效能優化，Prediction1 模組專用) */
+var _predic1_propertyCache = {};
+
+/**
+ * 新架構試算表解析（資料夾 > 試算表 > 工作表）。
+ * Prediction1 模組專用（勿與 Predict 模組的 prct1_* / {lotto}_Predict 混用）：
+ *   All  ← {lotto} 試算表
+ *   Miss ← {lotto}_Miss 試算表（useTrend=true 時必需）
+ *   predic1_Settings / predic1_Property / predic1_History / predic1_Settings_Archive ← {lotto}_Prediction1 試算表
+ * 本模組每彩種需 Sheets 註冊表含 {lotto}、{lotto}_Miss、{lotto}_Prediction1 三筆（4 彩種共 12 筆）。
+ */
+function getPrediction1Spreadsheets(lotto) {
+  var allSS = getPrediction1SpreadsheetEntry(lotto);
+  var missSS = getPrediction1SpreadsheetEntry(lotto + "_Miss");
+  var p1SS = getPrediction1SpreadsheetEntry(lotto + "_Prediction1");
+  return { allSS: allSS, missSS: missSS, p1SS: p1SS };
+}
+
+/**
+ * 開啟 Sheets 註冊表指定鍵的試算表；鍵缺失或 URL 無效時拋出可讀錯誤。
+ * Prediction1 模組專用（鍵為 {lotto} / {lotto}_Miss / {lotto}_Prediction1，勿傳入 {lotto}_Predict）。
+ */
+function getPrediction1SpreadsheetEntry(key) {
+  var trObj = null;
+  try {
+    trObj = getTargetsheet("Sheets", key);
+  } catch (e) {
+    throw new Error(`Sheets 註冊表缺少 Prediction1 專用鍵 [${key}] 或開啟失敗（${e.message}），請補上每彩種 {彩種}、{彩種}_Miss、{彩種}_Prediction1 共 12 筆註冊`);
+  }
+  if (!trObj || !trObj.spreadsheet) {
+    throw new Error(`Sheets 註冊表缺少 Prediction1 專用鍵 [${key}]，請補上每彩種 {彩種}、{彩種}_Miss、{彩種}_Prediction1 共 12 筆註冊`);
+  }
+  return trObj.spreadsheet;
+}
+
+/**
+ * 新架構建表（Prediction1 模組專用，操作對象限 {lotto}_Prediction1 試算表）。
+ * 欄位以實際工作表為準（勿套用 Predict 模組 prct1_* 的標頭）：
+ *   predic1_Settings：型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間/學習標記（9 欄，預測歷史紀錄）
+ *   predic1_History：型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間（8 欄，回測快取）
+ *   predic1_Property：Parameter/Value/LastUpdated（KV；程式讀寫第 3 欄時間戳）
+ *   predic1_Settings_Archive：Settings 9 欄 ＋ 存檔時間（10 欄）
+ * 非破壞式：工作表已存在時絕不改寫標頭與資料，僅在缺表或空表時建表填標頭。
+ */
+function ensurePrediction1Sheets(p1SS) {
+  function ensureSheet(name, header) {
+    var sh = p1SS.getSheetByName(name);
+    if (!sh) {
+      sh = p1SS.insertSheet(name);
+      sh.appendRow(header);
+      sh.setFrozenRows(1);
+    } else if (sh.getLastRow() === 0) {
+      sh.appendRow(header);
+      sh.setFrozenRows(1);
+    }
+    return sh;
+  }
+  var propSheet = ensureSheet("predic1_Property", ["Parameter", "Value", "LastUpdated"]);
+  // 既有 2 欄 Property 表僅補第 3 欄標頭，不動任何資料列
+  try {
+    if (propSheet.getLastColumn() < 3 || !String(propSheet.getRange(1, 3).getValue() || "").trim()) {
+      propSheet.getRange(1, 3).setValue("LastUpdated");
+    }
+  } catch (e) { /* 標頭修補失敗不阻斷主流程 */ }
+  var settingsSheet = ensureSheet("predic1_Settings", ["型態", "彩種", "日期", "推薦數", "遺漏模式", "命中數", "命中號碼", "更新時間", "學習標記"]);
+  var historySheet = ensureSheet("predic1_History", ["型態", "彩種", "日期", "推薦數", "遺漏模式", "命中數", "命中號碼", "更新時間"]);
+  var archiveSheet = ensureSheet("predic1_Settings_Archive", ["型態", "彩種", "日期", "推薦數", "遺漏模式", "命中數", "命中號碼", "更新時間", "學習標記", "存檔時間"]);
+  SpreadsheetApp.flush();
+  return { propertySheet: propSheet, settingsSheet: settingsSheet, historySheet: historySheet, archiveSheet: archiveSheet };
+}
+
+/**
+ * 將 9 欄歷史列搬入 predic1_Settings_Archive（Prediction1 專用，10 欄：末欄補存檔時間）。
+ * Archive 上限 3000 筆資料列，超過則刪除最舊列（保留標頭）。
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} p1SS {lotto}_Prediction1 試算表
+ * @param {Array<Array>} rows9 9 欄歷史列（型態…學習標記）
+ * @returns {number} 搬入筆數
+ */
+function archivePredic1Rows(p1SS, rows9) {
+  if (!rows9 || rows9.length === 0) return 0;
+  var archiveSheet = ensurePrediction1Sheets(p1SS).archiveSheet;
+  var now = new Date();
+  var rows10 = rows9.map(function(r) {
+    var row = (r || []).slice(0, 9);
+    while (row.length < 9) row.push("");
+    row.push(now);
+    return row;
+  });
+  var startRow = Math.max(archiveSheet.getLastRow() + 1, 2);
+  archiveSheet.getRange(startRow, 1, rows10.length, 10).setValues(rows10);
+  SpreadsheetApp.flush();
+  var maxDataRows = 3000;
+  var dataRows = archiveSheet.getLastRow() - 1;
+  if (dataRows > maxDataRows) {
+    archiveSheet.deleteRows(2, dataRows - maxDataRows);
+  }
+  return rows10.length;
+}
+
+/**
+ * 驗證 Prediction1 新架構 Sheets 註冊表（唯讀，不寫入）。
+ * 僅檢查本模組所需的 4 彩種 × 3 筆：{lotto}、{lotto}_Miss、{lotto}_Prediction1（共 12 筆）。
+ * 與 Predict 模組的 verifyPredictRegistry（16 筆，含 _Predict）分開，勿混用。
+ * 部署前在 GAS 編輯器執行一次即可。
+ * @returns {Object} { status, checked, missing }
+ */
+function verifyPrediction1Registry() {
+  var lottos = ["L539", "L649", "L638", "LSix"];
+  var suffixes = ["", "_Miss", "_Prediction1"];
+  var missing = [];
+  var checked = 0;
+  lottos.forEach(function(lotto) {
+    suffixes.forEach(function(sfx) {
+      var key = lotto + sfx;
+      checked++;
+      try {
+        var trObj = getTargetsheet("Sheets", key);
+        if (!trObj || !trObj.spreadsheet) missing.push(key);
+      } catch (e) {
+        missing.push(key + " (" + e.message + ")");
+      }
+    });
+  });
+  if (missing.length > 0) {
+    return { status: "error", checked: checked, missing: missing };
+  }
+  return { status: "success", checked: checked, missing: [] };
+}
 
 /**
  * 取得彩種核心組態 (封裝硬編碼參數)
  */
-function getPrct1LottoConfig(lotto) {
+function getPredic1LottoConfig(lotto) {
   const configs = {
     // theorySum = k * (n+1) / 2
     // stdDev = sqrt(k * (n+1) * (n-k) / 12)
@@ -47,12 +173,17 @@ function getPrct1LottoConfig(lotto) {
   return configs[lotto] || configs.L539;
 }
 
+/** 舊名相容別名（Prediction1 內部已改用 getPredic1LottoConfig，勿與 Predict 模組混用） */
+function getPrct1LottoConfig(lotto) {
+  return getPredic1LottoConfig(lotto);
+}
+
 /**
  * getPrediction01 - 主預測進入點
  */
 function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
   try {
-    const config = getPrct1LottoConfig(lotto);
+    const config = getPredic1LottoConfig(lotto);
     const startTime = Date.now();
     const targetDate = new Date(dateStr.replace(/-/g, "/"));
     targetDate.setHours(0, 0, 0, 0);
@@ -60,13 +191,16 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
 
     setPredictProgress(lotto, 5, "正在啟動星系運算儀...");
 
-    const trObj = getTargetsheet("Sheets", lotto);
-    const ss = trObj.spreadsheet;
+    // 新架構：All ← {lotto} 試算表；Miss ← {lotto}_Miss 試算表；設定 ← {lotto}_Prediction1 試算表
+    const sheets = getPrediction1Spreadsheets(lotto);
+    const ss = sheets.p1SS;
+    const ensured = ensurePrediction1Sheets(ss);
 
-    const allSheet = ss.getSheetByName("All");
-    const missSheet = ss.getSheetByName("Miss");
-    const settingsSheet =
-      ss.getSheetByName("prct1_Settings") || ss.insertSheet("prct1_Settings");
+    const allSheet = sheets.allSS.getSheetByName("All");
+    if (!allSheet) throw new Error(`找不到 ${lotto} 試算表中的 All 工作表`);
+    const missSheet = sheets.missSS.getSheetByName("Miss");
+    if (useTrend && !missSheet) throw new Error(`找不到 ${lotto}_Miss 試算表中的 Miss 工作表（已啟用遺漏模式）`);
+    const settingsSheet = ensured.settingsSheet;
 
     // 1. 提取 AllData 中該日期的基本資料 (檢查是否已有答案)
     const mainSs = SpreadsheetApp.getActiveSpreadsheet();
@@ -395,13 +529,6 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
 
       const resultNumbers = predResult.numbers.slice(0, topNChoice);
 
-      // 4. 計算相關係數 (假設以權重前 N 名與實際結果的匹配度作為係數參考)
-      const correlation = calculateCorrelation(
-        resultNumbers,
-        todayActualInAll,
-        lotto,
-      );
-
       // --- 數據分析師：平衡偏移偵測 (趨勢比對) ---
       const recentDataForTrend = validatedData.slice(-20);
       const midPointAnalyst = Math.floor(config.maxNum / 2);
@@ -490,40 +617,30 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
         prevDrawNums,
       );
 
-      // 5. 同步記錄 分析參數 與 相關係數 至 prct1_Settings
-      if (settingsSheet.getLastRow() === 0) {
-        settingsSheet.appendRow([
-          "執行時間",
-          "預測日期",
-          "相關係數",
-          "推薦數",
-          "遺漏模式",
-          "變動參數摘要",
-          "備註",
-        ]);
-      }
-      const changedParamsSummary = envDetails
-        .filter((d) => d.isChanged)
-        .map((d) => `${d.name}:${d.value}`)
-        .join("; ");
-      let remarks = isS1Hit
-        ? `🎯 特別號命中！摘要: ${changedParamsSummary}`
-        : "";
-
-      if (radarMsg) remarks = (remarks ? remarks + " | " : "") + radarMsg;
-
+      // 5. 寫入本次預測歷史列至 predic1_Settings（9 欄歷史格式，與工作表標頭一致）
+      // 僅當日已開獎才有命中數；未開獎則命中數留空（自動學習會略過空值列）
+      const liveHitBalls = isTodayDrawn
+        ? resultNumbers
+            .filter((n) => {
+              const v = Number(n.number);
+              return actualNums.includes(v) || (actualS1 && v === actualS1);
+            })
+            .map((n) => String(n.number).padStart(2, "0"))
+        : [];
       settingsSheet.appendRow([
-        new Date(),
+        "HIT_HISTORY_" + PRCT1_ALGO_VERSION,
+        lotto,
         dateStr,
-        correlation,
         topNChoice,
         useTrend,
-        changedParamsSummary,
-        remarks,
+        isTodayDrawn ? liveHitBalls.length : "",
+        JSON.stringify(liveHitBalls),
+        new Date(),
+        "",
       ]);
 
       // --- 新增：自動管理屬性工作表版本 ---
-      managePrct1PropertyVersions(ss);
+      managePredic1PropertyVersions(ss);
 
       // --- 核心優化：權重自動學習機制 (初步框架) ---
       autoAdjustBaseWeights(settingsSheet, lotto, ss);
@@ -661,12 +778,14 @@ function preloadPrediction1Cache() {
 
   lottos.forEach((lotto) => {
     try {
-      const trObj = getTargetsheet("Sheets", lotto);
-      const ss = trObj.spreadsheet;
+      // 新架構：All ← {lotto}；Miss ← {lotto}_Miss；屬性 ← {lotto}_Prediction1
+      const sheets = getPrediction1Spreadsheets(lotto);
+      const ss = sheets.p1SS;
+      ensurePrediction1Sheets(ss);
       const learnedWeights = getLearnedBaseWeights(lotto, ss);
       const windowSize = Math.round(learnedWeights.observationWindow || 60);
 
-      const allSheet = trObj.spreadsheet.getSheetByName("All");
+      const allSheet = sheets.allSS.getSheetByName("All");
       if (!allSheet) return;
 
       const allDataRaw = allSheet
@@ -685,15 +804,15 @@ function preloadPrediction1Cache() {
       const missCacheKey = `${PRCT1_ALGO_VERSION}_W${windowSize}_MISS_${lotto}_${lastDrawDate}`;
 
       const stats = calculateStats(trainingData, lotto);
-      setPropertySheetValue(
-        "prct1_Property",
+      setPredic1PropertyValue(
+        "predic1_Property",
         cacheKey,
         stats,
-        trObj.spreadsheet,
+        ss,
       );
 
       // --- 強化：同時預載 Miss 遺漏數據包 ---
-      const missSheet = trObj.spreadsheet.getSheetByName("Miss");
+      const missSheet = sheets.missSS.getSheetByName("Miss");
       if (missSheet) {
         const missData = missSheet
           .getDataRange()
@@ -710,16 +829,16 @@ function preloadPrediction1Cache() {
             null,
           ),
         };
-        setPropertySheetValue(
-          "prct1_Property",
+        setPredic1PropertyValue(
+          "predic1_Property",
           missCacheKey,
           missPackage,
-          trObj.spreadsheet,
+          ss,
         );
       }
 
       // --- 新增：自動管理屬性工作表版本 ---
-      managePrct1PropertyVersions(trObj.spreadsheet);
+      managePredic1PropertyVersions(ss);
 
       Logger.log(
         `[Cache Preload] 成功為 ${lotto} 預載 W${windowSize} 快取 (${lastDrawDate})`,
@@ -777,30 +896,9 @@ function checkZodiacRelation(yearB, monthB, dayB) {
   return { isClash, isHarmony, tripleElement };
 }
 
-/** 計算簡單相關係數 */
-function calculateCorrelation(predicted, actual, lotto) {
-  if (!actual) return (Math.random() * 0.4 + 0.2).toFixed(4);
-  const config = getPrct1LottoConfig(lotto);
-
-  // 與 calculateStats 邏輯對齊：區分主球數與含特別號之有效總球數
-  const mainBallCount = config.ballCount;
-  const effectiveBallCount =
-    mainBallCount + (lotto !== "L539" && config.hasS1 ? 1 : 0);
-
-  const actualNums = actual
-    .slice(1, effectiveBallCount + 1)
-    .map(Number)
-    .filter((n) => n > 0);
-  const hits = predicted.filter((n) => {
-    const val = typeof n === "object" ? Number(n.number) : Number(n);
-    return actualNums.includes(val);
-  }).length;
-  return (hits / mainBallCount).toFixed(4);
-}
-
 /** 計算組合平衡指標統計 */
 function getBalanceStats(numbers, lotto) {
-  const config = getPrct1LottoConfig(lotto);
+  const config = getPredic1LottoConfig(lotto);
   const mid = Math.floor(config.maxNum / 2);
   let big = 0,
     small = 0,
@@ -864,7 +962,7 @@ function corePredict(
   allDataFull = null, // 全量歷史資料 (用於廣域搜尋相同的本命)
 ) {
   try {
-    const config = getPrct1LottoConfig(lotto);
+    const config = getPredic1LottoConfig(lotto);
     const learnedWeights = getLearnedBaseWeights(lotto, ss); // 取得學習後的權重
 
     // --- 核心修正：套用進化式觀察窗口 ---
@@ -888,7 +986,7 @@ function corePredict(
     // 關鍵：快取 Key 必須包含 windowSize，確保窗口變動時統計同步更新
     const cacheKey = `${PRCT1_ALGO_VERSION}_W${windowSize}_STATS_${lotto}_${lastDrawDate}`;
 
-    const cached = getPropertySheetValue("prct1_Property", cacheKey, null, ss);
+    const cached = getPredic1PropertyValue("predic1_Property", cacheKey, null, ss);
     if (cached) {
       try {
         stats = cached;
@@ -901,10 +999,10 @@ function corePredict(
     if (!stats) {
       stats = calculateStats(activeTrainingData, lotto, targetDate.getTime());
       try {
-        // 調整為使用該彩種專屬的 prct1_Property 工作表
-        setPropertySheetValue("prct1_Property", cacheKey, stats, ss);
+        // 調整為使用該彩種專屬的 predic1_Property 工作表
+        setPredic1PropertyValue("predic1_Property", cacheKey, stats, ss);
       } catch (e) {
-        Logger.log("prct1_Property 快取寫入失敗: " + e.message);
+        Logger.log("predic1_Property 快取寫入失敗: " + e.message);
       }
     }
 
@@ -1142,8 +1240,8 @@ function corePredict(
       let missPackage = null;
 
       // 優先從快取讀取 Miss 數據包
-      const cachedMiss = getPropertySheetValue(
-        "prct1_Property",
+      const cachedMiss = getPredic1PropertyValue(
+        "predic1_Property",
         missCacheKey,
         null,
         ss,
@@ -1209,7 +1307,7 @@ function corePredict(
       .sort((a, b) => b[1] - a[1])
       .map((entry) => entry[0]);
 
-    // --- 新增：五行屬性分配 (與 Predict_Server.js 保持一致) ---
+    // --- 新增：五行屬性分配 (與 Prediction2_Server.js 保持一致) ---
     const categories = [
       { name: "金星", color: "badge-metal" },
       { name: "木星", color: "badge-wood" },
@@ -1244,22 +1342,7 @@ function corePredict(
       ziWeiHouseDetails: ziWeiHouseDetails,
     };
   } catch (err) {
-    // 記錄詳細錯誤到 prct1_Settings
-    try {
-      const trObj = getTargetsheet("Sheets", lotto);
-      const settingsSheet = trObj.spreadsheet.getSheetByName("prct1_Settings");
-      if (settingsSheet) {
-        settingsSheet.appendRow([
-          new Date(),
-          "CORE_ERROR",
-          "N/A",
-          topNChoice,
-          "N/A",
-          "Algorithm Failure",
-          err.stack.substring(0, 500),
-        ]);
-      }
-    } catch (e) {}
+    // predic1_Settings 僅存放 9 欄歷史紀錄，不寫入錯誤列；錯誤由外層 logSystemError 記入 ErrorLog
     throw err; // 拋出讓外層 getPrediction01 捕捉
   }
 }
@@ -1383,7 +1466,7 @@ function applyConsecutiveInterceptor(weights, topN) {
 
 /** 統計出球頻率、連莊與隔期跳 */
 function calculateStats(data, type, targetTime) {
-  const config = getPrct1LottoConfig(type);
+  const config = getPredic1LottoConfig(type);
 
   // 核心修正：強制進行日期過濾，確保統計數據 (含連莊率 sets 陣列) 不包含 targetTime (含) 以後的資料
   const safeData = data.filter((row) => {
@@ -1579,7 +1662,7 @@ function calculateMeanReversionProbability(zTrend) {
 
 /** 計算各球號遺漏值的平均值與標準差 */
 function calculateMissStandardDeviation(missData, lotto, startIdx, targetTime) {
-  const config = getPrct1LottoConfig(lotto);
+  const config = getPredic1LottoConfig(lotto);
   const maxNum = config.maxNum;
   const stats = {};
 
@@ -1605,7 +1688,7 @@ function calculateMissStandardDeviation(missData, lotto, startIdx, targetTime) {
 
 /** 遺漏數加權 (精確球號映射版) */
 function calculateMissWeights(data, lotto, targetTime) {
-  const config = getPrct1LottoConfig(lotto);
+  const config = getPredic1LottoConfig(lotto);
   const maxNum = config.maxNum;
   const missStartIdx = lotto === "L539" ? 7 : 9;
   const weights = {};
@@ -1659,7 +1742,7 @@ function generateLabels(nums, stats, reboundNumbers) {
 /** 命中檢查 */
 function checkHits(predicted, actual, lotto, lastDraw = [], prevDraw = []) {
   if (!actual) return { summary: "尚未開獎", repeatHits: 0, skipHits: 0 };
-  const config = getPrct1LottoConfig(lotto);
+  const config = getPredic1LottoConfig(lotto);
 
   // 區分一般號與特別號 (L539 無特別號)
   const mainNums = actual
@@ -1701,10 +1784,9 @@ function getRecentHistoryHits(
   useTrend,
 ) {
   const results = [];
-  const trObj = getTargetsheet("Sheets", lotto);
-  const ss = trObj.spreadsheet;
-  const historySheet =
-    ss.getSheetByName("prct1_History") || ss.insertSheet("prct1_History");
+  // 新架構：歷史紀錄位於 {lotto}_Prediction1 試算表 > predic1_History 工作表（Prediction1 專用，勿用 prct1_History）
+  const ss = getPrediction1Spreadsheets(lotto).p1SS;
+  const historySheet = ensurePrediction1Sheets(ss).historySheet;
 
   const cacheTypeLabel = "HIT_HISTORY_" + PRCT1_ALGO_VERSION;
 
@@ -1820,11 +1902,12 @@ function getRecentHistoryHits(
   const startIndex = Math.max(0, targetIdx - limit + 1);
   const totalSteps = targetIdx - startIndex + 1;
   let newRecords = [];
-  const config = getPrct1LottoConfig(lotto);
+  const config = getPredic1LottoConfig(lotto);
 
   // 效能優化：在回測迴圈開始前預載 Miss 全表，避免 corePredict 反覆讀取
   const missDataFull = missSheet ? missSheet.getDataRange().getValues() : null;
-  const allHeaders = ss
+  // 新架構：All 標頭來自 {lotto} 試算表（ss 為 {lotto}_Prediction1 試算表）
+  const allHeaders = getPrediction1Spreadsheets(lotto).allSS
     .getSheetByName("All")
     .getRange(1, 1, 1, 50)
     .getValues()[0];
@@ -2023,12 +2106,14 @@ function getPrediction1HistoryStats(lotto, topN, useTrend, dateStr, limit) {
     `[Debug-History] 前端請求回測統計: 彩種=${lotto}, 推薦數=${topN}, 模式=${useTrend}, 日期=${dateStr}`,
   );
   try {
-    const trObj = getTargetsheet("Sheets", lotto);
-    const ss = trObj.spreadsheet;
-    const allSheet = ss.getSheetByName("All");
-    const missSheet = useTrend ? ss.getSheetByName("Miss") : null;
+    // 新架構：All ← {lotto} 試算表；Miss ← {lotto}_Miss 試算表；歷史/屬性 ← {lotto}_Prediction1 試算表
+    const sheets = getPrediction1Spreadsheets(lotto);
+    ensurePrediction1Sheets(sheets.p1SS);
+    const allSheet = sheets.allSS.getSheetByName("All");
+    const missSheet = useTrend ? sheets.missSS.getSheetByName("Miss") : null;
 
     if (!allSheet) throw new Error(`找不到 ${lotto} 的 All 工作表`);
+    if (useTrend && !missSheet) throw new Error(`找不到 ${lotto}_Miss 試算表中的 Miss 工作表（已啟用遺漏模式）`);
 
     // 修正：強化日期過濾與轉換邏輯，支援文字型日期
     const allDataRaw = allSheet
@@ -2076,7 +2161,7 @@ function getPrediction1HistoryStats(lotto, topN, useTrend, dateStr, limit) {
  * @param {Array} trainingData 訓練集
  */
 function applyAnalystFilters(finalWeights, lotto, trainingData) {
-  const config = getPrct1LottoConfig(lotto);
+  const config = getPredic1LottoConfig(lotto);
   const midPoint = Math.floor(config.maxNum / 2);
   const ballCount = config.ballCount;
 
@@ -2165,10 +2250,14 @@ function applyAnalystFilters(finalWeights, lotto, trainingData) {
 }
 
 /**
- * 自動學習框架：根據 prct1_Settings 中的命中紀錄微調 baseWeights
- * @param {GoogleAppsScript.Spreadsheet.Sheet} settingsSheet
+ * 自動學習框架：根據 predic1_Settings 歷史列的命中紀錄微調 baseWeights。
+ * 歷史列為 9 欄格式（型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間/學習標記）；
+ * 僅學習本彩種、有命中數（已開獎）、未標記的列，學完批次標記「Y」，避免重複學習。
+ * 注意：歷史列無環境參數欄位，故宮位權重 (houseWeights) 與五行權重 (elementWeights) 維持既有值，
+ * 本次僅學習連莊/隔期/共振增益與觀察窗口。
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} settingsSheet predic1_Settings 工作表
  * @param {string} lotto 彩種
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss {lotto}_Prediction1 試算表
  */
 function autoAdjustBaseWeights(settingsSheet, lotto, ss) {
   const cacheKey = PRCT1_ALGO_VERSION + "_LEARNED_WEIGHTS_" + lotto;
@@ -2176,156 +2265,88 @@ function autoAdjustBaseWeights(settingsSheet, lotto, ss) {
   // 1. 取得現有權重 (含繼承邏輯)
   const adjustedWeights = getLearnedBaseWeights(lotto, ss);
 
-  // 2. 掃描工作表以尋找動態參數 (Param_ 開頭)
-  const fullData = settingsSheet.getDataRange().getValues();
-  fullData.forEach((row) => {
-    const key = String(row[0]).trim();
-    if (key === "Param_PosSevere")
-      adjustedWeights.posSevereThres =
-        Number(row[1]) || adjustedWeights.posSevereThres;
-    if (key === "Param_PosNormal")
-      adjustedWeights.posNormalThres =
-        Number(row[1]) || adjustedWeights.posNormalThres;
-    // 新增：讀取降權係數參數
-    if (key === "Param_PosSevereFactor")
-      adjustedWeights.posSevereFactor =
-        Number(row[1]) || adjustedWeights.posSevereFactor;
-    if (key === "Param_PosNormalFactor")
-      adjustedWeights.posNormalFactor =
-        Number(row[1]) || adjustedWeights.posNormalFactor;
-  });
+  // 2. 讀取 predic1_Settings 歷史列
+  let fullData = [];
+  try {
+    fullData = settingsSheet.getDataRange().getValues();
+  } catch (e) {
+    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
+    return;
+  }
+  if (fullData.length <= 1) {
+    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
+    return;
+  }
 
-  // 3. 核心修正：解除版本鎖定，改用「紀錄數量」增量學習 (每增加 5 筆學習一次)
-  const lastLearnCount = getPropertySheetValue(
-    "prct1_Property",
-    cacheKey + "_LEARN_COUNT",
-    0,
-    ss,
-  );
-  if (fullData.length <= lastLearnCount + 5 && lastLearnCount > 0) return;
+  const headers = fullData[0].map((h) => String(h || "").trim());
+  const idxLotto = headers.indexOf("彩種");
+  const idxTopN = headers.indexOf("推薦數");
+  const idxHits = headers.indexOf("命中數");
+  const idxFlag = headers.indexOf("學習標記");
 
-  const LEARNING_MIN_RECORDS = 10; // 至少需要 10 筆紀錄才啟動學習
+  // 表頭不符（如殘留舊 7 欄設定格式）時不學習，避免誤讀；僅存回目前權重
+  if (idxLotto === -1 || idxTopN === -1 || idxHits === -1 || idxFlag === -1) {
+    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
+    return;
+  }
+
   const LEARNING_DECAY_FACTOR = 0.9; // 舊紀錄的影響力衰減
-
-  if (fullData.length <= LEARNING_MIN_RECORDS) {
-    setPropertySheetValue("prct1_Property", cacheKey, adjustedWeights, ss);
-    return;
-  }
-
-  const headers = fullData[0];
-  const correlationIdx = headers.indexOf("相關係數");
-  const changedParamsIdx = headers.indexOf("變動參數摘要");
-  const remarksIdx = headers.indexOf("備註");
-
-  if (correlationIdx === -1 || changedParamsIdx === -1 || remarksIdx === -1) {
-    setPropertySheetValue("prct1_Property", cacheKey, adjustedWeights, ss);
-    return;
-  }
+  let learnedCount = 0;
+  const learnedSheetRows = new Set(); // 已消耗列的試算表列號（1-indexed）
 
   // 確保 houseWeights 物件結構存在於 adjustedWeights 中
   adjustedWeights.houseWeights = adjustedWeights.houseWeights || {};
 
-  // 定義宇宙參數共振偵測關鍵字 (移至迴圈外以優化效能並修正作用域錯誤)
-  const cosmicKeywords = [
-    "本命",
-    "父母",
-    "福德",
-    "田宅",
-    "官祿",
-    "奴僕",
-    "遷移",
-    "疾厄",
-    "財帛",
-    "子女",
-    "夫妻",
-    "兄弟",
-    "時柱",
-    "日五形",
-    "日十二建除",
-    "日九星",
-    "日二十八星宿",
-    "時二十八星宿",
-    "日八掛",
-  ];
-
-  // 從最新的紀錄開始學習
+  // 從最新列往舊列學習：只處理本彩種、有命中數（已開獎）、未標記的列；
+  // 未開獎空值列略過且不標記，待開獎有命中數後再學習
   for (let i = fullData.length - 1; i >= 1; i--) {
     const row = fullData[i];
-    const correlation = parseFloat(row[correlationIdx]) || 0;
-    const remarks = String(row[remarksIdx] || "");
-    const changedParams = String(row[changedParamsIdx] || "");
+    if (String(row[idxLotto]).trim() !== lotto) continue;
+    if (String(row[idxFlag]).trim() === "Y") continue;
+    // 未開獎空值列略過且不標記（注意 Number("")===0，須先排除空值否則會被誤判為 0 命中）
+    if (row[idxHits] === "" || row[idxHits] === null || row[idxHits] === undefined) continue;
+    const hits = Number(row[idxHits]);
+    const topN = Number(row[idxTopN]);
+    if (isNaN(hits) || isNaN(topN) || topN <= 0) continue;
 
     const recordWeight = Math.pow(
       LEARNING_DECAY_FACTOR,
       fullData.length - 1 - i,
     );
+    const hitRate = hits / topN;
 
-    if (correlation >= 0.3 || remarks.includes("命中")) {
-      if (remarks.includes("特別號命中") || remarks.includes("命中")) {
-        // 穩定增量：命中時提升權重
-        adjustedWeights.repeat += recordWeight * 0.015;
-        adjustedWeights.skip += recordWeight * 0.008;
-      }
-      if (changedParams.includes("年天干") && remarks.includes("命中")) {
-        adjustedWeights.metaBoostYear += recordWeight * 0.005;
-      }
-
-      // --- 核心進化：五行元素增益進化 ---
-      const stemElements = { 甲: "木", 乙: "木", 丙: "火", 丁: "火", 戊: "土", 己: "土", 庚: "金", 辛: "金", 壬: "水", 癸: "水" };
-      const yearlyElement = stemElements[changedParams.split("年天干:")[1]?.split(";")[0]?.trim()];
-      if (yearlyElement && remarks.includes("命中")) {
-        adjustedWeights.elementWeights = adjustedWeights.elementWeights || {};
-        adjustedWeights.elementWeights[yearlyElement] = (adjustedWeights.elementWeights[yearlyElement] || 0.1) + recordWeight * 0.01;
-      }
-
-      const hasCosmicMatch = cosmicKeywords.some((key) =>
-        changedParams.includes(key),
-      );
-
-      if (hasCosmicMatch && remarks.includes("命中")) {
-        // 核心修正：當相關係數極高 (如命中 4/5 或 5/6) 時，視為強烈共振訊號，增益幅度翻倍
-        const boostMultiplier = correlation > 0.8 ? 2.0 : 1.0;
-        adjustedWeights.metaBoostLifePalace =
-          (adjustedWeights.metaBoostLifePalace || 0.08) +
-          recordWeight * 0.005 * boostMultiplier;
-      }
-
-      // --- 核心進化：個別宇宙宮位權重進化 ---
-      // 若特定宮位在命中時處於變動狀態，代表該宮位之共振引力有效，強化其權重係數
-      cosmicKeywords.forEach((key) => {
-        if (changedParams.includes(key + ":") && remarks.includes("命中")) {
-          const houseBoost =
-            recordWeight * 0.02 * (correlation > 0.8 ? 2.0 : 1.0);
-          adjustedWeights.houseWeights[key] =
-            (adjustedWeights.houseWeights[key] || 1.0) + houseBoost;
-        }
-      });
-    } else if (correlation < 0.15) {
-      // 核心優化：表現不佳時適度下修權重，防止單一維度過度擴張
+    if (hitRate >= 0.4) {
+      // 命中率高：強化連莊/隔期捕捉與共振增益；命中率極高時增益翻倍
+      const boostMultiplier = hitRate >= 0.8 ? 2.0 : 1.0;
+      adjustedWeights.repeat += recordWeight * 0.015 * boostMultiplier;
+      adjustedWeights.skip += recordWeight * 0.008 * boostMultiplier;
+      adjustedWeights.metaBoostLifePalace =
+        (adjustedWeights.metaBoostLifePalace || 0.08) +
+        recordWeight * 0.005 * boostMultiplier;
+    } else if (hitRate <= 0.15) {
+      // 命中率低：適度下修並擴大觀察窗口，尋找更具預測價值的週期區間
       adjustedWeights.repeat -= recordWeight * 0.005;
       adjustedWeights.skip -= recordWeight * 0.003;
-
-      // 表現不佳時下修紫微權重
-      if (cosmicKeywords.some((key) => changedParams.includes(key))) {
-        adjustedWeights.metaBoostLifePalace =
-          (adjustedWeights.metaBoostLifePalace || 0.08) - recordWeight * 0.002;
-      }
-
-      // 表現不佳時適度下修相關宮位權重，以抑制雜訊干擾
-      cosmicKeywords.forEach((key) => {
-        if (changedParams.includes(key + ":")) {
-          const houseDecay = recordWeight * 0.01;
-          adjustedWeights.houseWeights[key] =
-            (adjustedWeights.houseWeights[key] || 1.0) - houseDecay;
-        }
-      });
-
-      // --- 核心進化：觀察窗口動態對焦 ---
-      // 當表現不佳時，AI 嘗試縮短或延長觀察期，尋找更具預測價值的週期區間
-      const windowShift = (Math.random() > 0.5 ? 1 : -1) * recordWeight * 2;
+      adjustedWeights.metaBoostLifePalace =
+        (adjustedWeights.metaBoostLifePalace || 0.08) - recordWeight * 0.002;
       adjustedWeights.observationWindow =
-        (adjustedWeights.observationWindow || 60) + windowShift;
+        (adjustedWeights.observationWindow || 60) + recordWeight * 1;
     }
+
+    learnedSheetRows.add(i + 1); // 轉試算表列號（1-indexed）
+    learnedCount++;
+  }
+
+  // 批次標記已學習列（單次 setValues，避免逐列寫入）
+  if (learnedSheetRows.size > 0) {
+    const flagCol = idxFlag + 1;
+    const flagValues = [];
+    for (let r = 2; r <= fullData.length; r++) {
+      flagValues.push([
+        learnedSheetRows.has(r) ? "Y" : String(fullData[r - 1][idxFlag] || ""),
+      ]);
+    }
+    settingsSheet.getRange(2, flagCol, flagValues.length, 1).setValues(flagValues);
   }
 
   // 核心優化：執行最終數值箝位 (Clamping)，新增位置限制器參數的安全邊界
@@ -2395,16 +2416,36 @@ function autoAdjustBaseWeights(settingsSheet, lotto, ss) {
     ),
   );
 
+  // Settings 資料列超過 1000 筆時，將最舊 400 筆搬入 Archive，避免無限增長
   try {
-    setPropertySheetValue("prct1_Property", cacheKey, adjustedWeights, ss);
-    // 紀錄目前的學習總數
-    setPropertySheetValue(
-      "prct1_Property",
+    if (settingsSheet.getLastRow() - 1 > 1000) {
+      const oldestRows = settingsSheet.getRange(2, 1, 400, 9).getValues();
+      archivePredic1Rows(ss, oldestRows);
+      settingsSheet.deleteRows(2, 400);
+    }
+  } catch (e) {
+    Logger.log("[AutoLearn Trim] " + e.message);
+  }
+
+  try {
+    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
+    // 學習標記累計總數（供前端顯示）
+    const prevLearnedCount =
+      Number(
+        getPredic1PropertyValue(
+          "predic1_Property",
+          cacheKey + "_LEARN_COUNT",
+          0,
+          ss,
+        ),
+      ) || 0;
+    setPredic1PropertyValue(
+      "predic1_Property",
       cacheKey + "_LEARN_COUNT",
-      fullData.length,
+      prevLearnedCount + learnedCount,
       ss,
     );
-    Logger.log(`[AutoLearn] ${lotto} 基礎權重已自動微調並存入試算表。`);
+    Logger.log(`[AutoLearn] ${lotto} 基礎權重已自動微調並存入試算表。本次學習 ${learnedCount} 筆。`);
   } catch (e) {
     logSystemError("autoAdjustBaseWeights", e.message, "ERROR", `${lotto} 權重更新失敗`);
     Logger.log(`[AutoLearn Error] ${lotto} 權重寫入失敗: ` + e.message);
@@ -2412,13 +2453,14 @@ function autoAdjustBaseWeights(settingsSheet, lotto, ss) {
 }
 
 /**
- * 寫入 KV 資料至屬性工作表，確保 Key 不重複
+ * 寫入 KV 資料至屬性工作表，確保 Key 不重複（Prediction1 模組專用執行緒快取版）。
+ * 命名加上 Predic1 前綴，避免覆蓋 Utility.js 的全域 setPropertySheetValue；勿改為 Predict 模組寫法。
  */
-function setPropertySheetValue(sheetName, key, value, ss) {
+function setPredic1PropertyValue(sheetName, key, value, ss) {
   try {
     // 清除快取，確保下次讀取為最新值
     const cacheKey = ss.getId() + "_" + sheetName;
-    delete _prct1_propertyCache[cacheKey];
+    delete _predic1_propertyCache[cacheKey];
 
     const sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
     const lastRow = sheet.getLastRow();
@@ -2437,20 +2479,21 @@ function setPropertySheetValue(sheetName, key, value, ss) {
     }
     sheet.appendRow([keyStr, stringValue, new Date()]); // 補齊 LastUpdated 欄位
   } catch (e) {
-    Logger.log(`[setPropertySheetValue Error] ${e.message}`);
+    Logger.log(`[setPredic1PropertyValue Error] ${e.message}`);
   }
 }
 
 /**
- * 從屬性工作表讀取資料
+ * 從屬性工作表讀取資料（Prediction1 模組專用執行緒快取版）。
+ * 命名加上 Predic1 前綴，避免覆蓋 Utility.js 的全域 getPropertySheetValue；勿改為 Predict 模組寫法。
  */
-function getPropertySheetValue(sheetName, key, defaultValue, ss) {
+function getPredic1PropertyValue(sheetName, key, defaultValue, ss) {
   try {
     const ssId = ss.getId();
     const cacheKey = ssId + "_" + sheetName;
 
     // 效能優化：如果該執行緒尚未讀取過此工作表，則一次性讀取並快取
-    if (!_prct1_propertyCache[cacheKey]) {
+    if (!_predic1_propertyCache[cacheKey]) {
       const sheet = ss.getSheetByName(sheetName);
       if (!sheet) return defaultValue;
       const data = sheet.getDataRange().getValues();
@@ -2458,10 +2501,10 @@ function getPropertySheetValue(sheetName, key, defaultValue, ss) {
       data.forEach((row) => {
         if (row[0]) map[String(row[0])] = row[1];
       });
-      _prct1_propertyCache[cacheKey] = map;
+      _predic1_propertyCache[cacheKey] = map;
     }
 
-    const val = _prct1_propertyCache[cacheKey][String(key)];
+    const val = _predic1_propertyCache[cacheKey][String(key)];
     if (val === undefined) return defaultValue;
     try {
       return JSON.parse(val);
@@ -2478,15 +2521,15 @@ function getPropertySheetValue(sheetName, key, defaultValue, ss) {
  */
 function getPrediction1WeightSettings(lotto) {
   try {
-    const trObj = getTargetsheet("Sheets", lotto);
-    const ss = trObj.spreadsheet;
+    // 新架構：權重屬性位於 {lotto}_Prediction1 試算表 > predic1_Property 工作表
+    const ss = getPrediction1Spreadsheets(lotto).p1SS;
     const weightData = getLearnedBaseWeights(lotto, ss);
 
     // 讀取額外的元數據
     const learnCountKey =
       PRCT1_ALGO_VERSION + "_LEARNED_WEIGHTS_" + lotto + "_LEARN_COUNT";
-    const learnCount = getPropertySheetValue(
-      "prct1_Property",
+    const learnCount = getPredic1PropertyValue(
+      "predic1_Property",
       learnCountKey,
       0,
       ss,
@@ -2496,8 +2539,8 @@ function getPrediction1WeightSettings(lotto) {
       ...weightData,
       learnCount: learnCount,
       algoVersion: PRCT1_ALGO_VERSION,
-      isDefault: !getPropertySheetValue(
-        "prct1_Property",
+      isDefault: !getPredic1PropertyValue(
+        "predic1_Property",
         PRCT1_ALGO_VERSION + "_LEARNED_WEIGHTS_" + lotto,
         null,
         ss,
@@ -2517,16 +2560,16 @@ function getPrediction1WeightSettings(lotto) {
  */
 function getLearnedBaseWeights(lotto, ss) {
   const cacheKey = PRCT1_ALGO_VERSION + "_LEARNED_WEIGHTS_" + lotto;
-  let cached = getPropertySheetValue("prct1_Property", cacheKey, null, ss);
+  let cached = getPredic1PropertyValue("predic1_Property", cacheKey, null, ss);
 
   // --- 強化：版本權重繼承機制 ---
   // 若當前版本無紀錄，搜尋所有版本的學習權重並選取最新的一個繼承，防止 AI 重置
   if (!cached) {
     const ssId = ss.getId();
-    const cacheKeyInThread = ssId + "_prct1_Property";
+    const cacheKeyInThread = ssId + "_predic1_Property";
     // 確保 internal cache 已載入
-    getPropertySheetValue("prct1_Property", "DUMMY_VERSION_SCAN", null, ss);
-    const fullCache = _prct1_propertyCache[cacheKeyInThread] || {};
+    getPredic1PropertyValue("predic1_Property", "DUMMY_VERSION_SCAN", null, ss);
+    const fullCache = _predic1_propertyCache[cacheKeyInThread] || {};
     const suffix = "_LEARNED_WEIGHTS_" + lotto;
 
     // 效能優化：使用單次遍歷尋找最高版本，避免累積多年權重紀錄導致的排序效能開銷
@@ -2615,7 +2658,7 @@ function getLearnedBaseWeights(lotto, ss) {
 }
 
 /**
- * V1 系統專屬快取清理：僅清理 prct1_Property 與 V1 演算法相關的 Properties
+ * V1 系統專屬快取清理：僅清理 predic1_Property 與 V1 演算法相關的 Properties
  */
 function clearV1Cache(lotto) {
   try {
@@ -2632,9 +2675,10 @@ function clearV1Cache(lotto) {
       }
     });
 
-    // 清理試算表持久快取
-    const trObj = getTargetsheet("Sheets", lotto);
-    const propSheet = trObj.spreadsheet.getSheetByName("prct1_Property");
+    // 清理試算表持久快取（新架構：{lotto}_Prediction1 試算表 > predic1_Property，Prediction1 專用）
+    const p1SS = getPrediction1Spreadsheets(lotto).p1SS;
+    ensurePrediction1Sheets(p1SS);
+    const propSheet = p1SS.getSheetByName("predic1_Property");
     if (propSheet) {
       // 保留標題列，清除內容
       const lastRow = propSheet.getLastRow();
@@ -2642,6 +2686,8 @@ function clearV1Cache(lotto) {
       if (lastRow > 1)
         propSheet.getRange(2, 1, lastRow - 1, lastCol).clearContent(); // 修正：清除所有欄位
     }
+    // 同步清除本模組執行緒快取，避免清除後仍讀到舊值
+    delete _predic1_propertyCache[p1SS.getId() + "_predic1_Property"];
 
     // 增加：隔離版本遞增
     incrementSystemVersion("V1");
@@ -2660,8 +2706,9 @@ function clearV1Cache(lotto) {
  */
 function getCacheInfo(lotto) {
   try {
-    const ss = getTargetsheet("Sheets", lotto).spreadsheet;
-    const propSheet = ss.getSheetByName("prct1_Property");
+    // 新架構：屬性位於 {lotto}_Prediction1 試算表 > predic1_Property 工作表
+    const ss = getPrediction1Spreadsheets(lotto).p1SS;
+    const propSheet = ss.getSheetByName("predic1_Property");
 
     return {
       version: PRCT1_ALGO_VERSION,
@@ -2673,14 +2720,14 @@ function getCacheInfo(lotto) {
 }
 
 /**
- * 清理 V1 專屬的舊版本歷史回測紀錄 (prct1_History)
+ * 清理 V1 專屬的舊版本歷史回測紀錄 (predic1_History)
  * 僅移除版本號不相符的資料，保留目前版本的紀錄。
  */
 function clearPrediction1History(lotto) {
   try {
-    const trObj = getTargetsheet("Sheets", lotto);
-    const ss = trObj.spreadsheet;
-    const historySheet = ss.getSheetByName("prct1_History");
+    // 新架構：歷史紀錄位於 {lotto}_Prediction1 試算表 > predic1_History 工作表（Prediction1 專用，勿用 prct1_History）
+    const ss = getPrediction1Spreadsheets(lotto).p1SS;
+    const historySheet = ensurePrediction1Sheets(ss).historySheet;
 
     if (!historySheet)
       return { status: "success", message: "找不到歷史工作表，無需清理。" };
@@ -2697,7 +2744,21 @@ function clearPrediction1History(lotto) {
     const rowsToKeep = data
       .slice(1)
       .filter((row) => row[0] === currentCacheLabel);
-    const removedCount = data.length - 1 - rowsToKeep.length;
+    const removedRows = data
+      .slice(1)
+      .filter((row) => row[0] !== currentCacheLabel);
+    const removedCount = removedRows.length;
+
+    // 舊版本列先搬入 predic1_Settings_Archive（8 欄補學習標記成 9 欄），再從 History 移除
+    if (removedCount > 0) {
+      const rows9 = removedRows.map((r) => {
+        const row = (r || []).slice(0, 8);
+        while (row.length < 8) row.push("");
+        row.push("");
+        return row;
+      });
+      archivePredic1Rows(ss, rows9);
+    }
 
     // 重新寫回試算表
     historySheet.clearContents();
@@ -2708,7 +2769,7 @@ function clearPrediction1History(lotto) {
 
     return {
       status: "success",
-      message: `清理完成！共移除 ${removedCount} 筆舊版本資料，保留 ${rowsToKeep.length} ���目前版本 (${PRCT1_ALGO_VERSION}) 紀錄。`,
+      message: `清理完成！共封存 ${removedCount} 筆舊版本資料至 predic1_Settings_Archive，保留 ${rowsToKeep.length} 筆目前版本 (${PRCT1_ALGO_VERSION}) 紀錄。`,
     };
   } catch (e) {
     return { status: "error", message: "清理舊版本歷史資料失敗: " + e.message };
@@ -2716,14 +2777,14 @@ function clearPrediction1History(lotto) {
 }
 
 /**
- * 自動管理 prct1_Property：清理過舊版本的快取資料。
+ * 自動管理 predic1_Property：清理過舊版本的快取資料。
  * 儲存邏輯：允許不同版本的資料共存。
  * 管理邏輯：保留最近 2 個演算法版本 (如 A107, A106) 的資料，其餘自動刪除。
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss 目標彩種試算表
  */
-function managePrct1PropertyVersions(ss) {
+function managePredic1PropertyVersions(ss) {
   try {
-    const propSheet = ss.getSheetByName("prct1_Property");
+    const propSheet = ss.getSheetByName("predic1_Property");
     if (!propSheet) return;
 
     const data = propSheet.getDataRange().getValues();

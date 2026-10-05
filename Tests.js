@@ -1,9 +1,9 @@
 /**
- * PredictModule 單元測試工具
+ * Prediction2Module 單元測試工具
  * 用於模擬各種邊際情況以確保系統魯棒性
  */
 function runPredictUnitTests() {
-  Logger.log("🚀 [Unit Test] 開始執行 PredictModule 壓力測試...");
+  Logger.log("🚀 [Unit Test] 開始執行 Prediction2Module 壓力測試...");
 
   testTargetCoeffsEmpty();
   testInvalidInputHandling();

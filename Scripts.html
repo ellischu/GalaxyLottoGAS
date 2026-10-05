@@ -98,6 +98,118 @@
   }
 
   /**
+   * 開獎日規則（與 SearchS 模組同寫法）：
+   * 今日之前必須是主試算表該彩種工作表的實際開獎日；
+   * 不可用星期規則猜測（例假日可能停開）；清單未載入或後端無資料時一律不對齊；
+   * 今日之後所有日期皆可。
+   */
+  window.DrawDayRule = (function () {
+    var cache = {}; // lotto -> [yyyy-MM-dd...]
+    var sets = {}; // lotto -> {yyyy-MM-dd: 1}
+
+    function fmtYMD(d) {
+      return (
+        d.getFullYear() +
+        "-" +
+        String(d.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(d.getDate()).padStart(2, "0")
+      );
+    }
+    function todayStr() {
+      return fmtYMD(new Date());
+    }
+    function buildSet(lotto, dates) {
+      cache[lotto] = dates || [];
+      var s = {};
+      (dates || []).forEach(function (d) {
+        s[d] = 1;
+      });
+      sets[lotto] = s;
+    }
+    function has(lotto) {
+      return !!cache[lotto];
+    }
+    function load(lotto) {
+      if (!lotto) return Promise.resolve([]);
+      if (cache[lotto]) return Promise.resolve(cache[lotto]);
+      return new Promise(function (resolve) {
+        google.script.run
+          .withSuccessHandler(function (dates) {
+            buildSet(lotto, dates || []);
+            resolve(cache[lotto]);
+          })
+          .withFailureHandler(function () {
+            // 失敗也快取空集，避免呼叫端反覆重試造成遞迴
+            buildSet(lotto, []);
+            resolve(cache[lotto]);
+          })
+          .getAvailableDrawDates(lotto);
+      });
+    }
+    // 在實際開獎日中找 <= dateStr 的最近一筆；無則回傳 null（二分搜尋）
+    function prevDate(lotto, dateStr) {
+      var arr = cache[lotto];
+      if (!arr || arr.length === 0) return null;
+      if (sets[lotto][dateStr]) return dateStr;
+      var lo = 0,
+        hi = arr.length - 1,
+        ans = -1;
+      while (lo <= hi) {
+        var mid = (lo + hi) >> 1;
+        if (arr[mid] <= dateStr) {
+          ans = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      return ans >= 0 ? arr[ans] : null;
+    }
+    // 回傳 { snapped, date, pending }；pending 表清單未就緒、呼叫端應等待而非猜測
+    function snap(lotto, dateStr) {
+      if (!lotto || !dateStr) return { snapped: false, date: dateStr, pending: false };
+      if (dateStr >= todayStr()) return { snapped: false, date: dateStr, pending: false };
+      var arr = cache[lotto];
+      if (!arr) return { snapped: false, date: dateStr, pending: true };
+      if (arr.length === 0) return { snapped: false, date: dateStr, pending: false };
+      var hit = prevDate(lotto, dateStr);
+      if (hit && hit !== dateStr) return { snapped: true, date: hit, pending: false };
+      if (!hit) return { snapped: true, date: arr[0], pending: false }; // 比最早開獎日還早
+      return { snapped: false, date: dateStr, pending: false };
+    }
+    // 以最早開獎日設定 date input 下限，避免選到無資料的過去日期
+    function applyMin(lotto, dateSelector) {
+      if (typeof $ === "undefined") return;
+      var $el = $(dateSelector);
+      if ($el.length === 0) return;
+      var arr = cache[lotto];
+      if (arr && arr.length > 0) $el.attr("min", arr[0]);
+      else $el.removeAttr("min");
+    }
+    return {
+      load: load,
+      has: has,
+      prevDate: prevDate,
+      snap: snap,
+      applyMin: applyMin,
+      todayStr: todayStr,
+    };
+  })();
+
+  /**
+   * 相容包裝：過去日期對齊實際開獎日（SearchS 語意，無星期 fallback）。
+   * @returns {Object} { snapped: boolean, date: "yyyy-MM-dd" }
+   */
+  window.ensureDrawDates = function (lotto) {
+    return window.DrawDayRule.load(lotto);
+  };
+  window.snapPastDateToDrawDay = function (lotto, dateStr) {
+    var r = window.DrawDayRule.snap(lotto, dateStr);
+    return { snapped: r.snapped, date: r.date };
+  };
+
+  /**
    * 全域 UI 控制物件
    */
   window.AppUI = {

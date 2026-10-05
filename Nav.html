@@ -293,7 +293,7 @@
           style="color: #6610f2"
           id="navPredict"
           href="javascript:void(0)"
-          onclick="openPageUrl('Predict')"
+          onclick="openPageUrl('Prediction2')"
         >
           <i class="fas fa-magic me-2"></i>星系預測
         </a>
@@ -606,7 +606,7 @@
 
     AppUI.confirm(
       "確定要清理 V1 歷史回測資料？",
-      "這將會清除 prct1_History 中的所有回測紀錄，下次查看趨勢圖時將重新運算。",
+      "這將會清除 predic1_History 中的所有回測紀錄，下次查看趨勢圖時將重新運算。",
     ).then(function (result) {
       if (result.isConfirmed) {
         var lotto = $("#lottoType").val() || $("#lottoSelect").val() || "L539";
@@ -652,7 +652,7 @@
         google.script.run
           .withSuccessHandler(function (res) {
             performPostClearActions(
-              "Predict",
+              "Prediction2",
               "星系快取已重置，頁面即將重新載入。",
             );
           })
@@ -738,7 +738,7 @@
 
     // 2. 獲取當前頁面 (支援 V1 預測頁面偵測)
     var currentPage = defaultPage || "Index";
-    if ($("#predictButton").length) currentPage = "Predict";
+    if ($("#predictButton").length) currentPage = "Prediction2";
     else if ($("#predDate").length || $("#lottoType").length)
       currentPage = "Prediction1";
     else if ($("#btnCmbUpdate").length || $("#btnMissUpdate").length)
@@ -887,7 +887,7 @@
           }
 
           updateConnectionModeUI(effectiveMode, "自動判定: " + reason);
-          // 同步將有效模式寫入 localStorage 供 Predict 頁面讀取 (不覆蓋設定)
+          // 同步將有效模式寫入 localStorage 供 Prediction2 頁面讀取 (不覆蓋設定)
           localStorage.setItem("effective_connection_mode", effectiveMode);
         })
         .withFailureHandler(function () {

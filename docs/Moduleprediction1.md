@@ -7,18 +7,19 @@
 - Date 是日期
 - N1~N5,N6是相關開出的數值,S1是特別號,Sum是數值總合。
 
-## 相關工作表
+## 相關工作表（資料夾 > 試算表 > 工作表新架構，勿與 Predict 模組的 prct1_* 混用）
 
-- mainSpreadSheet 試算表 > [AllData 工作表](DocSpreadsheet.md#alldata-工作表)
-- mainSpreadSheet 試算表 > [Method 工作表](DocSpreadsheet.md#method-工作表)
-- L539(L649,L638,LSix) 試算表 > [All 工作表](DocSpreadsheet.md#all-工作表)
-- L539(L649,L638,LSix) 試算表 > [Miss 工作表](DocSpreadsheet.md#miss-工作表)
-- L539(L649,L638,LSix) 試算表 >
-  [prct1_Settings 工作表](DocSpreadsheet.md#prct1_settings-工作表)
-- L539(L649,L638,LSix) 試算表 >
-  [prct1_History 工作表](DocSpreadsheet.md#prct1_history-工作表)
-- L539(L649,L638,LSix) 試算表 >
-  [prct1_Property 工作表](DocSpreadsheet.md#prct1_property-工作表)
+- GalaxyLotto 試算表 > [AllData 工作表](GalaxyLotto_AllData工作表.md)（預測日期的環境參數）
+- {L539,L649,L638,LSix} 試算表 > [All 工作表](共同工作表_all工作表.md)（開獎資料＋環境參數）
+- {L539,L649,L638,LSix}_Miss 試算表 > [Miss 工作表](共同工作表_miss工作表.md)（遺漏數，useTrend=true 時使用）
+- {L539,L649,L638,LSix}_Prediction1 試算表 >
+  [predic1_Settings 工作表](共同工作表_predic1_settings工作表.md)（9 欄歷史紀錄：型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間/學習標記；每次預測寫一列，自動學習消費後標記）
+- {L539,L649,L638,LSix}_Prediction1 試算表 >
+  predic1_History 工作表（8 欄回測快取：Settings 9 欄減學習標記；供歷史命中圖形使用）
+- {L539,L649,L638,LSix}_Prediction1 試算表 >
+  [predic1_Property 工作表](共同工作表_predic1_property工作表.md)（Parameter/Value/LastUpdated KV：學習權重、統計快取）
+- {L539,L649,L638,LSix}_Prediction1 試算表 >
+  predic1_Settings_Archive 工作表（Settings 9 欄 ＋ 存檔時間；清理與溢出封存用）
 
 ## 檔案
 
