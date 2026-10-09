@@ -95,7 +95,16 @@
       $hint = $('<div id="drawDayHint" class="form-text text-muted mt-1"></div>');
       $("#INDate").after($hint);
     }
-    $hint.text(text);
+    // 資料每日更新：若提示範圍尾端比試算表舊，按「↻更新」可強制重取（後端亦有新鮮度檢查）
+    $hint.empty().append($("<span>").text(text)).append(" ");
+    var $btn = $('<button type="button" class="btn btn-sm btn-link p-0 align-baseline" title="重新載入實際開獎日">↻更新</button>');
+    $btn.on("click", function () {
+      var l = $("#SecLotto").val();
+      delete window._drawDatesCache[l];
+      delete window._drawDatesSet[l];
+      loadDrawDates(l, { realign: true, toast: true, reload: true });
+    });
+    $hint.append($btn);
   }
 
   function toastDrawDaySnapped(date) {

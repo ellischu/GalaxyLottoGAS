@@ -71,8 +71,24 @@ function getLastRecords() {
 }
 
 /**
+ * 將儲存格日期正規化為 yyyy-MM-dd（支援 Date 物件與 yyyy/MM/dd、yyyy-MM-dd 字串）
+ * @returns {string|null} 無法解析時回傳 null
+ */
+function normDrawDateStr(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v, "Asia/Taipei", "yyyy-MM-dd");
+  }
+  if (v === "" || v === null || v === undefined) return null;
+  var m = String(v).match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
+  if (!m) return null;
+  return m[1] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[3]).slice(-2);
+}
+
+/**
  * 取得主試算表某彩種工作表（L539/L649/L638/LSix）的全部開獎日期。
  * 供前端「過去日期必須是開獎日」的選擇對齊使用；結果快取 6 小時。
+ * 每次呼叫會比對最後一列日期做新鮮度檢查：資料每日更新，若最後一列已有比快取
+ * 更新的實際開獎日則強制重建，避免舊快取擋住最新開獎日。
  * @param {string} lotto 彩種代碼
  * @returns {Array<string>} yyyy-MM-dd 陣列（ASC，已去重）
  */
@@ -83,31 +99,38 @@ function getAvailableDrawDates(lotto) {
     var cache = CacheService.getScriptCache();
     // v2：修正前版誤讀 A 欄期號且只認 Date 物件之 bug，換 key 避開舊快取
     var cacheKey = getCacheVersion() + "_DRAWDATESv2_" + lotto;
-    var cached = cache.get(cacheKey);
-    if (cached) return JSON.parse(cached);
     var sheet = mainspreadsheet.getSheetByName(lotto);
     if (!sheet || sheet.getLastRow() <= 1) return [];
-    // 原始表欄位為 period,Date,L1..（Date 在 B 欄且為 "yyyy/MM/dd" 字串，Sheets  locale 不同可能為字串或 Date）
+    // 原始表欄位為 period,Date,L1..（Date 在 B 欄且多為 "yyyy/MM/dd" 字串）
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
       .map(function (h) { return String(h || "").trim(); });
     var dateCol = headers.indexOf("Date");
     if (dateCol === -1) dateCol = 1;
     var l1Col = headers.indexOf("L1");
+    var hasNum = function (row) {
+      if (l1Col === -1) return true;
+      var v = row[l1Col];
+      return !(v === "" || v === null || v === undefined);
+    };
+    // 新鮮度檢查（只讀最後一列）：最後一列若已有比快取最大值更新的實際開獎日則重建
+    var cached = cache.get(cacheKey);
+    if (cached) {
+      var parsed = JSON.parse(cached);
+      var lastRowVals = sheet.getRange(sheet.getLastRow(), 1, 1, sheet.getLastColumn()).getValues()[0];
+      var lastStr = normDrawDateStr(lastRowVals[dateCol]);
+      if (!lastStr || !hasNum(lastRowVals) || parsed.length === 0 || lastStr <= parsed[parsed.length - 1]) {
+        return parsed;
+      }
+      // 最後一列比快取新：往下重建全表
+    }
     var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
     var dates = [];
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
       // 該列須有實際開獎號碼才算開獎日（排除預排但未開獎的空列）
-      if (l1Col > -1 && (row[l1Col] === "" || row[l1Col] === null || row[l1Col] === undefined)) continue;
-      var d = row[dateCol];
-      if (d instanceof Date && !isNaN(d.getTime())) {
-        dates.push(Utilities.formatDate(d, "Asia/Taipei", "yyyy-MM-dd"));
-      } else if (d !== "" && d !== null && d !== undefined) {
-        var m = String(d).match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
-        if (m) {
-          dates.push(m[1] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[3]).slice(-2));
-        }
-      }
+      if (!hasNum(row)) continue;
+      var s = normDrawDateStr(row[dateCol]);
+      if (s) dates.push(s);
     }
     dates.sort();
     var uniq = dates.filter(function (v, idx) { return idx === 0 || v !== dates[idx - 1]; });

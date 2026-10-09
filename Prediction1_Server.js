@@ -38,11 +38,11 @@ function getPrediction1SpreadsheetEntry(key) {
 
 /**
  * 新架構建表（Prediction1 模組專用，操作對象限 {lotto}_Prediction1 試算表）。
- * 欄位以實際工作表為準（勿套用 Predict 模組 prct1_* 的標頭）：
- *   predic1_Settings：型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間/學習標記（9 欄，預測歷史紀錄）
+ * 欄位以實際工作表為準（2026-10 核對，勿套用 Predict 模組 prct1_* 的標頭）：
+ *   predic1_Settings：執行時間/預測日期/相關係數/推薦數/遺漏模式/變動參數摘要/備註（7 欄，執行紀錄）
  *   predic1_History：型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間（8 欄，回測快取）
- *   predic1_Property：Parameter/Value/LastUpdated（KV；程式讀寫第 3 欄時間戳）
- *   predic1_Settings_Archive：Settings 9 欄 ＋ 存檔時間（10 欄）
+ *   predic1_Property：Key/Value/LastUpdated（KV；程式讀寫第 3 欄時間戳）
+ *   predic1_Settings_Archive：與 predic1_Settings 同 7 欄（預留封存用，現階段無寫入）
  * 非破壞式：工作表已存在時絕不改寫標頭與資料，僅在缺表或空表時建表填標頭。
  */
 function ensurePrediction1Sheets(p1SS) {
@@ -58,46 +58,21 @@ function ensurePrediction1Sheets(p1SS) {
     }
     return sh;
   }
-  var propSheet = ensureSheet("predic1_Property", ["Parameter", "Value", "LastUpdated"]);
-  // 既有 2 欄 Property 表僅補第 3 欄標頭，不動任何資料列
+  var propSheet = ensureSheet("predic1_Property", ["Key", "Value", "LastUpdated"]);
+  // 既有 Property 表若標頭缺欄，僅補空白標頭格，不動任何資料列
   try {
-    if (propSheet.getLastColumn() < 3 || !String(propSheet.getRange(1, 3).getValue() || "").trim()) {
-      propSheet.getRange(1, 3).setValue("LastUpdated");
+    var propHeader = ["Key", "Value", "LastUpdated"];
+    for (var c = 1; c <= 3; c++) {
+      if (!String(propSheet.getRange(1, c).getValue() || "").trim()) {
+        propSheet.getRange(1, c).setValue(propHeader[c - 1]);
+      }
     }
   } catch (e) { /* 標頭修補失敗不阻斷主流程 */ }
-  var settingsSheet = ensureSheet("predic1_Settings", ["型態", "彩種", "日期", "推薦數", "遺漏模式", "命中數", "命中號碼", "更新時間", "學習標記"]);
+  var settingsSheet = ensureSheet("predic1_Settings", ["執行時間", "預測日期", "相關係數", "推薦數", "遺漏模式", "變動參數摘要", "備註"]);
   var historySheet = ensureSheet("predic1_History", ["型態", "彩種", "日期", "推薦數", "遺漏模式", "命中數", "命中號碼", "更新時間"]);
-  var archiveSheet = ensureSheet("predic1_Settings_Archive", ["型態", "彩種", "日期", "推薦數", "遺漏模式", "命中數", "命中號碼", "更新時間", "學習標記", "存檔時間"]);
+  var archiveSheet = ensureSheet("predic1_Settings_Archive", ["執行時間", "預測日期", "相關係數", "推薦數", "遺漏模式", "變動參數摘要", "備註"]);
   SpreadsheetApp.flush();
   return { propertySheet: propSheet, settingsSheet: settingsSheet, historySheet: historySheet, archiveSheet: archiveSheet };
-}
-
-/**
- * 將 9 欄歷史列搬入 predic1_Settings_Archive（Prediction1 專用，10 欄：末欄補存檔時間）。
- * Archive 上限 3000 筆資料列，超過則刪除最舊列（保留標頭）。
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} p1SS {lotto}_Prediction1 試算表
- * @param {Array<Array>} rows9 9 欄歷史列（型態…學習標記）
- * @returns {number} 搬入筆數
- */
-function archivePredic1Rows(p1SS, rows9) {
-  if (!rows9 || rows9.length === 0) return 0;
-  var archiveSheet = ensurePrediction1Sheets(p1SS).archiveSheet;
-  var now = new Date();
-  var rows10 = rows9.map(function(r) {
-    var row = (r || []).slice(0, 9);
-    while (row.length < 9) row.push("");
-    row.push(now);
-    return row;
-  });
-  var startRow = Math.max(archiveSheet.getLastRow() + 1, 2);
-  archiveSheet.getRange(startRow, 1, rows10.length, 10).setValues(rows10);
-  SpreadsheetApp.flush();
-  var maxDataRows = 3000;
-  var dataRows = archiveSheet.getLastRow() - 1;
-  if (dataRows > maxDataRows) {
-    archiveSheet.deleteRows(2, dataRows - maxDataRows);
-  }
-  return rows10.length;
 }
 
 /**
@@ -128,6 +103,44 @@ function verifyPrediction1Registry() {
     return { status: "error", checked: checked, missing: missing };
   }
   return { status: "success", checked: checked, missing: [] };
+}
+
+/**
+ * 唯讀診斷：回報 4 彩種 × {lotto}_Prediction1 四張工作表的實際標頭與列數。
+ * 不寫入、不建表、不改標頭。在 GAS 編輯器執行後，開啟「執行紀錄」複製結果。
+ * @returns {string} 多行文字報告
+ */
+function diagnosePrediction1Sheets() {
+  var lottos = ["L539", "L649", "L638", "LSix"];
+  var sheetNames = ["predic1_Settings", "predic1_History", "predic1_Property", "predic1_Settings_Archive"];
+  var lines = [];
+  lottos.forEach(function(lotto) {
+    lines.push("=== " + lotto + "_Prediction1 ===");
+    var p1SS = null;
+    try {
+      p1SS = getPrediction1Spreadsheets(lotto).p1SS;
+      lines.push("試算表: " + p1SS.getName() + " (" + p1SS.getId() + ")");
+    } catch (e) {
+      lines.push("試算表開啟失敗: " + e.message);
+      return;
+    }
+    sheetNames.forEach(function(name) {
+      var sh = p1SS.getSheetByName(name);
+      if (!sh) {
+        lines.push(name + ": 缺表");
+        return;
+      }
+      var lastRow = sh.getLastRow();
+      var lastCol = sh.getLastColumn();
+      var header = lastRow > 0
+        ? sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0].join(" | ")
+        : "(空表)";
+      lines.push(name + ": 列數=" + lastRow + " 欄數=" + lastCol + " 標頭=[" + header + "]");
+    });
+  });
+  var report = lines.join("\n");
+  Logger.log("\n" + report);
+  return report;
 }
 
 /**
@@ -176,6 +189,87 @@ function getPredic1LottoConfig(lotto) {
 /** 舊名相容別名（Prediction1 內部已改用 getPredic1LottoConfig，勿與 Predict 模組混用） */
 function getPrct1LottoConfig(lotto) {
   return getPredic1LottoConfig(lotto);
+}
+
+/**
+ * 共用：由環境列計算預測訊號參數。
+ * 實測 getPrediction01 與回測 getRecentHistoryHits 必須走同一套，否則同一日期兩邊排名分歧、命中數對不上。
+ * @param {Array} headers 欄位列（AllData 或 All 表皆可，環境欄位名一致）
+ * @param {Array|null} curRow 當日列
+ * @param {Array|null} prevRow 前一日列（無則視為無變動）
+ * @param {Array} train 已驗證訓練集（取末 3 期偵測連號傾向）
+ * @param {Object} config 彩種組態
+ * @param {Date} dateObj 目標日期
+ * @returns {Object} { details, changeRatio, yearStem, isYearDayClash, isYearDayHarmony, tripleElement, isConsecutiveTrend, isMajorDrawDay, signalBoost }
+ */
+function getPredic1SignalParams(headers, curRow, prevRow, train, config, dateObj) {
+  const fieldMapping = getFieldMapping();
+  const idMapping = getIDMapping();
+  const details = [];
+  const hNames = (headers || []).map((h) => String(h || "").trim());
+  if (curRow && curRow.length > 0) {
+    hNames.forEach((hStr, idx) => {
+      if (
+        idx === 0 ||
+        hStr.indexOf("號") === 0 ||
+        hStr === "特1" ||
+        hStr === "S1" ||
+        ["Sum", "總合", "期數", "序號", "命重"].includes(hStr) ||
+        hStr.match(/^[LNS]\d+$/)
+      )
+        return;
+      const rawVal = curRow[idx];
+      const prevVal = prevRow ? prevRow[idx] : rawVal;
+      const isChanged = String(rawVal) !== String(prevVal);
+      let fieldWeight = 1.0;
+      if (hStr.indexOf("日") === 0) fieldWeight = 2.5;
+      if (hStr.indexOf("月") === 0) fieldWeight = 1.5;
+      if (hStr.indexOf("年") === 0) fieldWeight = 0.5;
+      if (hStr === "本命") fieldWeight = 2.0;
+      details.push({
+        id: hStr,
+        name: fieldMapping[hStr] || hStr,
+        value: idMapping[String(rawVal)] || rawVal,
+        isChanged: isChanged,
+        impact: isChanged ? fieldWeight : 0,
+      });
+    });
+  }
+  const totalImpact = details.reduce((sum, d) => sum + d.impact, 0);
+  const changeRatio = totalImpact / ((details.length * 1.0) || 1);
+  const valOf = (id) => details.find((d) => d.id === id)?.value || "";
+  const zodiacRel = checkZodiacRelation(valOf("年地支"), valOf("月地支"), valOf("日地支"));
+  // 連號傾向偵測（取訓練集末 3 期）
+  let consecutiveMatch = 0;
+  (train || []).slice(-3).forEach((row) => {
+    const nums = row
+      .slice(1, config.ballCount + 1)
+      .map(Number)
+      .filter((n) => n > 0)
+      .sort((a, b) => a - b);
+    for (let i = 0; i < nums.length - 1; i++) {
+      if (nums[i + 1] === nums[i] + 1) {
+        consecutiveMatch++;
+        break;
+      }
+    }
+  });
+  const isConsecutiveTrend = consecutiveMatch >= 2;
+  const isMajorDrawDay = dateObj ? config.drawDays.includes(dateObj.getDay()) : false;
+  let signalBoost = 1 + changeRatio * 0.5 + (zodiacRel.isClash ? 0.3 : 0);
+  if (isMajorDrawDay) signalBoost += 0.2;
+  if (isConsecutiveTrend) signalBoost += 0.15;
+  return {
+    details: details,
+    changeRatio: changeRatio,
+    yearStem: valOf("年天干"),
+    isYearDayClash: zodiacRel.isClash,
+    isYearDayHarmony: zodiacRel.isHarmony,
+    tripleElement: zodiacRel.tripleElement,
+    isConsecutiveTrend: isConsecutiveTrend,
+    isMajorDrawDay: isMajorDrawDay,
+    signalBoost: signalBoost,
+  };
 }
 
 /**
@@ -295,49 +389,15 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
     // 修正：AllData (adRow) 結構與 All 不同，不可直接用於 actualNums 比對
     const isTodayDrawn = !!todayActualInAll;
 
-    // 1.1 提取詳細環境數據 (adHeaders 已於上方進行 trim 處理)
-    const fieldMapping = getFieldMapping();
-    const idMapping = getIDMapping();
-    const envDetails = [];
-
-    if (adRow && adRow.length > 0) {
-      adHeaders.forEach((header, idx) => {
-        const hStr = String(header).trim();
-        if (
-          idx === 0 ||
-          hStr.indexOf("號") === 0 ||
-          hStr === "特1" ||
-          hStr === "S1" ||
-          ["Sum", "總合", "期數", "序號", "命重"].includes(hStr) ||
-          hStr.match(/^[LNS]\d+$/)
-        )
-          return;
-
-        const rawVal = adRow[idx];
-        const prevVal = prevAdRow ? prevAdRow[idx] : rawVal;
-        const isChanged = String(rawVal) !== String(prevVal);
-
-        // --- 核心優化：針對 年/月/日 干支給予不同的變動權重 ---
-        let fieldWeight = 1.0;
-        if (hStr.indexOf("日") === 0) fieldWeight = 2.5; // 日級參數變動最重要 (日干, 日支, 日形...)
-        if (hStr.indexOf("月") === 0) fieldWeight = 1.5; // 月級參數次之
-        if (hStr.indexOf("年") === 0) fieldWeight = 0.5; // 年級參數為背景
-        if (hStr === "本命") fieldWeight = 2.0; // 本命宮位重要性高
-
-        envDetails.push({
-          id: hStr,
-          name: fieldMapping[hStr] || hStr,
-          value: idMapping[String(rawVal)] || rawVal,
-          isChanged: isChanged,
-          impact: isChanged ? fieldWeight : 0,
-        });
-      });
-    }
-
-    // --- 核心優化：加權變動率與「歲破」偵測 ---
-    const totalImpact = envDetails.reduce((sum, d) => sum + d.impact, 0);
-    const maxPossibleImpact = envDetails.length * 1.0;
-    const changeRatio = totalImpact / (maxPossibleImpact || 1);
+    // 1.1 提取詳細環境數據與訊號參數（與回測共用 getPredic1SignalParams，兩邊排名一致）
+    // 註：連號傾向需已驗證訓練集，稍後以 validatedData 補算定案（見下文「訊號參數定案」）
+    const _env0 = getPredic1SignalParams(adHeaders, adRow, prevAdRow, [], config, targetDate);
+    const envDetails = _env0.details;
+    let changeRatio = _env0.changeRatio;
+    let yearStem = _env0.yearStem;
+    let isYearDayClash = _env0.isYearDayClash;
+    let isYearDayHarmony = _env0.isYearDayHarmony;
+    let tripleElement = _env0.tripleElement;
 
     // --- 新增：環境參數變動雷達 ---
     let radarMsg = "";
@@ -346,21 +406,8 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
       Logger.log(`[Environmental Radar] ${targetDateStrFormatted} ${radarMsg}`);
     }
 
-    // 偵測年日關係 (相沖 vs 六合)
-    const yearStem = envDetails.find((d) => d.id === "年天干")?.value || "";
-    const yearBranch = envDetails.find((d) => d.id === "年地支")?.value || "";
-    const monthBranch = envDetails.find((d) => d.id === "月地支")?.value || "";
-    const dayBranch = envDetails.find((d) => d.id === "日地支")?.value || "";
-    const zodiacRel = checkZodiacRelation(yearBranch, monthBranch, dayBranch);
-    const isYearDayClash = zodiacRel.isClash;
-    const isYearDayHarmony = zodiacRel.isHarmony;
-    const tripleElement = zodiacRel.tripleElement; // 三合局對應五行
-
     // --- 強化錯誤處理：捕捉變數未定義或執行異常 ---
     try {
-      // --- 優化：開獎日特徵捕捉邏輯 ---
-      const dayOfWeek = targetDate.getDay();
-      const isMajorDrawDay = config.drawDays.includes(dayOfWeek);
 
       // 2. 提取最近 60 期資料
       // 效能優化：改用 getTime() 比對，避免在 filter 中反覆格式化字串
@@ -418,29 +465,16 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
       if (validatedData.length < 5)
         throw new Error("有效歷史資料不足(需至少5期)");
 
-      // --- 核心優化：連號傾向偵測 ---
-      const recent3 = validatedData.slice(-3);
-
-      let consecutiveMatch = 0;
-      recent3.forEach((row) => {
-        const nums = row
-          .slice(1, config.ballCount + 1)
-          .map(Number)
-          .filter((n) => n > 0)
-          .sort((a, b) => a - b);
-        for (let i = 0; i < nums.length - 1; i++) {
-          if (nums[i + 1] === nums[i] + 1) {
-            consecutiveMatch++;
-            break;
-          }
-        }
-      });
-      const isConsecutiveTrend = consecutiveMatch >= 2;
-
-      // 若發生歲破，SignalBoost 額外提升
-      let signalBoost = 1 + changeRatio * 0.5 + (isYearDayClash ? 0.3 : 0);
-      if (isMajorDrawDay) signalBoost += 0.2;
-      if (isConsecutiveTrend) signalBoost += 0.15;
+      // --- 訊號參數定案：以已驗證訓練集重算（含連號傾向），與回測同一套 ---
+      const _sig = getPredic1SignalParams(adHeaders, adRow, prevAdRow, validatedData, config, targetDate);
+      changeRatio = _sig.changeRatio;
+      yearStem = _sig.yearStem;
+      isYearDayClash = _sig.isYearDayClash;
+      isYearDayHarmony = _sig.isYearDayHarmony;
+      tripleElement = _sig.tripleElement;
+      const isConsecutiveTrend = _sig.isConsecutiveTrend;
+      const isMajorDrawDay = _sig.isMajorDrawDay;
+      const signalBoost = _sig.signalBoost;
 
       // 3. 執行預測與權重計算
       const allHeaders = allSheet
@@ -528,6 +562,13 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
       if (!predResult) throw new Error("核心演算法未回傳結果");
 
       const resultNumbers = predResult.numbers.slice(0, topNChoice);
+
+      // 4. 計算相關係數 (假設以權重前 N 名與實際結果的匹配度作為係數參考)
+      const correlation = calculateCorrelation(
+        resultNumbers,
+        todayActualInAll,
+        lotto,
+      );
 
       // --- 數據分析師：平衡偏移偵測 (趨勢比對) ---
       const recentDataForTrend = validatedData.slice(-20);
@@ -617,26 +658,26 @@ function getPrediction01(lotto, dateStr, useTrend, topNChoice) {
         prevDrawNums,
       );
 
-      // 5. 寫入本次預測歷史列至 predic1_Settings（9 欄歷史格式，與工作表標頭一致）
-      // 僅當日已開獎才有命中數；未開獎則命中數留空（自動學習會略過空值列）
-      const liveHitBalls = isTodayDrawn
-        ? resultNumbers
-            .filter((n) => {
-              const v = Number(n.number);
-              return actualNums.includes(v) || (actualS1 && v === actualS1);
-            })
-            .map((n) => String(n.number).padStart(2, "0"))
-        : [];
+      // 5. 同步記錄 分析參數 與 相關係數 至 predic1_Settings
+      // （7 欄執行紀錄格式，與工作表標頭一致）
+      const changedParamsSummary = envDetails
+        .filter((d) => d.isChanged)
+        .map((d) => `${d.name}:${d.value}`)
+        .join("; ");
+      let remarks = isS1Hit
+        ? `🎯 特別號命中！摘要: ${changedParamsSummary}`
+        : "";
+
+      if (radarMsg) remarks = (remarks ? remarks + " | " : "") + radarMsg;
+
       settingsSheet.appendRow([
-        "HIT_HISTORY_" + PRCT1_ALGO_VERSION,
-        lotto,
+        new Date(),
         dateStr,
+        correlation,
         topNChoice,
         useTrend,
-        isTodayDrawn ? liveHitBalls.length : "",
-        JSON.stringify(liveHitBalls),
-        new Date(),
-        "",
+        changedParamsSummary,
+        remarks,
       ]);
 
       // --- 新增：自動管理屬性工作表版本 ---
@@ -894,6 +935,27 @@ function checkZodiacRelation(yearB, monthB, dayB) {
     }
   }
   return { isClash, isHarmony, tripleElement };
+}
+
+/** 計算簡單相關係數（命中率參考；尚未開獎時回傳隨機基線） */
+function calculateCorrelation(predicted, actual, lotto) {
+  if (!actual) return (Math.random() * 0.4 + 0.2).toFixed(4);
+  const config = getPredic1LottoConfig(lotto);
+
+  // 與 calculateStats 邏輯對齊：區分主球數與含特別號之有效總球數
+  const mainBallCount = config.ballCount;
+  const effectiveBallCount =
+    mainBallCount + (lotto !== "L539" && config.hasS1 ? 1 : 0);
+
+  const actualNums = actual
+    .slice(1, effectiveBallCount + 1)
+    .map(Number)
+    .filter((n) => n > 0);
+  const hits = predicted.filter((n) => {
+    const val = typeof n === "object" ? Number(n.number) : Number(n);
+    return actualNums.includes(val);
+  }).length;
+  return (hits / mainBallCount).toFixed(4);
 }
 
 /** 計算組合平衡指標統計 */
@@ -1342,7 +1404,22 @@ function corePredict(
       ziWeiHouseDetails: ziWeiHouseDetails,
     };
   } catch (err) {
-    // predic1_Settings 僅存放 9 欄歷史紀錄，不寫入錯誤列；錯誤由外層 logSystemError 記入 ErrorLog
+    // 記錄詳細錯誤到 predic1_Settings（7 欄執行紀錄格式；外層另以 logSystemError 記入 ErrorLog）
+    try {
+      const p1SS = getPrediction1Spreadsheets(lotto).p1SS;
+      const settingsSheet = p1SS.getSheetByName("predic1_Settings");
+      if (settingsSheet) {
+        settingsSheet.appendRow([
+          new Date(),
+          "CORE_ERROR",
+          "N/A",
+          topNChoice,
+          "N/A",
+          "Algorithm Failure",
+          String((err && err.stack) || err).substring(0, 500),
+        ]);
+      }
+    } catch (e) {}
     throw err; // 拋出讓外層 getPrediction01 捕捉
   }
 }
@@ -1991,17 +2068,20 @@ function getRecentHistoryHits(
     // 核心修正：validatePrct1TrainingData 回傳的是物件，應檢查其內部的 validData 陣列長度
     if (validatedTrain.validData && validatedTrain.validData.length >= 5) {
       try {
+        // 訊號參數與實測同一套（環境變動率/歲破/連號傾向皆按當日重算，避免兩邊排名分歧）
+        const prevRecord = i > 0 ? allDataProcessed[i - 1] : null;
+        const bSig = getPredic1SignalParams(allHeaders, record, prevRecord, validatedTrain.validData, config, d);
         const pred = corePredict(
           lotto,
           validatedTrain.validData,
           missDataFull,
           d,
-          1.0,
-          "",
-          false,
-          null,
+          bSig.signalBoost,
+          bSig.yearStem,
+          bSig.isYearDayHarmony,
+          bSig.tripleElement,
           topN,
-          false,
+          bSig.isConsecutiveTrend,
           ss,
           ziWeiEnv,
           predBackgroundLimit, // 修正：傳入受限的背景資料而非全表
@@ -2155,6 +2235,140 @@ function getPrediction1HistoryStats(lotto, topN, useTrend, dateStr, limit) {
 }
 
 /**
+ * 一鍵診斷 09-17 案例（無參數，可直接在編輯器按執行；改條件請改下方常數）。
+ * 兩種遺漏模式各跑一次，結果見「執行作業」→ 該次執行 → 記錄。
+ * 若超時，請分兩次跑（先註解掉其中一行）。
+ */
+function debugVerify0917() {
+  const lotto = "L539";
+  const dateStr = "2026-09-17";
+  const topN = 10;
+  [true, false].forEach((trend) => {
+    verifyPrediction1HistoryHit(lotto, dateStr, topN, trend);
+  });
+}
+
+/**
+ * 唯讀診斷：三方比對特定日期的回測命中（All 實際列 vs predic1_History 快取列 vs 略過快取直接重算）。
+ * 用於追查「回測顯示命中與實際不符」（如 L539 09-17 顯示 3 顆、實際僅 2 顆）。
+ * 不寫入任何工作表。在 GAS 編輯器執行後，開啟「執行紀錄」查看。
+ * @param {string} lotto 彩種
+ * @param {string} dateStr 日期 yyyy-MM-dd（需完整年份）
+ * @param {number} topN 推薦數（需與圖表當時相同）
+ * @param {boolean} useTrend 遺漏模式（需與圖表當時相同）
+ * @returns {Object} { allRows, cachedRows, fresh, notes }
+ */
+function verifyPrediction1HistoryHit(lotto, dateStr, topN, useTrend) {
+  const config = getPredic1LottoConfig(lotto);
+  const sheets = getPrediction1Spreadsheets(lotto);
+  topN = Number(topN) || 10;
+  useTrend = !!useTrend;
+  const target = new Date(String(dateStr).replace(/-/g, "/"));
+  target.setHours(0, 0, 0, 0);
+  const targetTime = target.getTime();
+  const report = { lotto: lotto, dateStr: dateStr, topN: topN, useTrend: useTrend, allRows: [], cachedRows: [], fresh: null, notes: [] };
+
+  // 1. All 實際列（含重複日期列一併列出）
+  const allSheet = sheets.allSS.getSheetByName("All");
+  if (!allSheet) throw new Error("找不到 " + lotto + " 的 All 工作表");
+  const allData = allSheet.getDataRange().getValues();
+  const ballCount = config.ballCount;
+  allData.forEach((row, idx) => {
+    if (idx === 0 || !row[0]) return;
+    const d = row[0] instanceof Date ? new Date(row[0].getTime()) : new Date(row[0]);
+    if (isNaN(d.getTime())) return;
+    d.setHours(0, 0, 0, 0);
+    if (d.getTime() !== targetTime) return;
+    report.allRows.push({
+      rowNumber: idx + 1,
+      balls: row.slice(1, ballCount + 1).map(Number),
+      s1: config.hasS1 ? Number(row[ballCount + 1]) : null,
+    });
+  });
+  if (report.allRows.length === 0) report.notes.push("All 無此日期列");
+  if (report.allRows.length > 1) report.notes.push("All 有重複日期列共 " + report.allRows.length + " 筆");
+
+  // 2. predic1_History 快取列（同日期所有 topN/模式變體）
+  const histSheet = sheets.p1SS.getSheetByName("predic1_History");
+  if (histSheet && histSheet.getLastRow() > 0) {
+    const hdata = histSheet.getDataRange().getValues();
+    hdata.forEach((row, idx) => {
+      if (idx === 0 || String(row[1]).trim() !== lotto) return;
+      if (!row[2]) return;
+      const d = row[2] instanceof Date ? new Date(row[2].getTime()) : new Date(row[2]);
+      if (isNaN(d.getTime())) return;
+      d.setHours(0, 0, 0, 0);
+      if (d.getTime() !== targetTime) return;
+      report.cachedRows.push({ rowNumber: idx + 1, type: row[0], topN: row[3], trend: row[4], hits: row[5], balls: row[6] });
+    });
+  }
+  if (report.cachedRows.length === 0) report.notes.push("History 無此日期快取列");
+
+  // 3. 略過快取直接重算（與 getRecentHistoryHits 同一路徑）
+  try {
+    const allDataRaw = allData.slice(1)
+      .filter((row) => row[0] && (row[0] instanceof Date || !isNaN(new Date(row[0]).getTime())))
+      .map((row) => {
+        const r = row.slice();
+        r[0] = r[0] instanceof Date ? new Date(r[0].getTime()) : new Date(r[0]);
+        r[0].setHours(0, 0, 0, 0);
+        return r;
+      })
+      .sort((a, b) => a[0] - b[0]);
+    let idx = -1;
+    for (let i = allDataRaw.length - 1; i >= 0; i--) {
+      if (allDataRaw[i][0].getTime() === targetTime) { idx = i; break; }
+    }
+    if (idx === -1) {
+      report.notes.push("排序後找不到此日期");
+    } else {
+      const record = allDataRaw[idx];
+      const train = allDataRaw.slice(Math.max(0, idx - 250), idx);
+      const validated = validatePrct1TrainingData(train, config);
+      if (!validated.validData || validated.validData.length < 5) {
+        report.notes.push("訓練集不足 5 筆");
+      } else {
+        const missSheet = useTrend ? sheets.missSS.getSheetByName("Miss") : null;
+        const missDataFull = missSheet ? missSheet.getDataRange().getValues() : null;
+        const allHeaders = sheets.allSS.getSheetByName("All").getRange(1, 1, 1, 50).getValues()[0];
+        const ziWeiHouseNames = ["本命", "父母", "福德", "田宅", "官祿", "奴僕", "遷移", "疾厄", "財帛", "子女", "夫妻", "兄弟", "時柱", "日五形", "日十二建除", "日九星", "日二十八星宿", "時二十八星宿", "日八掛"];
+        const ziWeiIndices = ziWeiHouseNames.map((name, hidx) => {
+          const idStandard = "strp" + String(hidx + 1).padStart(2, "0");
+          const colIdx = allHeaders.findIndex((h) => String(h).trim() === name || String(h).trim() === idStandard);
+          return { id: idStandard, name: name, colIdx: colIdx };
+        }).filter((h) => h.colIdx !== -1);
+        const ziWeiEnv = ziWeiIndices.map((h) => ({ id: h.id, name: h.name, val: String(record[h.colIdx]), idx: h.colIdx }));
+        const prevRecord = idx > 0 ? allDataRaw[idx - 1] : null;
+        const vSig = getPredic1SignalParams(allHeaders, record, prevRecord, validated.validData, config, new Date(targetTime));
+        const pred = corePredict(lotto, validated.validData, missDataFull, new Date(targetTime), vSig.signalBoost, vSig.yearStem, vSig.isYearDayHarmony, vSig.tripleElement, topN, vSig.isConsecutiveTrend, sheets.p1SS, ziWeiEnv, allDataRaw.slice(0, idx + 1));
+        const actualNums = record.slice(1, config.hasS1 ? 8 : 6).map(Number).filter((n) => n > 0);
+        const freshBalls = pred.numbers.slice(0, topN).filter((n) => actualNums.includes(Number(n.number))).map((n) => n.number);
+        report.fresh = { balls: freshBalls, hits: freshBalls.length, actualNums: actualNums };
+      }
+    }
+  } catch (e) {
+    report.notes.push("重算失敗: " + e.message);
+  }
+
+  // 4. 自動判定
+  const cached = report.cachedRows.find((r) => String(r.topN) === String(topN) && String(r.trend) === String(useTrend));
+  if (cached && report.fresh) {
+    if (String(cached.hits) !== String(report.fresh.hits)) {
+      report.notes.push("快取命中數(" + cached.hits + ")與重算(" + report.fresh.hits + ")不一致→陳舊快取（All 事後被修正或權重已演化），請清掉該快取列後重跑回測");
+    }
+    const actualSet = new Set(report.fresh.actualNums);
+    const phantom = (report.fresh.balls || []).filter((b) => !actualSet.has(Number(b)));
+    if (phantom.length > 0) {
+      report.notes.push("重算仍命中實際沒有的球:" + JSON.stringify(phantom) + "→計算切片或 All 資料有問題，請貼此報告處理");
+    }
+    if (report.notes.length === 0) report.notes.push("三方一致：快取正確，請確認比對的是否為同一年同一日期");
+  }
+
+  Logger.log("[VerifyHistory]\n" + JSON.stringify(report));
+  return report;
+}
+
+/**
  * 數據分析師擴充：執行環境平衡因子 (奇偶、大小) 與和值引力修正 (基於振幅趨勢)
  * @param {Object} finalWeights 權重物件
  * @param {string} lotto 彩種
@@ -2250,14 +2464,11 @@ function applyAnalystFilters(finalWeights, lotto, trainingData) {
 }
 
 /**
- * 自動學習框架：根據 predic1_Settings 歷史列的命中紀錄微調 baseWeights。
- * 歷史列為 9 欄格式（型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間/學習標記）；
- * 僅學習本彩種、有命中數（已開獎）、未標記的列，學完批次標記「Y」，避免重複學習。
- * 注意：歷史列無環境參數欄位，故宮位權重 (houseWeights) 與五行權重 (elementWeights) 維持既有值，
- * 本次僅學習連莊/隔期/共振增益與觀察窗口。
- * @param {GoogleAppsScript.Spreadsheet.Sheet} settingsSheet predic1_Settings 工作表
+ * 自動學習框架：根據 predic1_Settings 中的命中紀錄微調 baseWeights
+ * predic1_Settings 為 7 欄執行紀錄格式（執行時間/預測日期/相關係數/推薦數/遺漏模式/變動參數摘要/備註）
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} settingsSheet
  * @param {string} lotto 彩種
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss {lotto}_Prediction1 試算表
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
  */
 function autoAdjustBaseWeights(settingsSheet, lotto, ss) {
   const cacheKey = PRCT1_ALGO_VERSION + "_LEARNED_WEIGHTS_" + lotto;
@@ -2265,88 +2476,156 @@ function autoAdjustBaseWeights(settingsSheet, lotto, ss) {
   // 1. 取得現有權重 (含繼承邏輯)
   const adjustedWeights = getLearnedBaseWeights(lotto, ss);
 
-  // 2. 讀取 predic1_Settings 歷史列
-  let fullData = [];
-  try {
-    fullData = settingsSheet.getDataRange().getValues();
-  } catch (e) {
-    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
-    return;
-  }
-  if (fullData.length <= 1) {
-    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
-    return;
-  }
+  // 2. 掃描工作表以尋找動態參數 (Param_ 開頭)
+  const fullData = settingsSheet.getDataRange().getValues();
+  fullData.forEach((row) => {
+    const key = String(row[0]).trim();
+    if (key === "Param_PosSevere")
+      adjustedWeights.posSevereThres =
+        Number(row[1]) || adjustedWeights.posSevereThres;
+    if (key === "Param_PosNormal")
+      adjustedWeights.posNormalThres =
+        Number(row[1]) || adjustedWeights.posNormalThres;
+    // 新增：讀取降權係數參數
+    if (key === "Param_PosSevereFactor")
+      adjustedWeights.posSevereFactor =
+        Number(row[1]) || adjustedWeights.posSevereFactor;
+    if (key === "Param_PosNormalFactor")
+      adjustedWeights.posNormalFactor =
+        Number(row[1]) || adjustedWeights.posNormalFactor;
+  });
 
-  const headers = fullData[0].map((h) => String(h || "").trim());
-  const idxLotto = headers.indexOf("彩種");
-  const idxTopN = headers.indexOf("推薦數");
-  const idxHits = headers.indexOf("命中數");
-  const idxFlag = headers.indexOf("學習標記");
+  // 3. 核心修正：解除版本鎖定，改用「紀錄數量」增量學習 (每增加 5 筆學習一次)
+  const lastLearnCount = getPredic1PropertyValue(
+    "predic1_Property",
+    cacheKey + "_LEARN_COUNT",
+    0,
+    ss,
+  );
+  if (fullData.length <= lastLearnCount + 5 && lastLearnCount > 0) return;
 
-  // 表頭不符（如殘留舊 7 欄設定格式）時不學習，避免誤讀；僅存回目前權重
-  if (idxLotto === -1 || idxTopN === -1 || idxHits === -1 || idxFlag === -1) {
-    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
-    return;
-  }
-
+  const LEARNING_MIN_RECORDS = 10; // 至少需要 10 筆紀錄才啟動學習
   const LEARNING_DECAY_FACTOR = 0.9; // 舊紀錄的影響力衰減
-  let learnedCount = 0;
-  const learnedSheetRows = new Set(); // 已消耗列的試算表列號（1-indexed）
+
+  if (fullData.length <= LEARNING_MIN_RECORDS) {
+    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
+    return;
+  }
+
+  const headers = fullData[0];
+  const correlationIdx = headers.indexOf("相關係數");
+  const changedParamsIdx = headers.indexOf("變動參數摘要");
+  const remarksIdx = headers.indexOf("備註");
+
+  if (correlationIdx === -1 || changedParamsIdx === -1 || remarksIdx === -1) {
+    setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
+    return;
+  }
 
   // 確保 houseWeights 物件結構存在於 adjustedWeights 中
   adjustedWeights.houseWeights = adjustedWeights.houseWeights || {};
 
-  // 從最新列往舊列學習：只處理本彩種、有命中數（已開獎）、未標記的列；
-  // 未開獎空值列略過且不標記，待開獎有命中數後再學習
+  // 定義宇宙參數共振偵測關鍵字 (移至迴圈外以優化效能並修正作用域錯誤)
+  const cosmicKeywords = [
+    "本命",
+    "父母",
+    "福德",
+    "田宅",
+    "官祿",
+    "奴僕",
+    "遷移",
+    "疾厄",
+    "財帛",
+    "子女",
+    "夫妻",
+    "兄弟",
+    "時柱",
+    "日五形",
+    "日十二建除",
+    "日九星",
+    "日二十八星宿",
+    "時二十八星宿",
+    "日八掛",
+  ];
+
+  // 從最新的紀錄開始學習
   for (let i = fullData.length - 1; i >= 1; i--) {
     const row = fullData[i];
-    if (String(row[idxLotto]).trim() !== lotto) continue;
-    if (String(row[idxFlag]).trim() === "Y") continue;
-    // 未開獎空值列略過且不標記（注意 Number("")===0，須先排除空值否則會被誤判為 0 命中）
-    if (row[idxHits] === "" || row[idxHits] === null || row[idxHits] === undefined) continue;
-    const hits = Number(row[idxHits]);
-    const topN = Number(row[idxTopN]);
-    if (isNaN(hits) || isNaN(topN) || topN <= 0) continue;
+    const correlation = parseFloat(row[correlationIdx]) || 0;
+    const remarks = String(row[remarksIdx] || "");
+    const changedParams = String(row[changedParamsIdx] || "");
 
     const recordWeight = Math.pow(
       LEARNING_DECAY_FACTOR,
       fullData.length - 1 - i,
     );
-    const hitRate = hits / topN;
 
-    if (hitRate >= 0.4) {
-      // 命中率高：強化連莊/隔期捕捉與共振增益；命中率極高時增益翻倍
-      const boostMultiplier = hitRate >= 0.8 ? 2.0 : 1.0;
-      adjustedWeights.repeat += recordWeight * 0.015 * boostMultiplier;
-      adjustedWeights.skip += recordWeight * 0.008 * boostMultiplier;
-      adjustedWeights.metaBoostLifePalace =
-        (adjustedWeights.metaBoostLifePalace || 0.08) +
-        recordWeight * 0.005 * boostMultiplier;
-    } else if (hitRate <= 0.15) {
-      // 命中率低：適度下修並擴大觀察窗口，尋找更具預測價值的週期區間
+    if (correlation >= 0.3 || remarks.includes("命中")) {
+      if (remarks.includes("特別號命中") || remarks.includes("命中")) {
+        // 穩定增量：命中時提升權重
+        adjustedWeights.repeat += recordWeight * 0.015;
+        adjustedWeights.skip += recordWeight * 0.008;
+      }
+      if (changedParams.includes("年天干") && remarks.includes("命中")) {
+        adjustedWeights.metaBoostYear += recordWeight * 0.005;
+      }
+
+      // --- 核心進化：五行元素增益進化 ---
+      const stemElements = { 甲: "木", 乙: "木", 丙: "火", 丁: "火", 戊: "土", 己: "土", 庚: "金", 辛: "金", 壬: "水", 癸: "水" };
+      const yearlyElement = stemElements[changedParams.split("年天干:")[1]?.split(";")[0]?.trim()];
+      if (yearlyElement && remarks.includes("命中")) {
+        adjustedWeights.elementWeights = adjustedWeights.elementWeights || {};
+        adjustedWeights.elementWeights[yearlyElement] = (adjustedWeights.elementWeights[yearlyElement] || 0.1) + recordWeight * 0.01;
+      }
+
+      const hasCosmicMatch = cosmicKeywords.some((key) =>
+        changedParams.includes(key),
+      );
+
+      if (hasCosmicMatch && remarks.includes("命中")) {
+        // 核心修正：當相關係數極高 (如命中 4/5 或 5/6) 時，視為強烈共振訊號，增益幅度翻倍
+        const boostMultiplier = correlation > 0.8 ? 2.0 : 1.0;
+        adjustedWeights.metaBoostLifePalace =
+          (adjustedWeights.metaBoostLifePalace || 0.08) +
+          recordWeight * 0.005 * boostMultiplier;
+      }
+
+      // --- 核心進化：個別宇宙宮位權重進化 ---
+      // 若特定宮位在命中時處於變動狀態，代表該宮位之共振引力有效，強化其權重係數
+      cosmicKeywords.forEach((key) => {
+        if (changedParams.includes(key + ":") && remarks.includes("命中")) {
+          const houseBoost =
+            recordWeight * 0.02 * (correlation > 0.8 ? 2.0 : 1.0);
+          adjustedWeights.houseWeights[key] =
+            (adjustedWeights.houseWeights[key] || 1.0) + houseBoost;
+        }
+      });
+    } else if (correlation < 0.15) {
+      // 核心優化：表現不佳時適度下修權重，防止單一維度過度擴張
       adjustedWeights.repeat -= recordWeight * 0.005;
       adjustedWeights.skip -= recordWeight * 0.003;
-      adjustedWeights.metaBoostLifePalace =
-        (adjustedWeights.metaBoostLifePalace || 0.08) - recordWeight * 0.002;
+
+      // 表現不佳時下修紫微權重
+      if (cosmicKeywords.some((key) => changedParams.includes(key))) {
+        adjustedWeights.metaBoostLifePalace =
+          (adjustedWeights.metaBoostLifePalace || 0.08) - recordWeight * 0.002;
+      }
+
+      // 表現不佳時適度下修相關宮位權重，以抑制雜訊干擾
+      cosmicKeywords.forEach((key) => {
+        if (changedParams.includes(key + ":")) {
+          const houseDecay = recordWeight * 0.01;
+          adjustedWeights.houseWeights[key] =
+            (adjustedWeights.houseWeights[key] || 1.0) - houseDecay;
+        }
+      });
+
+      // --- 核心進化：觀察窗口動態對焦 ---
+      // 當表現不佳時，AI 嘗試縮短或延長觀察期，尋找更具預測價值的週期區間
+      const windowShift = (Math.random() > 0.5 ? 1 : -1) * recordWeight * 2;
       adjustedWeights.observationWindow =
-        (adjustedWeights.observationWindow || 60) + recordWeight * 1;
+        (adjustedWeights.observationWindow || 60) + windowShift;
     }
-
-    learnedSheetRows.add(i + 1); // 轉試算表列號（1-indexed）
-    learnedCount++;
-  }
-
-  // 批次標記已學習列（單次 setValues，避免逐列寫入）
-  if (learnedSheetRows.size > 0) {
-    const flagCol = idxFlag + 1;
-    const flagValues = [];
-    for (let r = 2; r <= fullData.length; r++) {
-      flagValues.push([
-        learnedSheetRows.has(r) ? "Y" : String(fullData[r - 1][idxFlag] || ""),
-      ]);
-    }
-    settingsSheet.getRange(2, flagCol, flagValues.length, 1).setValues(flagValues);
   }
 
   // 核心優化：執行最終數值箝位 (Clamping)，新增位置限制器參數的安全邊界
@@ -2416,36 +2695,16 @@ function autoAdjustBaseWeights(settingsSheet, lotto, ss) {
     ),
   );
 
-  // Settings 資料列超過 1000 筆時，將最舊 400 筆搬入 Archive，避免無限增長
-  try {
-    if (settingsSheet.getLastRow() - 1 > 1000) {
-      const oldestRows = settingsSheet.getRange(2, 1, 400, 9).getValues();
-      archivePredic1Rows(ss, oldestRows);
-      settingsSheet.deleteRows(2, 400);
-    }
-  } catch (e) {
-    Logger.log("[AutoLearn Trim] " + e.message);
-  }
-
   try {
     setPredic1PropertyValue("predic1_Property", cacheKey, adjustedWeights, ss);
-    // 學習標記累計總數（供前端顯示）
-    const prevLearnedCount =
-      Number(
-        getPredic1PropertyValue(
-          "predic1_Property",
-          cacheKey + "_LEARN_COUNT",
-          0,
-          ss,
-        ),
-      ) || 0;
+    // 紀錄目前的學習總數
     setPredic1PropertyValue(
       "predic1_Property",
       cacheKey + "_LEARN_COUNT",
-      prevLearnedCount + learnedCount,
+      fullData.length,
       ss,
     );
-    Logger.log(`[AutoLearn] ${lotto} 基礎權重已自動微調並存入試算表。本次學習 ${learnedCount} 筆。`);
+    Logger.log(`[AutoLearn] ${lotto} 基礎權重已自動微調並存入試算表。`);
   } catch (e) {
     logSystemError("autoAdjustBaseWeights", e.message, "ERROR", `${lotto} 權重更新失敗`);
     Logger.log(`[AutoLearn Error] ${lotto} 權重寫入失敗: ` + e.message);
@@ -2744,21 +3003,7 @@ function clearPrediction1History(lotto) {
     const rowsToKeep = data
       .slice(1)
       .filter((row) => row[0] === currentCacheLabel);
-    const removedRows = data
-      .slice(1)
-      .filter((row) => row[0] !== currentCacheLabel);
-    const removedCount = removedRows.length;
-
-    // 舊版本列先搬入 predic1_Settings_Archive（8 欄補學習標記成 9 欄），再從 History 移除
-    if (removedCount > 0) {
-      const rows9 = removedRows.map((r) => {
-        const row = (r || []).slice(0, 8);
-        while (row.length < 8) row.push("");
-        row.push("");
-        return row;
-      });
-      archivePredic1Rows(ss, rows9);
-    }
+    const removedCount = data.length - 1 - rowsToKeep.length;
 
     // 重新寫回試算表
     historySheet.clearContents();
@@ -2769,7 +3014,7 @@ function clearPrediction1History(lotto) {
 
     return {
       status: "success",
-      message: `清理完成！共封存 ${removedCount} 筆舊版本資料至 predic1_Settings_Archive，保留 ${rowsToKeep.length} 筆目前版本 (${PRCT1_ALGO_VERSION}) 紀錄。`,
+      message: `清理完成！共移除 ${removedCount} 筆舊版本資料，保留 ${rowsToKeep.length} 筆目前版本 (${PRCT1_ALGO_VERSION}) 紀錄。`,
     };
   } catch (e) {
     return { status: "error", message: "清理舊版本歷史資料失敗: " + e.message };

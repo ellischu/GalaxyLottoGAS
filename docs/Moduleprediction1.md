@@ -13,13 +13,13 @@
 - {L539,L649,L638,LSix} 試算表 > [All 工作表](共同工作表_all工作表.md)（開獎資料＋環境參數）
 - {L539,L649,L638,LSix}_Miss 試算表 > [Miss 工作表](共同工作表_miss工作表.md)（遺漏數，useTrend=true 時使用）
 - {L539,L649,L638,LSix}_Prediction1 試算表 >
-  [predic1_Settings 工作表](共同工作表_predic1_settings工作表.md)（9 欄歷史紀錄：型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間/學習標記；每次預測寫一列，自動學習消費後標記）
+  predic1_Settings 工作表（7 欄執行紀錄：執行時間/預測日期/相關係數/推薦數/遺漏模式/變動參數摘要/備註；每次預測寫一列；自動學習據此調權重。注意：與共同工作表文件所載欄位不同，文件待更新）
 - {L539,L649,L638,LSix}_Prediction1 試算表 >
-  predic1_History 工作表（8 欄回測快取：Settings 9 欄減學習標記；供歷史命中圖形使用）
+  predic1_History 工作表（8 欄回測快取：型態/彩種/日期/推薦數/遺漏模式/命中數/命中號碼/更新時間；供歷史命中圖形使用）
 - {L539,L649,L638,LSix}_Prediction1 試算表 >
-  [predic1_Property 工作表](共同工作表_predic1_property工作表.md)（Parameter/Value/LastUpdated KV：學習權重、統計快取）
+  [predic1_Property 工作表](共同工作表_predic1_property工作表.md)（Key/Value/LastUpdated KV：學習權重、統計快取）
 - {L539,L649,L638,LSix}_Prediction1 試算表 >
-  predic1_Settings_Archive 工作表（Settings 9 欄 ＋ 存檔時間；清理與溢出封存用）
+  predic1_Settings_Archive 工作表（與 predic1_Settings 同 7 欄；預留封存用，現階段無寫入）
 
 ## 檔案
 

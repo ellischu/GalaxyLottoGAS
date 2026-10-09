@@ -22,7 +22,7 @@
 | `getPrediction01`              | 新版預測進入點，整合環境變動率分析、歲破偵測與平衡偏移警告。 | `Prediction1.html`                            | `getAllData`, `corePredict`, `getRecentHistoryHits` |
 | `corePredict`                  | V1 核心演算法，包含五行加權、位置回歸限制與連號阻斷器。      | `getPrediction01`                             | `calculateStats`, `getLearnedBaseWeights`           |
 | `preloadPrediction1Cache`      | 預載各彩種的統計與遺漏數據快取，最佳化前端回應速度。         | `manuallyCacheStats`, 觸發器                  | `calculateStats`, `calculateMissWeights`            |
-| `autoAdjustBaseWeights`        | 根據 `predic1_Settings` 歷史列的命中數自動微調基礎權重參數，學完標記學習標記。 | `getPrediction01`             | `getLearnedBaseWeights`, `setPredic1PropertyValue` |
+| `autoAdjustBaseWeights`        | 根據 `predic1_Settings` 執行紀錄（相關係數／變動參數摘要／備註）自動微調基礎權重參數。 | `getPrediction01`      | `getLearnedBaseWeights`, `setPredic1PropertyValue` |
 | `getPrediction1WeightSettings` | 獲取目前的 AI 學習權重參數 (供前端顯示)。                    | `Prediction1.html`                            | `getLearnedBaseWeights`                             |
 | `getLearnedBaseWeights`        | 獲取經 AI 學習修正後的基礎權重（如連莊、跳值、五行等）。     | `corePredict`, `getPrediction1WeightSettings` | `getPredic1PropertyValue`                           |
 
