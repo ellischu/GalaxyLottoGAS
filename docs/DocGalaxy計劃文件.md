@@ -1,26 +1,12 @@
-# DocGalaxy 系統總綱與計劃文件
+# GalaxyLotto 系統總綱與計劃文件
 
 ## 1. 系統環境與架構
 
-詳細架構請參閱： [系統環境與架構](DocGalaxy系統環境與架構.md)。
+## 詳細架構請參閱： [系統環境與架構](DocGalaxy系統環境與架構.md)。
 
----
+## 2. 試算表及資料夾結構
 
-## 2. 試算表資料結構 (Spreadsheet)
-
-詳細資料庫架構請參閱：[Spreadsheet 說明文件](DocSpreadsheet.md)。
-
-### 核心資料源 (mainSpreadsheet)
-
-- **AllData 工作表**：存放占星、干支、干支五行、紫微十二宮、二十八星宿等每日環境參數。
-- **Method 工作表**：存放統計、過濾與占星方法配置。
-
-### 彩種獨立試算表 (L539 / L649 / L638 / LSix)
-
-- **All 工作表**：以 Date 欄位為鍵值，包含 Date、N1~N5 (或 N6)、S1 (特別號)、Sum 等欄位，結合原始開獎數據與 `AllData` 環境參數。
-- **Miss 工作表**：保存每日號碼的歷史遺漏期數（主號遺漏 M1~Mn，副區/特別號遺漏 MS1~MSm）。
-- **prct1_Settings**：存放 AI 自動學習調整後的基礎權重與係數。
-- **prct1_Property**：存放核心預測算法的版本化快取與進度。
+詳細資料庫架構請參閱：[試算表及資料夾架構說明文件](DocGalaxy試算表及資料夾架構.md)。
 
 ---
 
@@ -34,6 +20,7 @@
 - **[AllFunction 函式索引](DocAllFunction.md)**：全系統後端 API 與調用鏈地圖。
 - **[Activity 活性表單](ModuleActivity.md)**：活性數據表單收集與交互。
 - **[Utility 公用工具](DocUtility.md)**：資料庫連接、Properties 緩存管理、全域鎖定（LockService）等支援。
+- [震盪表模組](ModuleDataNext.md)
 
 ---
 
@@ -62,3 +49,62 @@
      - `L539`：號碼上限 39，不計算特別號。
      - `L649`/`LSix`：號碼上限 49，含特別號 S1。
      - `L638`：主區
+
+### C. 震盪表 KD 指標工作表 (DataNKD)
+
+KD/J 指標為震盪表之延伸，用於判斷買賣超或動能轉折。完整欄位規格請參閱 [震盪表模組](ModuleDataNext.md)。
+
+#### DataNKD00 工作表
+
+- Name : DataNKD00 工作表
+- Describe : 提供震盪表 KD 係數的表格。
+- 試算表 : L539_DataNext ,L649_DataNext ,L638_DataNext ,LSix_DataNext
+
+| 欄位名稱       | 數值型態 | 預設值  | 顯示標題 | 說明     |
+| :------------- | -------- | :------ | :------- | :------- |
+| lngDataN00KDSN | Bigint   | null    | N00KD    | 不可重覆 |
+| lngDataN00SN   | Bigint   | null    | N00      | 可重覆   |
+| intRSVn        | Smallint | null    | RSVn     | 計算天數 |
+| sglRSVCo       | float    | 0.33333 | RSVc     | 係數 1/3 |
+| strcheck       | string   | null    | FIT      | 檢查碼   |
+
+備註:
+- strcheck 格式 : `lngMethodSN#intRSVn#sglRSVCo`
+- strcheck 例子 : `1#5#0.33333`
+- intRSVn 依彩種設定：L539=5，L649/L638/LSix=9
+
+#### DataNKD01 工作表
+
+- Name : DataNKD01 工作表
+- Describe : 提供第1柱震盪 KD 資料的表格。
+- 試算表 : L539_DataNext ,L649_DataNext ,L638_DataNext ,LSix_DataNext
+
+| 欄位名稱       | 數值型態 | 預設值 | 顯示標題 | 說明       |
+| :------------- | -------- | :----- | :------- | :--------- |
+| lngDataN00KDSN | Bigint   | null   | N00KD    | 不可重覆   |
+| sglAvg105RSV   | float    | 0      | RSV105   | 前5期RSV   |
+| sglAvg105K     | float    | 0      | RSVK     | 前5期K值   |
+| sglAvg105D     | float    | 0      | RSVD     | 前5期D值   |
+| sglAvg105J     | float    | 0      | RSVJ     | 前5期J值   |
+| sglAvg110RSV   | float    | 0      | RSV110   | 前10期RSV  |
+| sglAvg110K     | float    | 0      | RSVK     | 前10期K值  |
+| sglAvg110D     | float    | 0      | RSVD     | 前10期D值  |
+| sglAvg110J     | float    | 0      | RSVJ     | 前10期J值  |
+| sglAvg125RSV   | float    | 0      | RSV125   | 前25期RSV  |
+| sglAvg125K     | float    | 0      | RSVK     | 前25期K值  |
+| sglAvg125D     | float    | 0      | RSVD     | 前25期D值  |
+| sglAvg125J     | float    | 0      | RSVJ     | 前25期J值  |
+| sglAvg150RSV   | float    | 0      | RSV150   | 前50期RSV  |
+| sglAvg150K     | float    | 0      | RSVK     | 前50期K值  |
+| sglAvg150D     | float    | 0      | RSVD     | 前50期D值  |
+| sglAvg150J     | float    | 0      | RSVJ     | 前50期J值  |
+| sglAvg1100RSV  | float    | 0      | RSV1100  | 前100期RSV |
+| sglAvg1100K    | float    | 0      | RSVK     | 前100期K值 |
+| sglAvg1100D    | float    | 0      | RSVD     | 前100期D值 |
+| sglAvg1100J    | float    | 0      | RSVJ     | 前100期J值 |
+
+#### DataNNextKD02 ~ DataNNextKD07 工作表
+
+- 用 DataNKD01 的方式建立 工作表。
+- Describe : 提供第2 ~ 7 柱震盪 KD 預測資料 的表格。
+- 試算表 : L539_DataNext ,L649_DataNext ,L638_DataNext ,LSix_DataNext

@@ -207,9 +207,12 @@ function prepareActivityQuery(params) {
     const methodSN = getMethodSN(methodObj);
     const isDebugMode = true;
 
-    // 2. 生成 Web App URL
+    // 2. 生成 Web App URL（白名單分流：MissData / NextData / Activity）
     const scriptUrl = ScriptApp.getService().getUrl();
-    const pageName = params.module === "MissData" ? "MissData" : "Activity";
+    var pageName = "Activity";
+    if (params.module === "MissData" || params.module === "NextData") {
+      pageName = params.module;
+    }
     const queryParams = {
       page: pageName,
       lotto: params.lotto,

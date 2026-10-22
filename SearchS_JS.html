@@ -444,11 +444,15 @@
       .withSuccessHandler(function (res) {
         Swal.close();
         if (res.url) {
-          try { sessionStorage.setItem("_missDataParams", JSON.stringify({
-            lotto: params.lotto,
-            date: params.date,
-            methodSN: res.methodSN
-          })); } catch(e) {}
+          try {
+            var _qp = {
+              lotto: params.lotto,
+              date: params.date,
+              methodSN: res.methodSN
+            };
+            sessionStorage.setItem("_missDataParams", JSON.stringify(_qp));
+            sessionStorage.setItem("_nextDataParams", JSON.stringify(_qp));
+          } catch(e) {}
           window.open(res.url, "_blank");
         }
       })

@@ -450,7 +450,35 @@
       console.error("AppUI System Error:", error);
       // 確保 errorMsg 永遠是字串，避免 Swal 渲染異常
       const errorMsg = error && error.message ? error.message : String(error);
+      // 授權（存取權）相關錯誤：另給可操作的處理步驟
+      if (/authoriz|permission|access denied|存取權|授權/i.test(errorMsg)) {
+        this.showAuthError(errorMsg);
+        return;
+      }
       this.error("系統錯誤", errorMsg);
+    },
+
+    /** 存取權不足提示：顯示真實訊息＋重新授權連結＋未驗證應用程式的處理說明 */
+    showAuthError: function (errorMsg) {
+      const base = window.location.href.split("?")[0];
+      Swal.fire({
+        title: "需要存取權（Google 授權）",
+        html:
+          "<div class='text-start' style='font-size:0.9rem;'>" +
+          "<p class='mb-2'>此應用程式需要你的 Google 帳號授權才能運作。實際訊息：</p>" +
+          "<code class='d-block text-break mb-3'>" + errorMsg + "</code>" +
+          "<p class='mb-2'>請依序處理：</p>" +
+          "<ol class='mb-2 ps-3'>" +
+          "<li>確認瀏覽器已登入 Google 帳號（<b>ellischang2021@gmail.com</b>）。</li>" +
+          "<li>若出現「此應用程式未經驗證」→ 按 <b>進階</b> → <b>前往「script.google.com」（不安全）</b> → 允許。</li>" +
+          "<li>若一直跳轉：改用無痕視窗、或清除 script.google.com 的 Cookie 後重新開啟。</li>" +
+          "</ol>" +
+          "<a href='" + base + "' class='btn btn-primary btn-sm'>重新載入並授權</a>" +
+          "</div>",
+        showConfirmButton: false,
+        allowOutsideClick: true,
+        customClass: { html: "text-start" },
+      });
     },
   };
 

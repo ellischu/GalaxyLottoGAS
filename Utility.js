@@ -13,6 +13,14 @@ function doGet(e) {
     if (aSN) pageTitle += "-" + aSN;
   } else if (page === "SearchS") {
     pageTitle = "GalaxyLotto 參數設定";
+  } else if (page === "NextData") {
+    var nLotto = e.parameter.lotto || "";
+    var nDate = e.parameter.date || "";
+    var nSN = e.parameter.methodSN || "";
+    pageTitle = "震盪表";
+    if (nLotto) pageTitle += "-" + nLotto;
+    if (nDate) pageTitle += "-" + String(nDate).replace(/-/g, "");
+    if (nSN) pageTitle += "-" + nSN;
   }
   return HtmlService.createTemplateFromFile(page)
     .evaluate()

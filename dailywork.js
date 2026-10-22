@@ -25,23 +25,9 @@ function dailyupdate(isUI) {
   lottos.forEach((l) =>
     tasks.push({ name: "Update_" + l, run: () => updatenumber(l) }),
   );
-  if (isWithinArclinkWindow()) {
-    tasks.splice(1, 0, {
-      name: "Arclink_L539",
-      run: () => {
-        var data = scrapeL539Arclink();
-        if (data && data.length > 0) writeArclinkData("L539", data);
-        return { status: "complete" };
-      },
-    });
-  }
   lottos.forEach((l) =>
     tasks.push({ name: "Combine_" + l, run: () => combineData(l) }),
   );
-  lottos.forEach((l) =>
-    tasks.push({ name: "Miss_" + l, run: () => genMissData(l, new Date(), 1, "ASC", -1) }),
-  );
-
   tasks.push({
     name: "PreloadCache",
     run: () => {
@@ -85,7 +71,14 @@ function dailyupdate(isUI) {
       if (isUI === true) {
         return { status: "error", message: "任務 " + task.name + " 執行失敗: " + e.message };
       }
-      continue;
+      saveProgress(stateKey, { step: i });
+      return { status: "error", message: "任務 " + task.name + " 執行失敗: " + e.message };
+    }
+
+    if (result && result.status === "error") {
+      saveProgress(stateKey, { step: i });
+      logSystemError("dailyupdate", "任務 " + task.name + " 回報錯誤: " + result.message, "ERROR");
+      return result;
     }
 
     if (result && result.status === "continue") {
@@ -142,9 +135,14 @@ function _runTaskSequence(stateKey, tasks) {
       result = task.run();
     } catch (e) {
       logSystemError(stateKey, "子任務 " + task.name + " 失敗：" + e, "ERROR");
-      state.step = i + 1;
-      saveProgress(stateKey, state);
-      continue;
+      saveProgress(stateKey, { step: i });
+      return { status: "error", message: "子任務 " + task.name + " 失敗：" + e };
+    }
+
+    if (result && result.status === "error") {
+      saveProgress(stateKey, { step: i });
+      logSystemError(stateKey, "子任務 " + task.name + " 回報錯誤：" + result.message, "ERROR");
+      return result;
     }
 
     if (result && result.status === "continue") {
@@ -201,38 +199,11 @@ function dailyupdate_phase1() {
 }
 
 /**
- * 第二階段 (00:30-01:00)：更新 MissData（所有方法序號）
- * 每 5 分鐘重複觸發直到完成，LockService 防止重疊
+ * Miss 工作表不再每日更新，日後使用時再檢查。
+ * 保留空函數以相容舊有觸發器；不做任何資料寫入。
  */
 function dailyupdate_phase2() {
-  var lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(10000);
-  } catch (e) {
-    return { status: "continue", message: "另一執行個體正在執行" };
-  }
-  try {
-    var today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd");
-    var completed = PropertiesService.getScriptProperties().getProperty("PHASE2_COMPLETED_DATE");
-    if (completed === today) {
-      return { status: "complete", message: "今日已完成" };
-    }
-
-    const tasks = [];
-    _DAILY_LOTTOS.forEach((l) =>
-      tasks.push({ name: "Miss_" + l, run: () => genMissData(l, new Date(), 1, "ASC", -1) }),
-    );
-
-    var result = _runTaskSequence("DAILY_UPDATE_PHASE2", tasks);
-
-    if (result.status === "complete") {
-      PropertiesService.getScriptProperties().setProperty("PHASE2_COMPLETED_DATE", today);
-    }
-
-    return result;
-  } finally {
-    lock.releaseLock();
-  }
+  return { status: "complete", message: "每日 Miss 更新已停用" };
 }
 
 /**
@@ -286,28 +257,38 @@ function dailyupdate_phase3() {
  * 執行後可從 GAS 編輯器 → 觸發器 確認
  */
 function setDailyTriggers() {
-  removeDailyTriggers();
+  try {
+    removeDailyTriggers();
 
-  const schedule = [
-    { func: "dailyupdate_phase1", hour: 0, minutes: [0, 5, 10, 15, 20, 25] },
-    { func: "dailyupdate_phase2", hour: 0, minutes: [30, 35, 40, 45, 50, 55] },
-    { func: "dailyupdate_phase3", hour: 1, minutes: [0] },
-  ];
+    const schedule = [
+      { func: "dailyupdate_phase1", hour: 0, minutes: [0, 5, 10, 15, 20, 25] },
+      { func: "dailyupdate_phase3", hour: 1, minutes: [0] },
+    ];
 
-  var count = 0;
-  schedule.forEach(s => {
-    s.minutes.forEach(min => {
-      ScriptApp.newTrigger(s.func)
-        .timeBased()
-        .everyDays(1)
-        .atHour(s.hour)
-        .nearMinute(min)
-        .create();
-      count++;
-      logSystemError("setDailyTriggers", "已建立觸發: " + s.func + " @ " + s.hour + ":" + ("0" + min).slice(-2), "INFO");
+    var count = 0;
+    schedule.forEach(s => {
+      s.minutes.forEach(min => {
+        ScriptApp.newTrigger(s.func)
+          .timeBased()
+          .everyDays(1)
+          .atHour(s.hour)
+          .nearMinute(min)
+          .create();
+        count++;
+        logSystemError("setDailyTriggers", "已建立觸發: " + s.func + " @ " + s.hour + ":" + ("0" + min).slice(-2), "INFO");
+      });
     });
-  });
-  logSystemError("setDailyTriggers", "共建立 " + count + " 個觸發器", "INFO");
+    logSystemError("setDailyTriggers", "共建立 " + count + " 個觸發器", "INFO");
+    return { status: "success", count: count };
+  } catch (e) {
+    // 本專案為控管使用者端存取權，appsscript.json 僅宣告最小 scope（未含 script.scriptapp），
+    // 故此處建立觸發器會被拒絕；改由 GAS 編輯器 → 觸發器 → 新增觸發器手動建立。
+    logSystemError("setDailyTriggers", "建立觸發器失敗：" + e.toString(), "WARNING");
+    return {
+      status: "manual_required",
+      message: "未宣告 script.scriptapp 存取權，無法以程式建立觸發器；請於 GAS 編輯器 → 觸發器 → 新增觸發器，手動建立 dailyupdate_phase1 與 dailyupdate_phase3 的定時觸發",
+    };
+  }
 }
 
 /**
@@ -315,13 +296,17 @@ function setDailyTriggers() {
  * 同時清除各階段的完成日期標記
  */
 function removeDailyTriggers() {
-  const triggers = ScriptApp.getProjectTriggers();
-  const targets = new Set(["dailyupdate_phase1", "dailyupdate_phase2", "dailyupdate_phase3"]);
-  triggers.forEach(t => {
-    if (targets.has(t.getHandlerFunction())) {
-      ScriptApp.deleteTrigger(t);
-    }
-  });
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    const targets = new Set(["dailyupdate_phase1", "dailyupdate_phase2", "dailyupdate_phase3"]);
+    triggers.forEach(t => {
+      if (targets.has(t.getHandlerFunction())) {
+        ScriptApp.deleteTrigger(t);
+      }
+    });
+  } catch (e) {
+    logSystemError("removeDailyTriggers", "移除觸發器失敗（可能未宣告 script.scriptapp 存取權）：" + e.toString(), "WARNING");
+  }
   ["PHASE1_COMPLETED_DATE", "PHASE2_COMPLETED_DATE", "PHASE3_COMPLETED_DATE"].forEach(function (key) {
     PropertiesService.getScriptProperties().deleteProperty(key);
   });

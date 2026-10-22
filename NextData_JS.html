@@ -1,0 +1,362 @@
+<script>
+  function _restoreNextDataParams() {
+    try {
+      var stored = sessionStorage.getItem("_nextDataParams");
+      if (stored) {
+        var p = JSON.parse(stored);
+        sessionStorage.removeItem("_nextDataParams");
+        return p;
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  var lotto, date, method, baseRange, limit, rsvn;
+  var _snapshots = [];
+  var _predict = null;
+  var _view = "predict";
+  var _notice = "";
+  var _activePos = 0;
+
+  $(document).ready(function () {
+    var urlParams = new URLSearchParams(window.location.search);
+    var stored = _restoreNextDataParams();
+    var cached = null;
+    try { var c = sessionStorage.getItem("_nextDataCached"); if (c) cached = JSON.parse(c); } catch(e) {}
+
+    if (window.location.search.indexOf("createOAuthDialog") !== -1 && stored) {
+      lotto = stored.lotto || "L539";
+      date = stored.date;
+      method = String(stored.methodSN || "1");
+    } else {
+      lotto = urlParams.get("lotto") || (stored ? stored.lotto : (cached ? cached.lotto : "L539"));
+      date = urlParams.get("date") || (stored ? stored.date : (cached ? cached.date : ""));
+      method = urlParams.get("methodSN") || (stored ? String(stored.methodSN) : (cached ? String(cached.methodSN) : "1"));
+    }
+    baseRange = parseInt(urlParams.get("base") || (cached ? cached.baseRange : "200"), 10) || 200;
+    limit = parseInt(urlParams.get("limit") || (cached ? cached.limit : "20"), 10) || 20;
+    rsvn = urlParams.get("rsvn") || (stored && stored.rsvn) || (cached && cached.rsvn) || "";
+    if (rsvn) $("#rsvnInput").val(rsvn);
+
+    if (!date) {
+      date = new Date().toISOString().split("T")[0];
+      $("#summaryDate").text(date + " (預設)");
+    } else {
+      $("#summaryDate").text(date);
+    }
+    try { sessionStorage.setItem("_nextDataCached", JSON.stringify({ lotto: lotto, date: date, methodSN: method, baseRange: baseRange, limit: limit, rsvn: rsvn })); } catch(e) {}
+    $("#summaryLotto").text(lotto);
+    $("#summaryMethodSN").text(method);
+    $("#baseInput").val(baseRange);
+    $("#limitInput").val(limit);
+    updateNextTitle();
+
+    loadNextData();
+
+    $("#btnReload").on("click", function () {
+      baseRange = parseInt($("#baseInput").val(), 10) || 200;
+      limit = parseInt($("#limitInput").val(), 10) || 20;
+      rsvn = $("#rsvnInput").val() || "";
+      try { sessionStorage.setItem("_nextDataCached", JSON.stringify({ lotto: lotto, date: date, methodSN: method, baseRange: baseRange, limit: limit, rsvn: rsvn })); } catch(e) {}
+      loadNextData();
+    });
+    $("#rsvnInput").on("change", function () {
+      $("#btnReload").click();
+    });
+    $("#baseInput, #limitInput").on("keydown", function (e) {
+      if (e.key === "Enter") $("#btnReload").click();
+    });
+    $("#viewToggle button").on("click", function () {
+      _view = $(this).data("view") || "predict";
+      $("#viewToggle button").removeClass("active");
+      $(this).addClass("active");
+      renderNextTable();
+    });
+  });
+
+  function updateNextTitle() {
+    $("#nextTitleText").text("震盪表-" + lotto + "-" + date + "-" + method);
+    document.title = "震盪表-" + lotto + "-" + date + "-" + method;
+  }
+
+  function loadNextData() {
+    $("#lblMethod").html('<i class="bi bi-hourglass-split me-1"></i> 計算中...');
+    $("#AreaTable").html(
+      '<div class="text-center py-5 text-muted">' +
+        '<div class="spinner-border text-primary mb-2" role="status"></div>' +
+        "<div>正在載入震盪資料（首次計算約需數秒）...</div></div>"
+    );
+
+    google.script.run
+      .withSuccessHandler(function (pingRes) {
+        if (!pingRes) {
+          _nextAuthWarning("連線測試無回應。");
+          return;
+        }
+        google.script.run
+          .withSuccessHandler(function (res) {
+            if (!res) {
+              $("#AreaTable").html('<div class="alert alert-warning m-3">伺服器回傳空值，請重新整理頁面。</div>');
+              return;
+            }
+            if (res.status === "error") {
+              $("#AreaTable").html('<div class="alert alert-danger m-3">' + (res.message || "載入失敗") + "</div>");
+              $("#lblMethod").html('<i class="bi bi-exclamation-triangle me-1"></i> 載入失敗');
+              return;
+            }
+            var msn = res.summary ? res.summary.methodSN : method;
+            var methodLabel = "方法 " + msn;
+            if (msn == 1) {
+              methodLabel = "全資料";
+            } else if (res.method) {
+              var parts = [];
+              if (res.method.strCompares) parts.push("同 " + res.method.strCompares);
+              if (res.method.strNextNums) parts.push("托 " + String(res.method.strNextNums).replace(/;/g, ","));
+              if (parts.length) methodLabel += " (" + parts.join(" ") + ")";
+            }
+            if (res.summary && res.summary.computed > 0) methodLabel += "・新算" + res.summary.computed + "期";
+            $("#lblMethod").html('<i class="bi bi-cpu me-1"></i> ' + methodLabel);
+            _snapshots = res.snapshots || [];
+            _predict = res.predict || null;
+            _notice = (res.summary && res.summary.notice) || "";
+            var werr = (res.writeLog || []).filter(function(x) { return String(x).indexOf("ERR") === 0; });
+            if (werr.length) _notice = (_notice ? _notice + "；" : "") + werr.join("；");
+            if (res.summary) {
+              if (res.summary.intRSVn) {
+                rsvn = String(res.summary.intRSVn);
+                $("#rsvnInput").val(rsvn);
+              }
+              $("#summaryMethodSN").text(methodLabel);
+              var rangeTxt = "共 " + _snapshots.length + " 期 / BASE=" + res.summary.baseRange;
+              if (_snapshots.length > 0) {
+                rangeTxt += " (" + _snapshots[_snapshots.length - 1].n00.date + " ~ " + _snapshots[0].n00.date + ")";
+              }
+              $("#summaryN00").text(rangeTxt);
+            }
+            _activePos = 0;
+            renderPosTabs();
+            renderNextTable();
+            loadAllData(date);
+            google.script.run
+              .withSuccessHandler(function (nr) {
+                if (nr && nr.status === "success" && nr.numbers && nr.numbers.length > 0) {
+                  var html = nr.numbers.map(function (n) {
+                    return '<span class="summary-num-ball">' + n + "</span>";
+                  }).join(" ");
+                  $("#summaryDrawNumbers").html(html);
+                } else {
+                  $("#summaryDrawNumbers").text("無資料");
+                }
+              })
+              .withFailureHandler(function () {
+                $("#summaryDrawNumbers").text("載入失敗");
+              })
+              .getNextDataDrawNumbers(lotto, date);
+          })
+          .withFailureHandler(function (err) {
+            var m = err && err.message ? err.message : "請求超時或連線失敗，請重新整理頁面";
+            if (/authoriz|存取權|授權|permission/i.test(m)) _nextAuthWarning(m);
+            else {
+              $("#AreaTable").html(
+                '<div class="alert alert-danger m-3">系統錯誤：' + m + "</div>"
+              );
+            }
+          })
+          .getNextData(lotto, date, parseInt(method), baseRange, limit, 0, rsvn || 0);
+      })
+      .withFailureHandler(function (err) {
+        var m = err && err.message ? err.message : "請求超時或連線失敗";
+        if (/authoriz|存取權|授權|permission/i.test(m)) _nextAuthWarning(m);
+        else {
+          $("#AreaTable").html(
+            '<div class="alert alert-danger m-3">系統錯誤(ping)：' + m + "</div>"
+          );
+        }
+      })
+      .nextPing();
+  }
+
+  /** 存取權（Google 授權）不足時的提示：顯示真實訊息＋重新授權連結 */
+  function _nextAuthWarning(msg) {
+    var base = window.location.href.split("?")[0];
+    $("#AreaTable").html(
+      '<div class="alert alert-warning m-3">' +
+        (msg ? "<strong>" + msg + "</strong><br>" : "") +
+        "需要存取權（Google 授權）才能使用本應用程式。請 " +
+        '<a href="' + base + '" class="alert-link">點此重新授權</a>；' +
+        '若出現「此應用程式未經驗證」，請按「進階 → 前往…（不安全）」。' +
+        "</div>"
+    );
+    $("#lblMethod").html('<i class="bi bi-exclamation-triangle me-1"></i> 需要存取權');
+  }
+
+  function _activePositions() {
+    if (!_snapshots.length || !_snapshots[0].positions) return [];
+    return _snapshots[0].positions;
+  }
+
+  function renderPosTabs() {
+    var $tabs = $("#posTabs");
+    var plist = _activePositions();
+    if (!plist.length) {
+      $tabs.html("");
+      return;
+    }
+    var html = "";
+    plist.forEach(function (p, i) {
+      html += '<li class="nav-item">' +
+        '<a class="nav-link' + (i === _activePos ? " active" : "") + '" href="javascript:void(0)" data-pos="' + i + '">' +
+        p.title + '<span class="num-badge">' + p.num + "</span></a></li>";
+    });
+    $tabs.html(html);
+    $tabs.find("a").on("click", function () {
+      _activePos = parseInt($(this).data("pos"), 10) || 0;
+      $tabs.find("a").removeClass("active");
+      $(this).addClass("active");
+      renderNextTable();
+    });
+  }
+
+  function renderNextTable() {
+    var $container = $("#AreaTable");
+    var plist = _activePositions();
+    if (!_snapshots.length || !plist.length) {
+      $container.html('<div class="p-4 text-center text-muted">無震盪資料</div>');
+      return;
+    }
+    if (_view === "predict") { renderPredictTable($container); return; }
+    var p0 = plist[_activePos] || plist[0];
+    var wins = [5, 10, 25, 50, 100];
+    var html = "";
+    if (_notice) html += '<div class="alert alert-warning py-1 px-2 small mb-2">' + _notice + "</div>";
+    html += '<div class="table-responsive" style="max-height:70vh;overflow:auto;">';
+    html += '<table class="table table-bordered table-striped next-table mb-0">';
+    html += "<thead><tr><th>日期</th><th>號碼</th>";
+    wins.forEach(function (w) {
+      html += "<th>AVG" + w + "</th><th>STD" + w + "</th><th>MIN" + w + "</th><th>MAX" + w + "</th>";
+      html += "<th>RSV" + w + "</th><th>K" + w + "</th><th>D" + w + "</th><th>J" + w + "</th>";
+    });
+    html += "</tr></thead><tbody>";
+    _snapshots.forEach(function (snap) {
+      var pos = (snap.positions && snap.positions[_activePos]) || (snap.positions && snap.positions[0]);
+      if (!pos) return;
+      var byW = {};
+      (pos.wins || []).forEach(function (r) { byW[r.w] = r; });
+      html += "<tr><td>" + snap.n00.date + '</td><td><span class="num-badge" style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:#0d6efd;color:#fff;font-weight:800;">' + pos.num + "</span></td>";
+      wins.forEach(function (w) {
+        var r = byW[w] || {};
+        html += "<td>" + (r.avg != null ? r.avg : "-") + "</td><td>" + (r.std != null ? r.std : "-") + "</td><td>" + (r.min != null ? r.min : "-") + "</td><td>" + (r.max != null ? r.max : "-") + "</td>";
+        html += '<td class="text-info">' + (r.rsv != null ? r.rsv : "-") + '</td><td class="text-primary">' + (r.k != null ? r.k : "-") + '</td><td class="text-warning">' + (r.d != null ? r.d : "-") + '</td><td class="text-danger">' + (r.j != null ? r.j : "-") + "</td>";
+      });
+      html += "</tr>";
+    });
+    html += "</tbody></table></div>";
+    $container.html(html);
+  }
+
+  /* 預測子頁：最新快照的全候選號碼（號碼由小到大；排名規則待定） */
+  function renderPredictTable($container) {
+    if (!_predict || !_predict.positions || !_predict.positions.length) {
+      $container.html('<div class="p-4 text-center text-muted">無預測資料</div>');
+      return;
+    }
+    var pos = _predict.positions[_activePos] || _predict.positions[0];
+    var wins = [5, 10, 25, 50, 100];
+    var html = "";
+    if (_notice) html += '<div class="alert alert-warning py-1 px-2 small mb-2">' + _notice + "</div>";
+    html += '<div class="small text-muted mb-2">預測目標日 ' + _predict.date + "（N00=" + _predict.sn + "），候選共 " + (pos.rows || []).length + " 個（排名規則待定，現以號碼排序）</div>";
+    // 標示基準：最新快照（觀測日）當前柱的 AVG/STD，各窗口各自判定
+    var refWins = {};
+    var refSnap = _snapshots[0];
+    if (refSnap && refSnap.positions && refSnap.positions[_activePos]) {
+      (refSnap.positions[_activePos].wins || []).forEach(function (r) { refWins[r.w] = r; });
+    }
+    var candCount = (pos.rows || []).length;
+    var hitCount = {};
+    (pos.rows || []).forEach(function (r) {
+      (r.wins || []).forEach(function (x) {
+        var ref = refWins[x.w];
+        if (ref && ref.std > 0 && x.avg >= ref.avg - ref.std && x.avg <= ref.avg + ref.std) {
+          hitCount[x.w] = (hitCount[x.w] || 0) + 1;
+        }
+      });
+    });
+    var bandTxt = [];
+    wins.forEach(function (w) {
+      var ref = refWins[w];
+      if (ref && ref.std > 0) {
+        bandTxt.push("AVG" + w + " " + ref.avg + "±" + ref.std + "（符合 " + (hitCount[w] || 0) + "/" + candCount + "）");
+      }
+    });
+    if (bandTxt.length) {
+      html += '<div class="small text-muted mb-2">標示基準（' + refSnap.n00.date + " " + (pos.title || "") + "）：" +
+        bandTxt.join("、") + "；候選預測 AVG 落於區間內者以綠色標示</div>";
+    }
+    // KDJ 參考列（已隱藏，2026-10-19 決議）
+    // var latestSnap = _snapshots[0];
+    // if (latestSnap && latestSnap.positions && latestSnap.positions[_activePos]) {
+    //   var lp = latestSnap.positions[_activePos];
+    //   html += '<div class="mb-2 p-2 border rounded bg-light small">';
+    //   html += "<strong>KDJ 參考（" + latestSnap.n00.date + " 第" + (lp.col || "") + "柱 號碼 " + lp.num + "）：</strong> ";
+    //   (lp.wins || []).forEach(function (r) {
+    //     if (r.k != null && r.k !== 0) {
+    //       html += '<span class="me-2">前' + r.w + "期 RSV=" + r.rsv + " K=" + r.k + " D=" + r.d + ' <strong class="text-danger">J=' + r.j + "</strong></span>";
+    //     }
+    //   });
+    //   html += "</div>";
+    // }
+    html += '<div class="table-responsive" style="max-height:70vh;overflow:auto;">';
+    html += '<table class="table table-bordered table-striped next-table mb-0">';
+    html += "<thead><tr><th>號碼</th>";
+    wins.forEach(function (w) {
+      html += "<th>AVG" + w + "</th><th>STD" + w + "</th>";
+      html += "<th>RSV" + w + "</th><th>K" + w + "</th><th>D" + w + "</th><th>J" + w + "</th>";
+    });
+    html += "</tr></thead><tbody>";
+    (pos.rows || []).forEach(function (r) {
+      var byW = {};
+      (r.wins || []).forEach(function (x) { byW[x.w] = x; });
+      html += '<tr><td><span style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:#198754;color:#fff;font-weight:800;">' + r.num + "</span></td>";
+      wins.forEach(function (w) {
+        var x = byW[w] || { avg: "-", std: "-" };
+        var ref = refWins[w];
+        var hit = ref && ref.std > 0 && typeof x.avg === "number" &&
+          x.avg >= ref.avg - ref.std && x.avg <= ref.avg + ref.std;
+        html += hit ? '<td class="text-success fw-bold">' + x.avg + "</td>" : "<td>" + x.avg + "</td>";
+        html += "<td>" + x.std + "</td>";
+        html += '<td class="text-info">' + (x.rsv != null ? x.rsv : "-") + '</td><td class="text-primary">' + (x.k != null ? x.k : "-") + '</td><td class="text-warning">' + (x.d != null ? x.d : "-") + '</td><td class="text-danger">' + (x.j != null ? x.j : "-") + "</td>";
+      });
+      html += "</tr>";
+    });
+    html += "</tbody></table></div>";
+    $container.html(html);
+  }
+
+  function loadAllData(dateStr) {
+    if (!dateStr) {
+      $("#summaryAllData").text("無日期");
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || res.status !== "success" || !res.data) {
+          $("#summaryAllData").text("無法載入");
+          return;
+        }
+        var d = res.data;
+        var items = [
+          "年天干", "年地支", "月天干", "月地支", "日天干", "日地支",
+          "時柱", "日五形", "日十二建除", "日九星", "日二十八星宿", "時二十八星宿",
+          "日八掛", "本命", "父母", "福德", "田宅", "官祿", "奴僕", "遷移", "疾厄", "財帛", "子女", "夫妻", "兄弟", "命重"
+        ];
+        var html = items.map(function(f) {
+          return '<span class="me-3 mb-1 d-inline-block"><strong class="text-secondary">' + f + '：</strong>' + (d[f] || "-") + '</span>';
+        }).join("");
+        $("#summaryAllData").html(html);
+      })
+      .withFailureHandler(function () {
+        $("#summaryAllData").text("載入失敗");
+      })
+      .getNextDataAllData(dateStr);
+  }
+</script>

@@ -1,18 +1,7 @@
 [GalaxyLotto(Root資料夾)](https://drive.google.com/drive/folders/1RGVmmwzNs0AK1FCX7BfC2R8H81RXlufo?usp=drive_link)
 
-- [GalaxyLotto 試算表](https://docs.google.com/spreadsheets/d/1neKsW8afXyTYSoYIt454CgFP2zgzEZmhFVpLKfFx-j8/edit?usp=drive_link)
-  - [L539工作表](GalaxyLotto_L539工作表.md) ： L539象限的39顆星球出現的結果。
-  - [L649工作表](GalaxyLotto_L649工作表.md) ： L649象限的49顆星球出現的結果。
-  - [L638工作表](GalaxyLotto_L638工作表.md) ： L638象限的38顆星球出現的結果。
-  - [LSix工作表](GalaxyLotto_LSix工作表.md) ： LSix象限的49顆星球出現的結果。
-  - [AllData工作表](GalaxyLotto_AllData工作表.md) ： 日期相關係數。
-  - [Method工作表](GalaxyLotto_Method工作表.md)： 搜尋條件相關序號。
-  - [Sheets工作表](GalaxyLotto_sheets工作表.md) ： 相關試算表及網址。
-  - [Folders工作表](GalaxyLotto_Folders工作表.md) : 相關資料夾及網址。
-  - [IDName工作表](GalaxyLotto_IDName工作表.md) ： ID與ID名稱對照表。
-  - [FieldName工作表](GalaxyLotto_FieldName工作表.md) ： 欄位名稱對照表。
-  - [Setting 工作表]() : 外部連結用。
-  - [ErrorLog工作表](GalaxyLotto_ErrorLog工作表.md) ： 系統錯誤記錄表。
+- GalaxyLotto 試算表，[網址](https://docs.google.com/spreadsheets/d/1neKsW8afXyTYSoYIt454CgFP2zgzEZmhFVpLKfFx-j8/edit?usp=drive_link)
+    - [GalaxyLotto試算表架構](GalaxyLotto試算表.md)
 
 - [L539(資料夾)](https://drive.google.com/drive/folders/1KmkzGIeeXI-_Tdsrjb9EU9KjReL-jyd-?usp=drive_link)
   - [L539 試算表](https://docs.google.com/spreadsheets/d/1bB4YWcgo6IZ4rzoP9gK6YouLtKvYp-ueS-t1gOI5BoE/edit?usp=drive_link)

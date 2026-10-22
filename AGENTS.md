@@ -82,9 +82,9 @@ genMissData() → 計算遺漏值 → Miss 工作表
 | 檔案                    | 行數  | 用途                                |
 | ----------------------- | ----- | ----------------------------------- |
 | `Utility.js`            | ~2328 | 路由、快取、DB 存取、日誌、進度管理 |
-| `dailywork.js`          | ~746  | 每日更新協調器（三階段排程 + UI 相容）|
-| `UpdateAllModule.js`    | ~572  | 新一代 combine/miss（含自我修復）   |
-| `GalaxyAllModule.js`    | ~324  | 舊版 combine/miss                   |
+| `dailywork.js`          | ~840  | 每日更新協調器（三階段排程 + UI 相容）|
+| `UpdateAllModule.js`    | ~460  | combine 與維護工具                  |
+| `GalaxyAllModule.js`    | ~130  | 舊版 combine                       |
 | `main.js`               | ~98   | 舊版資料管理                        |
 | `Predict_Server.js`     | ~1630 | Galaxy 預測引擎 (P109)              |
 | `Prediction1_Server.js` | ~2777 | V1 預測引擎 (A147)                  |
@@ -203,19 +203,19 @@ runPredictUnitTests()
 
 - **路由入口**: `Utility.js` → `doGet(e)` — 根據 `?page=` 參數分流
 - **快取清除**: 呼叫前端 `clearAllSystems()`，或手動遞增任何版本號
-- **每日更新 (三階段排程)**: `dailywork.js` → 每 phase 有多支重複觸發（每 5 分鐘一支），配合 LockService 防止重疊：
+- **每日更新 (兩個有效階段)**: `dailywork.js` → 每日更新原始資料與 All，Miss 工作表不每日更新；phase1 有多支重複觸發（每 5 分鐘一支），配合 LockService 防止重疊：
   - `dailyupdate_phase1()` (00:00~00:25, 共 6 支) — 擷取號碼 + 合併 All (Update_* + Combine_*)
-  - `dailyupdate_phase2()` (00:30~00:55, 共 6 支) — 更新 MissData（僅 methodSN=1）
+  - `dailyupdate_phase2()` 已停用，保留空入口相容舊觸發器；`setDailyTriggers()` 不再新建 phase2 觸發器
   - `dailyupdate_phase3()` (01:00, 1 支) — 快取預載、封存、清理 (PreloadCache + Archive + Cleanup)
   - 每支 phase function 進入時以 LockService 防止重疊，並檢查 `PHASE{N}_COMPLETED_DATE` 標記；若當天已完成則直接跳過
   - 完成後寫入 `PHASE{N}_COMPLETED_DATE`，後續 trigger 看到同日期標記即跳過不重複執行
-- **genMissData 增量模式**: 全新執行（無續傳進度）時讀取 Miss 工作表該 methodSN 最後日期，只處理 All 中該日期之後的新資料（不刪除重填）；續傳中時跳過增量過濾直接以 startIndex 續跑
+- **genMissData 增量模式**: 使用 Miss 功能時，全新執行（無續傳進度）會讀取 Miss 工作表該 methodSN 最後日期，只處理 All 中該日期之後的新資料；每日排程不呼叫此函數
 - **writeMissBatchDirect**: `isFirstBatch=true` 時只移除該 methodSN 的舊資料再附加新資料，保留其他 methodSN；`isFirstBatch=false` 時直接附加不刪除
 - **fetchMonthlyBatch 修復**: 原 month 從期號解析（`115000168 % 1000000 / 10000` 恆為 0），改以 `today - 2 months` 計算起始月，確保跨月開獎資料正常抓取
-- **_runTaskSequence**: 單一 task 失敗以 try-catch 跳過，不阻斷整個序列
+- **_runTaskSequence**: task 失敗時保留目前步驟並回報 error；不將失敗階段標記為完成
 - **combineData**: 加入 try-catch 與 null source sheet 保護
-- **設定觸發**: 部署後在 GAS 編輯器執行 `setDailyTriggers()` 一次性建立三支定時觸發；`removeDailyTriggers()` 可移除
-- **舊版相容**: `dailyupdate(isUI)` 保留供 UI 手動呼叫，行為與三階段一致
+- **設定觸發**: 部署後在 GAS 編輯器執行 `setDailyTriggers()` 建立 phase1/phase3 定時觸發；`removeDailyTriggers()` 可移除
+- **舊版相容**: `dailyupdate(isUI)` 保留供 UI 手動呼叫；更新原始資料、All 與第三階段維護工作，不更新 Miss
 - **註冊試算表**: 在 `Sheets` 工作表設定 `{name, url, recent}`
 
 ## 文件
