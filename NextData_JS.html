@@ -17,12 +17,19 @@
   var _view = "predict";
   var _notice = "";
   var _activePos = 0;
+  var _answerNumbers = [];
+  var _answerSpecial = null;
+  var _answerReady = false;
+  var _showAnswer = false;
+  var _predictSubView = "table";
+  var _predictChart = null;
 
   $(document).ready(function () {
     var urlParams = new URLSearchParams(window.location.search);
     var stored = _restoreNextDataParams();
     var cached = null;
     try { var c = sessionStorage.getItem("_nextDataCached"); if (c) cached = JSON.parse(c); } catch(e) {}
+    var cachedLimitWasCustomized = !!(cached && cached.limitUserSet);
 
     if (window.location.search.indexOf("createOAuthDialog") !== -1 && stored) {
       lotto = stored.lotto || "L539";
@@ -34,7 +41,10 @@
       method = urlParams.get("methodSN") || (stored ? String(stored.methodSN) : (cached ? String(cached.methodSN) : "1"));
     }
     baseRange = parseInt(urlParams.get("base") || (cached ? cached.baseRange : "200"), 10) || 200;
-    limit = parseInt(urlParams.get("limit") || (cached ? cached.limit : "20"), 10) || 20;
+    var urlLimit = urlParams.get("limit");
+    if (urlLimit) limit = parseInt(urlLimit, 10) || 100;
+    else if (cachedLimitWasCustomized) limit = parseInt(cached.limit, 10) || 100;
+    else limit = 100;
     rsvn = urlParams.get("rsvn") || (stored && stored.rsvn) || (cached && cached.rsvn) || "";
     if (rsvn) $("#rsvnInput").val(rsvn);
 
@@ -44,7 +54,7 @@
     } else {
       $("#summaryDate").text(date);
     }
-    try { sessionStorage.setItem("_nextDataCached", JSON.stringify({ lotto: lotto, date: date, methodSN: method, baseRange: baseRange, limit: limit, rsvn: rsvn })); } catch(e) {}
+    try { sessionStorage.setItem("_nextDataCached", JSON.stringify({ lotto: lotto, date: date, methodSN: method, baseRange: baseRange, limit: limit, limitUserSet: cachedLimitWasCustomized || !!urlLimit, rsvn: rsvn })); } catch(e) {}
     $("#summaryLotto").text(lotto);
     $("#summaryMethodSN").text(method);
     $("#baseInput").val(baseRange);
@@ -55,9 +65,9 @@
 
     $("#btnReload").on("click", function () {
       baseRange = parseInt($("#baseInput").val(), 10) || 200;
-      limit = parseInt($("#limitInput").val(), 10) || 20;
+      limit = parseInt($("#limitInput").val(), 10) || 100;
       rsvn = $("#rsvnInput").val() || "";
-      try { sessionStorage.setItem("_nextDataCached", JSON.stringify({ lotto: lotto, date: date, methodSN: method, baseRange: baseRange, limit: limit, rsvn: rsvn })); } catch(e) {}
+      try { sessionStorage.setItem("_nextDataCached", JSON.stringify({ lotto: lotto, date: date, methodSN: method, baseRange: baseRange, limit: limit, limitUserSet: true, rsvn: rsvn })); } catch(e) {}
       loadNextData();
     });
     $("#rsvnInput").on("change", function () {
@@ -70,6 +80,23 @@
       _view = $(this).data("view") || "predict";
       $("#viewToggle button").removeClass("active");
       $(this).addClass("active");
+      $("#btnShowAnswer").prop("disabled", _view !== "predict" || !_answerReady);
+      $("#predictSubView").toggleClass("d-none", _view !== "predict");
+      if (_view !== "predict") _destroyPredictChart();
+      renderNextTable();
+    });
+    $("#predictViewToggle button").on("click", function () {
+      _predictSubView = $(this).data("subview") || "table";
+      $("#predictViewToggle button").removeClass("active");
+      $(this).addClass("active");
+      $("#chartOptions").toggleClass("d-none", _predictSubView !== "chart").toggleClass("d-flex", _predictSubView === "chart");
+      renderNextTable();
+    });
+    $("#chartMetric, #chartWindow, #chartPeriod").on("change", renderNextTable);
+    $("#btnShowAnswer").on("click", function () {
+      if (! _answerReady) return;
+      _showAnswer = !_showAnswer;
+      $(this).toggleClass("active", _showAnswer).attr("aria-pressed", _showAnswer ? "true" : "false");
       renderNextTable();
     });
   });
@@ -136,6 +163,7 @@
             _activePos = 0;
             renderPosTabs();
             renderNextTable();
+            loadAnswerNumbers(_predict ? _predict.date : date);
             loadAllData(date);
             google.script.run
               .withSuccessHandler(function (nr) {
@@ -174,6 +202,29 @@
         }
       })
       .nextPing();
+  }
+
+  function loadAnswerNumbers(answerDate) {
+    _answerReady = false;
+    _answerNumbers = [];
+    _showAnswer = false;
+    $("#btnShowAnswer").prop("disabled", true).removeClass("active").attr("aria-pressed", "false");
+    if (!answerDate) return;
+    google.script.run
+      .withSuccessHandler(function (res) {
+        _answerReady = !!(res && res.status === "success" && res.numbers && res.numbers.length);
+        _answerNumbers = _answerReady ? res.numbers.map(Number) : [];
+        _answerSpecial = res && res.special != null && res.special !== "" ? Number(res.special) : null;
+        $("#btnShowAnswer").prop("disabled", _view !== "predict" || !_answerReady);
+        renderNextTable();
+      })
+      .withFailureHandler(function () {
+        _answerReady = false;
+        _answerNumbers = [];
+        _answerSpecial = null;
+        $("#btnShowAnswer").prop("disabled", true);
+      })
+      .getNextDataDrawNumbers(lotto, answerDate);
   }
 
   /** 存取權（Google 授權）不足時的提示：顯示真實訊息＋重新授權連結 */
@@ -224,7 +275,12 @@
       $container.html('<div class="p-4 text-center text-muted">無震盪資料</div>');
       return;
     }
-    if (_view === "predict") { renderPredictTable($container); return; }
+    if (_view === "predict") {
+      if (_predictSubView === "chart") renderPredictChart($container);
+      else { _destroyPredictChart(); renderPredictTable($container); }
+      return;
+    }
+    _destroyPredictChart();
     var p0 = plist[_activePos] || plist[0];
     var wins = [5, 10, 25, 50, 100];
     var html = "";
@@ -261,37 +317,12 @@
       return;
     }
     var pos = _predict.positions[_activePos] || _predict.positions[0];
+    var drawNum = _activePos + 1;
     var wins = [5, 10, 25, 50, 100];
     var html = "";
     if (_notice) html += '<div class="alert alert-warning py-1 px-2 small mb-2">' + _notice + "</div>";
     html += '<div class="small text-muted mb-2">預測目標日 ' + _predict.date + "（N00=" + _predict.sn + "），候選共 " + (pos.rows || []).length + " 個（排名規則待定，現以號碼排序）</div>";
-    // 標示基準：最新快照（觀測日）當前柱的 AVG/STD，各窗口各自判定
-    var refWins = {};
-    var refSnap = _snapshots[0];
-    if (refSnap && refSnap.positions && refSnap.positions[_activePos]) {
-      (refSnap.positions[_activePos].wins || []).forEach(function (r) { refWins[r.w] = r; });
-    }
-    var candCount = (pos.rows || []).length;
-    var hitCount = {};
-    (pos.rows || []).forEach(function (r) {
-      (r.wins || []).forEach(function (x) {
-        var ref = refWins[x.w];
-        if (ref && ref.std > 0 && x.avg >= ref.avg - ref.std && x.avg <= ref.avg + ref.std) {
-          hitCount[x.w] = (hitCount[x.w] || 0) + 1;
-        }
-      });
-    });
-    var bandTxt = [];
-    wins.forEach(function (w) {
-      var ref = refWins[w];
-      if (ref && ref.std > 0) {
-        bandTxt.push("AVG" + w + " " + ref.avg + "±" + ref.std + "（符合 " + (hitCount[w] || 0) + "/" + candCount + "）");
-      }
-    });
-    if (bandTxt.length) {
-      html += '<div class="small text-muted mb-2">標示基準（' + refSnap.n00.date + " " + (pos.title || "") + "）：" +
-        bandTxt.join("、") + "；候選預測 AVG 落於區間內者以綠色標示</div>";
-    }
+    // 預測標示使用後端從 DataN01/DataNVAR01 讀出的歷史範圍。
     // KDJ 參考列（已隱藏，2026-10-19 決議）
     // var latestSnap = _snapshots[0];
     // if (latestSnap && latestSnap.positions && latestSnap.positions[_activePos]) {
@@ -316,20 +347,151 @@
     (pos.rows || []).forEach(function (r) {
       var byW = {};
       (r.wins || []).forEach(function (x) { byW[x.w] = x; });
-      html += '<tr><td><span style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:#198754;color:#fff;font-weight:800;">' + r.num + "</span></td>";
+      var answerNum = pos.col === "S1" ? _answerSpecial : _answerNumbers[_activePos];
+      var answerHit = _showAnswer && answerNum != null && Number(r.num) === Number(answerNum);
+      html += '<tr' + (answerHit ? ' class="next-answer-row"' : "") + '><td><span style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:#198754;color:#fff;font-weight:800;">' + r.num + "</span></td>";
       wins.forEach(function (w) {
         var x = byW[w] || { avg: "-", std: "-" };
-        var ref = refWins[w];
-        var hit = ref && ref.std > 0 && typeof x.avg === "number" &&
-          x.avg >= ref.avg - ref.std && x.avg <= ref.avg + ref.std;
-        html += hit ? '<td class="text-success fw-bold">' + x.avg + "</td>" : "<td>" + x.avg + "</td>";
-        html += "<td>" + x.std + "</td>";
-        html += '<td class="text-info">' + (x.rsv != null ? x.rsv : "-") + '</td><td class="text-primary">' + (x.k != null ? x.k : "-") + '</td><td class="text-warning">' + (x.d != null ? x.d : "-") + '</td><td class="text-danger">' + (x.j != null ? x.j : "-") + "</td>";
+        var range = _predict.ranges && _predict.ranges[pos.sheet] && _predict.ranges[pos.sheet].windows
+          ? _predict.ranges[pos.sheet].windows[w] : null;
+        var avgClass = "", stdClass = "", rsvClass = "", avgTextClass = "", stdTextClass = "";
+        if (range && range.avg && typeof range.latestAvg === "number" && typeof x.avg === "number") {
+          if (x.avg >= range.avg.min && x.avg < range.latestAvg) avgClass = " next-band-low";
+          else if (x.avg >= range.latestAvg && x.avg <= range.avg.max) avgClass = " next-band-high";
+        }
+        if (range && range.std && typeof range.latestStd === "number" && typeof x.std === "number") {
+          if (x.std >= range.std.min && x.std < range.latestStd) stdClass = " next-band-low";
+          else if (x.std >= range.latestStd && x.std <= range.std.max) stdClass = " next-band-high";
+        }
+        if (range && range.rsv && typeof range.latestRsv === "number" && typeof x.rsv === "number") {
+          if (x.rsv >= range.rsv.min && x.rsv < range.latestRsv) rsvClass = " next-band-low";
+          else if (x.rsv >= range.latestRsv && x.rsv <= range.rsv.max) rsvClass = " next-band-high";
+        }
+        if (range && range.avgVar && typeof range.latestAvg === "number" && typeof x.avg === "number") {
+          var avgLo = range.avgVar.min < 0 ? range.latestAvg + range.avgVar.min : range.latestAvg - range.avgVar.min;
+          var avgHi = range.latestAvg + range.avgVar.max;
+          if (x.avg >= avgLo && x.avg < range.latestAvg) avgTextClass = " next-var-low";
+          else if (x.avg >= range.latestAvg && x.avg <= avgHi) avgTextClass = " next-var-high";
+        }
+        if (range && range.stdVar && typeof range.latestStd === "number" && typeof x.std === "number") {
+          var stdLo = range.stdVar.min < 0 ? range.latestStd + range.stdVar.min : range.latestStd - range.stdVar.min;
+          var stdHi = range.latestStd + range.stdVar.max;
+          if (x.std >= stdLo && x.std < range.latestStd) stdTextClass = " next-var-low";
+          else if (x.std >= range.latestStd && x.std <= stdHi) stdTextClass = " next-var-high";
+        }
+        html += '<td title="' + r.num + '，AVG' + w + '" class="' + avgClass.trim() + '"><span class="' + avgTextClass.trim() + '">' + x.avg + '</span></td>';
+        var minStd = (pos.rows || []).reduce(function(m, row) {
+          var rw = (row.wins || []).filter(function(v) { return v.w === w; })[0];
+          return rw && typeof rw.std === "number" ? Math.min(m, rw.std) : m;
+        }, Infinity);
+        var stdValue = x.std + (typeof x.std === "number" && x.std === minStd ? "※" : "");
+        html += '<td title="' + r.num + '，STD' + w + '" class="' + stdClass.trim() + '"><span class="' + stdTextClass.trim() + '">' + stdValue + '</span></td>';
+        html += '<td title="' + r.num + '，RSV' + w + '" class="' + rsvClass.trim() + '">' + (x.rsv != null ? x.rsv : "-") + '</td><td title="' + r.num + '，K' + w + '">' + (x.k != null ? x.k : "-") + '</td><td title="' + r.num + '，D' + w + '">' + (x.d != null ? x.d : "-") + '</td><td title="' + r.num + '，J' + w + '">' + (x.j != null ? x.j : "-") + "</td>";
       });
       html += "</tr>";
     });
     html += "</tbody></table></div>";
     $container.html(html);
+    $container.find(".next-table tbody tr").on("mouseenter", function () {
+      $(this).addClass("next-row-hover");
+    }).on("mouseleave", function () {
+      $(this).removeClass("next-row-hover");
+    });
+    $container.find(".next-table tbody tr:not(:first-child) td:first-child").removeAttr("title");
+  }
+
+  function _destroyPredictChart() {
+    if (_predictChart) {
+      _predictChart.destroy();
+      _predictChart = null;
+    }
+  }
+
+  function renderPredictChart($container) {
+    if (!_predict || !_predict.positions || !_predict.positions.length) {
+      _destroyPredictChart();
+      $container.html('<div class="p-4 text-center text-muted">無預測資料</div>');
+      return;
+    }
+    if (typeof Chart === "undefined") {
+      $container.html('<div class="alert alert-warning m-3">圖表元件載入失敗，請重新整理頁面。</div>');
+      return;
+    }
+    var pos = _predict.positions[_activePos] || _predict.positions[0];
+    var metric = $("#chartMetric").val() || "avg";
+    var win = Number($("#chartWindow").val()) || 5;
+    var wanted = Math.max(2, Math.min(100, parseInt($("#chartPeriod").val(), 10) || 25));
+    var snaps = _snapshots.slice(0, wanted).reverse();
+    var chartMetrics = metric === "rsv" ? [
+      { key: "rsv", name: "RSV", color: "#0d6efd" },
+      { key: "k", name: "K", color: "#fd7e14" },
+      { key: "d", name: "D", color: "#6f42c1" },
+      { key: "j", name: "J", color: "#dc3545" },
+    ] : [{ key: metric, name: metric.toUpperCase(), color: metric === "avg" ? "#0d6efd" : "#198754" }];
+    var actual = snaps.map(function(snap) {
+      var sp = snap.positions && snap.positions[_activePos];
+      var item = sp && (sp.wins || []).filter(function(x) { return Number(x.w) === win; })[0];
+      var values = {};
+      chartMetrics.forEach(function(m) { values[m.key] = item && typeof item[m.key] === "number" ? item[m.key] : null; });
+      return { date: snap.n00.date, values: values };
+    });
+    var candidates = (pos.rows || []).map(function(r) {
+      var item = (r.wins || []).filter(function(x) { return Number(x.w) === win; })[0];
+      var values = {};
+      chartMetrics.forEach(function(m) { values[m.key] = item && typeof item[m.key] === "number" ? item[m.key] : null; });
+      return { label: String(r.num), values: values };
+    });
+    var chartLabels = actual.map(function(x) { return x.date; }).concat(candidates.map(function(x) { return "候選 " + x.label; }));
+    var datasets = [];
+    chartMetrics.forEach(function(m) {
+      datasets.push({
+        label: "歷史實際 " + m.name + win,
+        data: actual.map(function(x) { return x.values[m.key]; }).concat(candidates.map(function() { return null; })),
+        borderColor: m.color, backgroundColor: m.color + "1F",
+        pointRadius: 2, pointHoverRadius: 5, tension: 0.15, spanGaps: false,
+      });
+      datasets.push({
+        label: "候選預測 " + m.name + win,
+        data: actual.map(function() { return null; }).concat(candidates.map(function(x) { return x.values[m.key]; })),
+        borderColor: m.color, backgroundColor: m.color + "1F",
+        borderDash: [6, 3], pointRadius: 2, pointHoverRadius: 5, tension: 0.15, spanGaps: false,
+      });
+    });
+    var metricName = metric === "rsv" ? "RSV/K/D/J" : metric.toUpperCase();
+    var html = "";
+    if (_notice) html += '<div class="alert alert-warning py-1 px-2 small mb-2">' + _notice + "</div>";
+    html += '<div class="small text-muted mb-2">' + _predict.date + "｜" + (pos.title || "") + "｜" + metricName + win +
+      "｜歷史顯示 " + actual.length + "/" + wanted + " 期；預測線依候選號碼排序</div>";
+    if (actual.length < wanted) html += '<div class="small text-warning mb-2">目前只載入 ' + actual.length + ' 期快照；若要顯示更多歷史期數，請提高頁面筆數並重新載入。</div>';
+    html += '<div class="table-responsive" style="height:65vh;min-height:320px"><canvas id="nextPredictChart" aria-label="預測數值圖表" role="img"></canvas></div>';
+    $container.html(html);
+    _destroyPredictChart();
+    var canvas = document.getElementById("nextPredictChart");
+    _predictChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: chartLabels,
+        datasets: datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "nearest", intersect: false },
+        plugins: {
+          legend: { display: true, position: "top" },
+          tooltip: { callbacks: { label: function(ctx) {
+            var isCandidate = ctx.dataIndex >= actual.length;
+            var candidateIndex = ctx.dataIndex - actual.length;
+            var prefix = isCandidate && candidates[candidateIndex] ? "候選號 " + candidates[candidateIndex].label + "：" : "";
+            return prefix + ctx.dataset.label + " = " + ctx.parsed.y;
+          } } },
+        },
+        scales: {
+          x: { title: { display: true, text: "歷史日期／候選號碼" }, ticks: { autoSkip: true, maxTicksLimit: 18, minRotation: 35, maxRotation: 70 } },
+          y: { title: { display: true, text: metricName + win }, beginAtZero: false },
+        },
+      },
+    });
   }
 
   function loadAllData(dateStr) {

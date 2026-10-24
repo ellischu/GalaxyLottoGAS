@@ -93,20 +93,16 @@ function normDrawDateStr(v) {
 }
 
 /**
- * 取得主試算表某彩種工作表（L539/L649/L638/LSix）的全部開獎日期。
- * 供前端「過去日期必須是開獎日」的選擇對齊使用；結果快取 6 小時。
- * 每次呼叫會比對最後一列日期做新鮮度檢查：資料每日更新，若最後一列已有比快取
- * 更新的實際開獎日則強制重建，避免舊快取擋住最新開獎日。
+ * 取得主試算表某彩種工作表（L539/L649/L638/LSix）最近的實際開獎日期。
+ * 初始只讀最近100期；傳入 beforeDate 時追加該日期之前最近100期。
  * @param {string} lotto 彩種代碼
  * @returns {Array<string>} yyyy-MM-dd 陣列（ASC，已去重）
  */
-function getAvailableDrawDates(lotto) {
+function getAvailableDrawDates(lotto, beforeDate) {
   try {
     var valid = { L539: 1, L649: 1, L638: 1, LSix: 1 };
     if (!valid[lotto]) return [];
-    var cache = CacheService.getScriptCache();
-    // v2：修正前版誤讀 A 欄期號且只認 Date 物件之 bug，換 key 避開舊快取
-    var cacheKey = getCacheVersion() + "_DRAWDATESv2_" + lotto;
+    // 讀取日期與開獎號碼欄位
     var sheet = mainspreadsheet.getSheetByName(lotto);
     if (!sheet || sheet.getLastRow() <= 1) return [];
     // 原始表欄位為 period,Date,L1..（Date 在 B 欄且多為 "yyyy/MM/dd" 字串）
@@ -120,18 +116,64 @@ function getAvailableDrawDates(lotto) {
       var v = row[l1Col];
       return !(v === "" || v === null || v === undefined);
     };
-    // 新鮮度檢查（只讀最後一列）：最後一列若已有比快取最大值更新的實際開獎日則重建
-    var cached = cache.get(cacheKey);
-    if (cached) {
-      var parsed = JSON.parse(cached);
-      var lastRowVals = sheet.getRange(sheet.getLastRow(), 1, 1, sheet.getLastColumn()).getValues()[0];
-      var lastStr = normDrawDateStr(lastRowVals[dateCol]);
-      if (!lastStr || !hasNum(lastRowVals) || parsed.length === 0 || lastStr <= parsed[parsed.length - 1]) {
-        return parsed;
+    var lastRow = sheet.getLastRow();
+    var blockSize = 100;
+    var scanChunk = 500;
+    var data = [];
+    if (beforeDate) {
+      // 取所選日期之前的最近一批，排除邊界日期避免重複
+      var endRow = 0;
+      var scanEnd = lastRow;
+      while (scanEnd > 1 && endRow === 0) {
+        var scanStart = Math.max(2, scanEnd - scanChunk + 1);
+        var tail = sheet.getRange(scanStart, dateCol + 1, scanEnd - scanStart + 1, 1).getValues();
+        for (var ti = tail.length - 1; ti >= 0; ti--) {
+          var candidateRow = scanStart + ti;
+          var tailDate = normDrawDateStr(tail[ti][0]);
+          if (tailDate && tailDate < beforeDate) {
+            // 搜尋目標前最近一筆有開獎號碼的列，預排空列不納入。
+            var backEnd = candidateRow;
+            while (backEnd > 1 && endRow === 0) {
+              var backStart = Math.max(2, backEnd - scanChunk + 1);
+              var rowsToCheck = sheet.getRange(backStart, 1, backEnd - backStart + 1, sheet.getLastColumn()).getValues();
+              for (var ri = rowsToCheck.length - 1; ri >= 0; ri--) {
+                if (hasNum(rowsToCheck[ri]) && normDrawDateStr(rowsToCheck[ri][dateCol])) {
+                  endRow = backStart + ri;
+                  break;
+                }
+              }
+              backEnd = backStart - 1;
+            }
+            break;
+          }
+        }
+        scanEnd = scanStart - 1;
       }
-      // 最後一列比快取新：往下重建全表
+      if (endRow === 0) return [];
+      // 以實際開獎列為單位回溯100期，不按固定工作表列數估算（中間可能有空列）。
+      var drawRows = [];
+      var collectEnd = endRow;
+      while (collectEnd > 1 && drawRows.length < blockSize) {
+        var scanStart2 = Math.max(2, collectEnd - scanChunk + 1);
+        var rows2 = sheet.getRange(scanStart2, 1, collectEnd - scanStart2 + 1, sheet.getLastColumn()).getValues();
+        for (var ri2 = rows2.length - 1; ri2 >= 0 && drawRows.length < blockSize; ri2--) {
+          if (hasNum(rows2[ri2]) && normDrawDateStr(rows2[ri2][dateCol])) drawRows.push(rows2[ri2]);
+        }
+        collectEnd = scanStart2 - 1;
+      }
+      data = drawRows;
+    } else {
+      // 從底部反向分段掃描，只取最近100筆有開獎號碼的資料，不讀整張表。
+      var scanEnd2 = lastRow;
+      while (scanEnd2 > 1 && data.length < blockSize) {
+        var scanStart3 = Math.max(2, scanEnd2 - scanChunk + 1);
+        var chunk = sheet.getRange(scanStart3, 1, scanEnd2 - scanStart3 + 1, sheet.getLastColumn()).getValues();
+        for (var ci = chunk.length - 1; ci >= 0 && data.length < blockSize; ci--) {
+          if (hasNum(chunk[ci]) && normDrawDateStr(chunk[ci][dateCol])) data.push(chunk[ci]);
+        }
+        scanEnd2 = scanStart3 - 1;
+      }
     }
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
     var dates = [];
     for (var i = 0; i < data.length; i++) {
       var row = data[i];
@@ -142,8 +184,6 @@ function getAvailableDrawDates(lotto) {
     }
     dates.sort();
     var uniq = dates.filter(function (v, idx) { return idx === 0 || v !== dates[idx - 1]; });
-    var payload = JSON.stringify(uniq);
-    if (payload.length < 90000) cache.put(cacheKey, payload, 21600);
     return uniq;
   } catch (e) {
     logSystemError("getAvailableDrawDates", e.toString(), "ERROR", "取得開獎日期失敗", { lotto: lotto });

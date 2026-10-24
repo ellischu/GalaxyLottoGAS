@@ -46,10 +46,13 @@
    * 日期規則：今日之前必須是該彩種實際開獎日（取自主試算表 L539/L649/L638/LSix
    * 工作表 Date 欄，自動回推對齊），今日之後不限日期。
    * 注意：不可用星期規則 fallback（例假日可能停開，如 LSix 2026/10/01 週四無開獎），
-   * 清單未載入或後端無資料時一律不對齊。
+   * 初次只載入最近100期，選擇更早日期時再逐批載入更早資料。
    */
   window._drawDatesCache = window._drawDatesCache || {};
   window._drawDatesSet = window._drawDatesSet || {};
+  window._drawDatesHasMore = window._drawDatesHasMore || {};
+  window._drawDatesLoading = window._drawDatesLoading || {};
+  window._drawDatesBatchSize = 100;
 
   function getDrawDayHintText(lotto) {
     var map = {
@@ -83,8 +86,8 @@
     if (loading) {
       text = base + "：開獎日載入中…｜今日之前僅限實際開獎日（自動對齊），今日之後不限日期。";
     } else if (arr && arr.length > 0) {
-      text = base + "：共 " + arr.length + " 個開獎日（" + arr[0] + "～" +
-        arr[arr.length - 1] + "）｜今日之前僅限開獎日（自動對齊），今日之後不限日期。";
+      text = base + "：已載入 " + arr.length + " 期（" + arr[0] + "～" +
+        arr[arr.length - 1] + "）｜今日之前僅限開獎日，今日之後不限日期。";
     } else if (arr) {
       text = base + "：無法取得開獎日清單（暫不限制，請檢查網路後切換彩種重試）｜今日之後不限日期。";
     } else {
@@ -95,16 +98,15 @@
       $hint = $('<div id="drawDayHint" class="form-text text-muted mt-1"></div>');
       $("#INDate").after($hint);
     }
-    // 資料每日更新：若提示範圍尾端比試算表舊，按「↻更新」可強制重取（後端亦有新鮮度檢查）
+    // 初次只載最近100期；更早日期由使用者選取後再逐批取得。
     $hint.empty().append($("<span>").text(text)).append(" ");
-    var $btn = $('<button type="button" class="btn btn-sm btn-link p-0 align-baseline" title="重新載入實際開獎日">↻更新</button>');
-    $btn.on("click", function () {
-      var l = $("#SecLotto").val();
-      delete window._drawDatesCache[l];
-      delete window._drawDatesSet[l];
-      loadDrawDates(l, { realign: true, toast: true, reload: true });
-    });
-    $hint.append($btn);
+    if (window._drawDatesHasMore[lotto]) {
+      var $more = $('<button type="button" class="btn btn-sm btn-link p-0 align-baseline" title="載入更早的100期">載入更早100期</button>');
+      $more.on("click", function () {
+        loadOlderDrawDates(lotto, null, { done: function () { updateDrawDayHint(false); } });
+      });
+      $hint.append($more);
+    }
   }
 
   function toastDrawDaySnapped(date) {
@@ -135,6 +137,67 @@
     return ans >= 0 ? arr[ans] : null;
   }
 
+  function keepLoadingOlderDates(lotto, dateStr, showToast) {
+    if (window._drawDatesLoading[lotto]) return dateStr;
+    if (!window._drawDatesHasMore[lotto]) {
+      var dates = window._drawDatesCache[lotto] || [];
+      if (!dates.length) return dateStr;
+      var earliest = dates[0];
+      $("#INDate").val(earliest);
+      if (showToast !== false) toastDrawDaySnapped(earliest);
+      return earliest;
+    }
+    loadOlderDrawDates(lotto, dateStr, {
+      done: function () {
+        var prev = findPrevDrawDate(lotto, dateStr);
+        if (prev) {
+          $("#INDate").val(prev);
+          if (showToast !== false) toastDrawDaySnapped(prev);
+          loadPreviewData();
+          updateNextCombos();
+        } else {
+          keepLoadingOlderDates(lotto, dateStr, showToast);
+        }
+      },
+    });
+    return dateStr;
+  }
+
+  function loadOlderDrawDates(lotto, beforeDate, opts) {
+    opts = opts || {};
+    if (!lotto || window._drawDatesLoading[lotto]) return;
+    var arr = window._drawDatesCache[lotto] || [];
+    var boundary = beforeDate || arr[0];
+    if (!boundary) return;
+    window._drawDatesLoading[lotto] = true;
+    updateDrawDayHint(true);
+    google.script.run
+      .withSuccessHandler(function (dates) {
+        dates = dates || [];
+        if (beforeDate && dates.length === 0) window._drawDatesHasMore[lotto] = false;
+        var current = window._drawDatesCache[lotto] || [];
+        var merged = dates.concat(current);
+        var seen = {};
+        merged = merged.filter(function (d) { if (seen[d]) return false; seen[d] = 1; return true; }).sort();
+        window._drawDatesCache[lotto] = merged;
+        var set = {};
+        merged.forEach(function (d) { set[d] = 1; });
+        window._drawDatesSet[lotto] = set;
+        window._drawDatesHasMore[lotto] = dates.length >= window._drawDatesBatchSize;
+        window._drawDatesLoading[lotto] = false;
+        if ($("#SecLotto").val() === lotto) {
+          applyDrawDatesMin(lotto);
+          updateDrawDayHint(false);
+        }
+        if (opts.done) opts.done(dates);
+      })
+      .withFailureHandler(function () {
+        window._drawDatesLoading[lotto] = false;
+        if ($("#SecLotto").val() === lotto) updateDrawDayHint(false);
+      })
+      .getAvailableDrawDates(lotto, boundary);
+  }
+
   function enforceDrawDayRule(showToast) {
     var lotto = $("#SecLotto").val();
     var dateStr = $("#INDate").val();
@@ -151,7 +214,11 @@
         return prev;
       }
       if (!prev) {
-        // 比最早開獎日還早：對齊到最早一筆
+        if (window._drawDatesHasMore[lotto]) {
+          // 選擇日期早於目前最舊的100期：追加下載更早日期，完成後再對齊。
+          return keepLoadingOlderDates(lotto, dateStr, showToast);
+        }
+        // 已到資料最早期，才對齊到最早一筆
         $("#INDate").val(arr[0]);
         if (showToast !== false) toastDrawDaySnapped(arr[0]);
         return arr[0];
@@ -183,6 +250,7 @@
       .withSuccessHandler(function (dates) {
         dates = dates || [];
         window._drawDatesCache[lotto] = dates;
+        window._drawDatesHasMore[lotto] = dates.length >= window._drawDatesBatchSize;
         var set = {};
         dates.forEach(function (d) { set[d] = 1; });
         window._drawDatesSet[lotto] = set;
@@ -194,7 +262,7 @@
           var cur2 = $("#INDate").val();
           var snapped2 = enforceDrawDayRule(opts.toast === true);
           if (snapped2 !== cur2 && opts.reload) { loadPreviewData(); updateNextCombos(); }
-          else if (opts.reload) { loadPreviewData(); updateNextCombos(); }
+          else if (opts.reload && cur2 >= todayStr()) { loadPreviewData(); updateNextCombos(); }
         }
         if (opts.done) opts.done(dates);
       })
@@ -203,7 +271,7 @@
         updateDrawDayHint(false);
         if (opts.reload) { loadPreviewData(); updateNextCombos(); }
       })
-      .getAvailableDrawDates(lotto);
+      .getAvailableDrawDates(lotto, null);
   }
 
   /** 以最早開獎日設定 date input 下限，避免選到無資料的過去日期 */

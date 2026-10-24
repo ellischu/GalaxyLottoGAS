@@ -4,6 +4,9 @@
 !**/*.html
 !**/*.gs
 node_modules/**
+**/node_modules/**
+.opencode/**
+.claude/**
 .clasp.json
 .clasprc.json
 clasp-auth.js

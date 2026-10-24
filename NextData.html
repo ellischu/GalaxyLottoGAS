@@ -18,6 +18,7 @@
     />
 
     <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.0/dist/jquery.min.js,npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js,npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 
     <?!= include("Lib_jQuery") ?> <?!= include("Lib_Bootstrap") ?> <?!=
     include("Lib_Swal") ?> <?!= includeStyles(); ?>
@@ -37,7 +38,7 @@
             </div>
             <div class="d-flex align-items-center gap-1">
               <label class="text-light small me-1" for="limitInput">筆數</label>
-              <input type="number" id="limitInput" class="form-control form-control-sm" style="width:60px" value="20" min="1" max="100" />
+              <input type="number" id="limitInput" class="form-control form-control-sm" style="width:60px" value="100" min="1" max="100" />
             </div>
             <div class="d-flex align-items-center gap-1">
               <label class="text-light small me-1" for="rsvnInput">RSVn</label>
@@ -53,9 +54,32 @@
         </div>
         <div class="card-body">
           <ul id="posTabs" class="nav nav-pills flex-nowrap overflow-auto next-pos-tab mb-3"></ul>
-          <div class="btn-group btn-group-sm mb-3" role="group" id="viewToggle">
-            <button type="button" class="btn btn-outline-primary active" data-view="predict">預測</button>
-            <button type="button" class="btn btn-outline-primary" data-view="trend">震盪</button>
+          <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <div class="btn-group" role="group" id="viewToggle">
+              <button type="button" class="btn btn-sm btn-outline-primary active" data-view="predict">預測</button>
+              <button type="button" class="btn btn-sm btn-outline-primary" data-view="trend">震盪</button>
+            </div>
+            <div id="predictSubView" class="d-inline-flex align-items-center flex-wrap gap-2">
+              <div class="btn-group" role="group" id="predictViewToggle">
+                <button type="button" class="btn btn-sm btn-outline-secondary active" data-subview="table">表格</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-subview="chart">圖表</button>
+              </div>
+            <div id="chartOptions" class="d-none align-items-center flex-wrap gap-2">
+              <label class="small mb-0" for="chartMetric">指標</label>
+              <select id="chartMetric" class="form-select form-select-sm" style="width:90px">
+                <option value="avg">AVG</option><option value="std">STD</option><option value="rsv">RSV</option>
+              </select>
+              <label class="small mb-0" for="chartWindow">窗口</label>
+              <select id="chartWindow" class="form-select form-select-sm" style="width:80px">
+                <option value="5">5</option><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option>
+              </select>
+              <label class="small mb-0" for="chartPeriod">顯示期數</label>
+              <select id="chartPeriod" class="form-select form-select-sm" style="width:90px">
+                <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+              </select>
+            </div>
+            </div>
+            <button type="button" id="btnShowAnswer" class="btn btn-sm btn-outline-success" disabled aria-pressed="false">顯示答案</button>
           </div>
           <div id="AreaTable" class="table-responsive">
             <div class="text-center py-5 text-muted">
