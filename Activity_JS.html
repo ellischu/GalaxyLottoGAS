@@ -273,7 +273,8 @@
       });
       html += '</tr></thead><tbody>';
       _sortedRows.forEach(function(row) {
-        html += '<tr>';
+        var answerPos = _drawPosMap[row[0]];
+        html += '<tr' + (answerPos ? ' class="answer-row answer-row-n' + answerPos + '" title="開獎號碼：' + row[0] + '（第' + answerPos + '個位置）"' : '') + '>';
         row.forEach(function(cell, ci) {
           var content = cell;
           if (ci === 0) {

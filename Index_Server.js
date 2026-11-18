@@ -46,6 +46,188 @@ function getSystemHealthStats() {
 }
 
 /**
+ * 首頁載入時檢查四個彩種的原始開獎表與 All 合併表是否同步；未同步時自動補齊。
+ * 支援 GAS 時間限制續傳：前端收到 continue 後再次呼叫本函式。
+ * @returns {Object} {status, message, details}
+ */
+function syncHomeLotteryData() {
+  const lottos = ["L539", "L649", "L638", "LSix"];
+  const ss =
+    typeof mainspreadsheet !== "undefined"
+      ? mainspreadsheet
+      : SpreadsheetApp.getActiveSpreadsheet();
+
+  try {
+    for (let i = 0; i < lottos.length; i++) {
+      const lotto = lottos[i];
+      const sourceSheet = ss.getSheetByName(lotto);
+      if (!sourceSheet || sourceSheet.getLastRow() < 2) {
+        return {
+          status: "error",
+          message: lotto + " 原始開獎資料不存在，無法同步 All。",
+        };
+      }
+
+      const sourceHeaders = sourceSheet
+        .getRange(1, 1, 1, sourceSheet.getLastColumn())
+        .getValues()[0];
+      const dateCol = sourceHeaders.indexOf("Date");
+      if (dateCol < 0) {
+        return { status: "error", message: lotto + " 原始資料缺少 Date 欄位。" };
+      }
+
+      const sourceLastRow = sourceSheet.getLastRow();
+      const sourceLastDate = normDrawDateStr(
+        sourceSheet.getRange(sourceLastRow, dateCol + 1).getValue(),
+      );
+      if (!sourceLastDate) {
+        return { status: "error", message: lotto + " 原始資料最後日期格式錯誤。" };
+      }
+
+      const target = getTargetsheet("Sheets", lotto);
+      const allSheet = target.spreadsheet.getSheetByName("All");
+      let allLastDate = null;
+      if (allSheet && allSheet.getLastRow() > 1) {
+        allLastDate = normDrawDateStr(allSheet.getRange(allSheet.getLastRow(), 1).getValue());
+      }
+
+      // 先比對最後日期；日期相同時再比對資料筆數（不含標題列）。
+      const sourceDataCount = sourceLastRow - 1;
+      const allDataCount = allSheet ? Math.max(0, allSheet.getLastRow() - 1) : 0;
+      const isSynced = allLastDate === sourceLastDate &&
+        sourceDataCount === allDataCount;
+
+      if (!isSynced) {
+        const updateResult = updatenumber(lotto);
+        if (updateResult && updateResult.status === "error") return updateResult;
+        if (updateResult && updateResult.status === "continue") {
+          return {
+            status: "continue",
+            message: lotto + " 原始資料更新續傳中。",
+          };
+        }
+
+        const combineResult = combineData(lotto);
+        if (combineResult && combineResult.status === "error") return combineResult;
+        if (combineResult && combineResult.status === "continue") {
+          return {
+            status: "continue",
+            message: lotto + " All 合併續傳中。",
+          };
+        }
+      }
+    }
+
+    return { status: "complete", message: "四個彩種 All 工作表皆已同步。" };
+  } catch (e) {
+    logSystemError("syncHomeLotteryData", e.toString(), "ERROR", "首頁資料同步檢查失敗");
+    return { status: "error", message: "首頁資料同步檢查失敗：" + e.message };
+  }
+}
+
+/**
+ * 首頁快速同步檢查：只有最後日期不同時才立即更新並合併。
+ * 日期相同的資料筆數比對交由背景函式處理，避免阻塞首頁顯示。
+ * @returns {Object} {status, message}
+ */
+function syncHomeLotteryDates() {
+  const lottos = ["L539", "L649", "L638", "LSix"];
+  const ss =
+    typeof mainspreadsheet !== "undefined"
+      ? mainspreadsheet
+      : SpreadsheetApp.getActiveSpreadsheet();
+
+  try {
+    for (let i = 0; i < lottos.length; i++) {
+      const lotto = lottos[i];
+      const sourceSheet = ss.getSheetByName(lotto);
+      if (!sourceSheet || sourceSheet.getLastRow() < 2) continue;
+
+      const sourceHeaders =
+        sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+      const dateCol = sourceHeaders.indexOf("Date");
+      if (dateCol < 0) continue;
+
+      const sourceLastDate = normDrawDateStr(
+        sourceSheet
+          .getRange(sourceSheet.getLastRow(), dateCol + 1)
+          .getValue(),
+      );
+      const target = getTargetsheet("Sheets", lotto);
+      const allSheet = target.spreadsheet.getSheetByName("All");
+      let allLastDate = null;
+      if (allSheet && allSheet.getLastRow() > 1) {
+        allLastDate = normDrawDateStr(
+          allSheet.getRange(allSheet.getLastRow(), 1).getValue(),
+        );
+      }
+
+      if (sourceLastDate && sourceLastDate !== allLastDate) {
+        const updateResult = updatenumber(lotto);
+        if (updateResult && updateResult.status === "error") return updateResult;
+        if (updateResult && updateResult.status === "continue") {
+          return { status: "continue", message: lotto + " 原始資料更新續傳中。" };
+        }
+
+        const combineResult = combineData(lotto);
+        if (combineResult && combineResult.status === "error") return combineResult;
+        if (combineResult && combineResult.status === "continue") {
+          return { status: "continue", message: lotto + " All 合併續傳中。" };
+        }
+      }
+    }
+
+    return { status: "complete", message: "日期檢查完成。" };
+  } catch (e) {
+    logSystemError("syncHomeLotteryDates", e.toString(), "ERROR", "首頁日期同步檢查失敗");
+    return { status: "error", message: "首頁日期同步檢查失敗：" + e.message };
+  }
+}
+
+/**
+ * 背景檢查來源與 All 的資料筆數；筆數不同時補做更新與合併。
+ * @returns {Object} {status, message}
+ */
+function syncHomeLotteryCounts() {
+  const lottos = ["L539", "L649", "L638", "LSix"];
+  const ss =
+    typeof mainspreadsheet !== "undefined"
+      ? mainspreadsheet
+      : SpreadsheetApp.getActiveSpreadsheet();
+
+  try {
+    for (let i = 0; i < lottos.length; i++) {
+      const lotto = lottos[i];
+      const sourceSheet = ss.getSheetByName(lotto);
+      if (!sourceSheet) continue;
+
+      const target = getTargetsheet("Sheets", lotto);
+      const allSheet = target.spreadsheet.getSheetByName("All");
+      const sourceCount = Math.max(0, sourceSheet.getLastRow() - 1);
+      const allCount = allSheet ? Math.max(0, allSheet.getLastRow() - 1) : 0;
+      if (sourceCount === allCount) continue;
+
+      const updateResult = updatenumber(lotto);
+      if (updateResult && updateResult.status === "error") return updateResult;
+      if (updateResult && updateResult.status === "continue") {
+        return { status: "continue", message: lotto + " 原始資料更新續傳中。" };
+      }
+
+      const combineResult = combineData(lotto);
+      if (combineResult && combineResult.status === "error") return combineResult;
+      if (combineResult && combineResult.status === "continue") {
+        return { status: "continue", message: lotto + " All 合併續傳中。" };
+      }
+    }
+
+    return { status: "complete", message: "資料筆數檢查完成。" };
+  } catch (e) {
+    logSystemError("syncHomeLotteryCounts", e.toString(), "ERROR", "首頁資料筆數檢查失敗");
+    return { status: "error", message: "首頁資料筆數檢查失敗：" + e.message };
+  }
+}
+
+/**
  * 系統自動維護：清理 PropertiesService 中過期或孤立的屬性
  * 用於防止儲存空間 (500KB Quota) 溢位，並確保系統健康度。
  * 建議由 dailywork.js 每日觸發一次。

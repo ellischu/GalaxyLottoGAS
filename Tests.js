@@ -82,3 +82,101 @@ function testGetGameConfigSmoke() {
     Logger.log("❌ 失敗：部分彩種組態不符");
   }
 }
+
+/**
+ * NextData 震盪表：手動重建快照與表格（清除舊資料 + 建立新快照）
+ * 用於初始化或修復 DataN00/DataN0x/DataNNext0x/DataNKD0x/DataNKDVAR0x 等工作表
+ */
+function rebuildNextDataL539() {
+  Logger.log("🚀 [rebuildNextDataL539] 開始重建 L539 震盪表快照與表格...");
+
+  // 1. 清除舊快照（若存在）
+  Logger.log("1️⃣ 清除舊快照...");
+  var clearResult = clearNextSnapshots("L539", 1, 200);
+  Logger.log("清除結果: " + JSON.stringify(clearResult));
+
+  // 2. 建立新快照與表格
+  Logger.log("2️⃣ 建立新快照與表格...");
+  var nextResult = getNextData("L539", "2026-10-20", 1, 200, 20, 0);
+  Logger.log("建立結果: " + JSON.stringify(nextResult));
+
+  if (nextResult.status === "success") {
+    Logger.log("✅ [rebuildNextDataL539] 完成！已建立 " + (nextResult.snapshots ? nextResult.snapshots.length : 0) + " 期快照");
+  } else {
+    Logger.log("❌ [rebuildNextDataL539] 失敗：" + (nextResult.message || "未知錯誤"));
+  }
+}
+
+/**
+ * NextData 震盪表：手動重建快照與表格（清除舊資料 + 建立新快照）
+ * 可自訂彩種、日期、方法序號、BASE 期數
+ * @param {string} lotto 彩種 (L539/L649/L638/LSix)
+ * @param {string} dateStr 基準日期 (yyyy-MM-dd)
+ * @param {number} methodSN 方法序號
+ * @param {number} baseRange 資料提供期數
+ */
+function rebuildNextDataCustom(lotto, dateStr, methodSN, baseRange) {
+  lotto = lotto || "L539";
+  dateStr = dateStr || "2026-10-20";
+  methodSN = methodSN || 1;
+  baseRange = baseRange || 200;
+
+  Logger.log("🚀 [rebuildNextDataCustom] 開始重建 " + lotto + " 震盪表快照與表格...");
+
+  // 1. 清除舊快照（若存在）
+  Logger.log("1️⃣ 清除舊快照...");
+  var clearResult = clearNextSnapshots(lotto, methodSN, baseRange);
+  Logger.log("清除結果: " + JSON.stringify(clearResult));
+
+  // 2. 建立新快照與表格
+  Logger.log("2️⃣ 建立新快照與表格...");
+  var nextResult = getNextData(lotto, dateStr, methodSN, baseRange, 20, 0);
+  Logger.log("建立結果: " + JSON.stringify(nextResult));
+
+  if (nextResult.status === "success") {
+    Logger.log("✅ [rebuildNextDataCustom] 完成！已建立 " + (nextResult.snapshots ? nextResult.snapshots.length : 0) + " 期快照");
+  } else {
+    Logger.log("❌ [rebuildNextDataCustom] 失敗：" + (nextResult.message || "未知錯誤"));
+  }
+}
+
+/**
+ * NextData 震盪表：僅清除指定彩種/方法/BASE 的快照與表格
+ * @param {string} lotto 彩種 (L539/L649/L638/LSix)
+ * @param {number} methodSN 方法序號 (null 表示全部)
+ * @param {number} baseRange 資料提供期數 (null 表示全部)
+ */
+function clearNextDataOnly(lotto, methodSN, baseRange) {
+  lotto = lotto || "L539";
+  Logger.log("🧹 [clearNextDataOnly] 清除 " + lotto + " 快照 (methodSN=" + methodSN + ", baseRange=" + baseRange + ")...");
+  var result = clearNextSnapshots(lotto, methodSN, baseRange);
+  Logger.log("清除結果: " + JSON.stringify(result));
+  if (result.status === "success") {
+    Logger.log("✅ 已清除 " + (result.deleted || 0) + " 筆快照");
+  } else {
+    Logger.log("❌ 清除失敗：" + (result.message || "未知錯誤"));
+  }
+}
+
+/**
+ * NextData 震盪表：僅建立快照與表格（不清除舊資料）
+ * @param {string} lotto 彩種 (L539/L649/L638/LSix)
+ * @param {string} dateStr 基準日期 (yyyy-MM-dd)
+ * @param {number} methodSN 方法序號
+ * @param {number} baseRange 資料提供期數
+ */
+function buildNextDataOnly(lotto, dateStr, methodSN, baseRange) {
+  lotto = lotto || "L539";
+  dateStr = dateStr || "2026-10-20";
+  methodSN = methodSN || 1;
+  baseRange = baseRange || 200;
+
+  Logger.log("🔨 [buildNextDataOnly] 建立 " + lotto + " 快照與表格 (date=" + dateStr + ", methodSN=" + methodSN + ", baseRange=" + baseRange + ")...");
+  var result = getNextData(lotto, dateStr, methodSN, baseRange, 20, 0);
+  Logger.log("建立結果: " + JSON.stringify(result));
+  if (result.status === "success") {
+    Logger.log("✅ 已建立 " + (result.snapshots ? result.snapshots.length : 0) + " 期快照");
+  } else {
+    Logger.log("❌ 建立失敗：" + (result.message || "未知錯誤"));
+  }
+}

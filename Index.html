@@ -134,14 +134,58 @@
           // 使用封裝後的物件
           AppUI.loadingNebula();
 
+          // 優先顯示首頁資料；同步檢查在背景執行，不阻塞首頁載入。
           google.script.run
             .withSuccessHandler(window.renderData)
             .withFailureHandler(AppUI.showCommonError.bind(AppUI))
             .getLastRecords();
+          syncHomeDataByDate(function () {
+            // 日期相同先呈現首頁，再於背景比較資料筆數。
+            syncHomeDataByCount();
+          });
 
           // 載入系統健康統計
           fetchSystemHealth();
         });
+
+        // 首頁載入前先檢查並修復原始開獎表與各彩種 All 的同步狀態。
+        function syncHomeDataByDate(onDateCheckComplete) {
+          google.script.run
+            .withSuccessHandler(function (result) {
+              if (result && result.status === "continue") {
+                setTimeout(function () {
+                  syncHomeDataByDate(onDateCheckComplete);
+                }, 1000);
+                return;
+              }
+              if (result && result.status === "error") {
+                console.error("首頁資料同步失敗：", result.message);
+              }
+              onDateCheckComplete();
+            })
+            .withFailureHandler(function (error) {
+              console.error("首頁資料同步檢查失敗：", error);
+              onDateCheckComplete();
+            })
+            .syncHomeLotteryDates();
+        }
+
+        function syncHomeDataByCount() {
+          google.script.run
+            .withSuccessHandler(function (result) {
+              if (result && result.status === "continue") {
+                setTimeout(syncHomeDataByCount, 1000);
+                return;
+              }
+              if (result && result.status === "error") {
+                console.error("首頁資料筆數同步失敗：", result.message);
+              }
+            })
+            .withFailureHandler(function (error) {
+              console.error("首頁資料筆數檢查失敗：", error);
+            })
+            .syncHomeLotteryCounts();
+        }
 
         window.renderData = function (data) {
           var $app = $("#app");

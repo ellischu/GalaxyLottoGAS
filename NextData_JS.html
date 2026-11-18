@@ -43,8 +43,8 @@
     baseRange = parseInt(urlParams.get("base") || (cached ? cached.baseRange : "200"), 10) || 200;
     var urlLimit = urlParams.get("limit");
     if (urlLimit) limit = parseInt(urlLimit, 10) || 100;
-    else if (cachedLimitWasCustomized) limit = parseInt(cached.limit, 10) || 100;
-    else limit = 100;
+    else if (cachedLimitWasCustomized) limit = parseInt(cached.limit, 10) || 30;
+    else limit = 30;
     rsvn = urlParams.get("rsvn") || (stored && stored.rsvn) || (cached && cached.rsvn) || "";
     if (rsvn) $("#rsvnInput").val(rsvn);
 
@@ -93,6 +93,9 @@
       renderNextTable();
     });
     $("#chartMetric, #chartWindow, #chartPeriod").on("change", renderNextTable);
+    $("#toggleK, #toggleD, #toggleJ").on("change", function() {
+      if (_predictSubView === "chart") renderNextTable();
+    });
     $("#btnShowAnswer").on("click", function () {
       if (! _answerReady) return;
       _showAnswer = !_showAnswer;
@@ -323,19 +326,6 @@
     if (_notice) html += '<div class="alert alert-warning py-1 px-2 small mb-2">' + _notice + "</div>";
     html += '<div class="small text-muted mb-2">預測目標日 ' + _predict.date + "（N00=" + _predict.sn + "），候選共 " + (pos.rows || []).length + " 個（排名規則待定，現以號碼排序）</div>";
     // 預測標示使用後端從 DataN01/DataNVAR01 讀出的歷史範圍。
-    // KDJ 參考列（已隱藏，2026-10-19 決議）
-    // var latestSnap = _snapshots[0];
-    // if (latestSnap && latestSnap.positions && latestSnap.positions[_activePos]) {
-    //   var lp = latestSnap.positions[_activePos];
-    //   html += '<div class="mb-2 p-2 border rounded bg-light small">';
-    //   html += "<strong>KDJ 參考（" + latestSnap.n00.date + " 第" + (lp.col || "") + "柱 號碼 " + lp.num + "）：</strong> ";
-    //   (lp.wins || []).forEach(function (r) {
-    //     if (r.k != null && r.k !== 0) {
-    //       html += '<span class="me-2">前' + r.w + "期 RSV=" + r.rsv + " K=" + r.k + " D=" + r.d + ' <strong class="text-danger">J=' + r.j + "</strong></span>";
-    //     }
-    //   });
-    //   html += "</div>";
-    // }
     html += '<div class="table-responsive" style="max-height:70vh;overflow:auto;">';
     html += '<table class="table table-bordered table-striped next-table mb-0">';
     html += "<thead><tr><th>號碼</th>";
@@ -344,6 +334,66 @@
       html += "<th>RSV" + w + "</th><th>K" + w + "</th><th>D" + w + "</th><th>J" + w + "</th>";
     });
     html += "</tr></thead><tbody>";
+    // 預先計算每個 (w, field) 中最接近歷史平均值的候選號碼
+    var closestToMean = {};
+    // 預先計算每個 (w, field) 中最接近最近第2期值的候選號碼
+    var closestTo2nd = {};
+    // 取得最近第2期的數據
+    var secondSnap = (_snapshots && _snapshots.length >= 2) ? _snapshots[1] : null;
+    var secondPos = secondSnap && secondSnap.positions ? secondSnap.positions[_activePos] : null;
+    var secondByW = {};
+    if (secondPos && secondPos.wins) {
+      (secondPos.wins || []).forEach(function (x) { secondByW[x.w] = x; });
+    }
+    wins.forEach(function (w) {
+      var range = _predict.ranges && _predict.ranges[pos.sheet] && _predict.ranges[pos.sheet].windows
+        ? _predict.ranges[pos.sheet].windows[w] : null;
+      if (!range) return;
+      closestToMean[w] = {};
+      var meanKeys = { avg: "avgMean", std: "stdMean", rsv: "rsvMean", k: "kMean", d: "dMean", j: "jMean" };
+      ["avg", "std", "rsv", "k", "d", "j"].forEach(function (field) {
+        var meanVal = range[meanKeys[field]];
+        if (typeof meanVal !== "number") return;
+        var bestDiff = Infinity;
+        var bestNum = null;
+        (pos.rows || []).forEach(function (r) {
+          var rw = (r.wins || []).filter(function (v) { return v.w === w; })[0];
+          if (!rw) return;
+          var val = rw[field];
+          if (typeof val !== "number") return;
+          var diff = Math.abs(val - meanVal);
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            bestNum = r.num;
+          }
+        });
+        if (bestNum !== null) closestToMean[w][field] = bestNum;
+      });
+      // 計算最接近最近第2期值的候選號碼
+      closestTo2nd[w] = {};
+      var secondX = secondByW[w];
+      if (secondX) {
+        ["avg", "std", "rsv", "k", "d", "j"].forEach(function (field) {
+          var secondVal = secondX[field];
+          if (typeof secondVal !== "number") return;
+          var bestDiff = Infinity;
+          var bestNum = null;
+          (pos.rows || []).forEach(function (r) {
+            var rw = (r.wins || []).filter(function (v) { return v.w === w; })[0];
+            if (!rw) return;
+            var val = rw[field];
+            if (typeof val !== "number") return;
+            var diff = Math.abs(val - secondVal);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              bestNum = r.num;
+            }
+          });
+          if (bestNum !== null) closestTo2nd[w][field] = bestNum;
+        });
+      }
+    });
+
     (pos.rows || []).forEach(function (r) {
       var byW = {};
       (r.wins || []).forEach(function (x) { byW[x.w] = x; });
@@ -354,18 +404,31 @@
         var x = byW[w] || { avg: "-", std: "-" };
         var range = _predict.ranges && _predict.ranges[pos.sheet] && _predict.ranges[pos.sheet].windows
           ? _predict.ranges[pos.sheet].windows[w] : null;
-        var avgClass = "", stdClass = "", rsvClass = "", avgTextClass = "", stdTextClass = "";
+        var avgClass = "", stdClass = "", rsvClass = "", kClass = "", dClass = "", jClass = "", avgTextClass = "", stdTextClass = "";
+        var rsvTextClass = "", kTextClass = "", dTextClass = "", jTextClass = "";
         if (range && range.avg && typeof range.latestAvg === "number" && typeof x.avg === "number") {
           if (x.avg >= range.avg.min && x.avg < range.latestAvg) avgClass = " next-band-low";
           else if (x.avg >= range.latestAvg && x.avg <= range.avg.max) avgClass = " next-band-high";
         }
         if (range && range.std && typeof range.latestStd === "number" && typeof x.std === "number") {
-          if (x.std >= range.std.min && x.std < range.latestStd) stdClass = " next-band-low";
-          else if (x.std >= range.latestStd && x.std <= range.std.max) stdClass = " next-band-high";
+          if (x.std >= range.std.min && x.std < range.latestStd) stdClass = " next-band-low-std";
+          else if (x.std >= range.latestStd && x.std <= range.std.max) stdClass = " next-band-high-std";
         }
         if (range && range.rsv && typeof range.latestRsv === "number" && typeof x.rsv === "number") {
           if (x.rsv >= range.rsv.min && x.rsv < range.latestRsv) rsvClass = " next-band-low";
           else if (x.rsv >= range.latestRsv && x.rsv <= range.rsv.max) rsvClass = " next-band-high";
+        }
+        if (range && range.k && typeof range.latestK === "number" && typeof x.k === "number") {
+          if (x.k >= range.k.min && x.k < range.latestK) kClass = " next-band-low-std";
+          else if (x.k >= range.latestK && x.k <= range.k.max) kClass = " next-band-high-std";
+        }
+        if (range && range.d && typeof range.latestD === "number" && typeof x.d === "number") {
+          if (x.d >= range.d.min && x.d < range.latestD) dClass = " next-band-low-std";
+          else if (x.d >= range.latestD && x.d <= range.d.max) dClass = " next-band-high-std";
+        }
+        if (range && range.j && typeof range.latestJ === "number" && typeof x.j === "number") {
+          if (x.j >= range.j.min && x.j < range.latestJ) jClass = " next-band-low-std";
+          else if (x.j >= range.latestJ && x.j <= range.j.max) jClass = " next-band-high-std";
         }
         if (range && range.avgVar && typeof range.latestAvg === "number" && typeof x.avg === "number") {
           var avgLo = range.avgVar.min < 0 ? range.latestAvg + range.avgVar.min : range.latestAvg - range.avgVar.min;
@@ -379,17 +442,56 @@
           if (x.std >= stdLo && x.std < range.latestStd) stdTextClass = " next-var-low";
           else if (x.std >= range.latestStd && x.std <= stdHi) stdTextClass = " next-var-high";
         }
-        html += '<td title="' + r.num + '，AVG' + w + '" class="' + avgClass.trim() + '"><span class="' + avgTextClass.trim() + '">' + x.avg + '</span></td>';
+        if (range && range.rsvVar && typeof range.latestRsv === "number" && typeof x.rsv === "number") {
+          var rsvLo = range.rsvVar.min < 0 ? range.latestRsv + range.rsvVar.min : range.latestRsv - range.rsvVar.min;
+          var rsvHi = range.latestRsv + range.rsvVar.max;
+          if (x.rsv >= rsvLo && x.rsv < range.latestRsv) rsvTextClass = " next-var-low";
+          else if (x.rsv >= range.latestRsv && x.rsv <= rsvHi) rsvTextClass = " next-var-high";
+        }
+        if (range && range.kVar && typeof range.latestK === "number" && typeof x.k === "number") {
+          var kLo = range.kVar.min < 0 ? range.latestK + range.kVar.min : range.latestK - range.kVar.min;
+          var kHi = range.latestK + range.kVar.max;
+          if (x.k >= kLo && x.k < range.latestK) kTextClass = " next-var-low";
+          else if (x.k >= range.latestK && x.k <= kHi) kTextClass = " next-var-high";
+        }
+        if (range && range.dVar && typeof range.latestD === "number" && typeof x.d === "number") {
+          var dLo = range.dVar.min < 0 ? range.latestD + range.dVar.min : range.latestD - range.dVar.min;
+          var dHi = range.latestD + range.dVar.max;
+          if (x.d >= dLo && x.d < range.latestD) dTextClass = " next-var-low";
+          else if (x.d >= range.latestD && x.d <= dHi) dTextClass = " next-var-high";
+        }
+        if (range && range.jVar && typeof range.latestJ === "number" && typeof x.j === "number") {
+          var jLo = range.jVar.min < 0 ? range.latestJ + range.jVar.min : range.latestJ - range.jVar.min;
+          var jHi = range.latestJ + range.jVar.max;
+          if (x.j >= jLo && x.j < range.latestJ) jTextClass = " next-var-low";
+          else if (x.j >= range.latestJ && x.j <= jHi) jTextClass = " next-var-high";
+        }
+        html += '<td title="' + r.num + '，AVG' + w + '" class="' + avgClass.trim() + '"><span class="' + avgTextClass.trim() + '">' + x.avg + (closestToMean[w] && closestToMean[w].avg === r.num ? " x̄" : "") + (closestTo2nd[w] && closestTo2nd[w].avg === r.num ? " △" : "") + '</span></td>';
         var minStd = (pos.rows || []).reduce(function(m, row) {
           var rw = (row.wins || []).filter(function(v) { return v.w === w; })[0];
           return rw && typeof rw.std === "number" ? Math.min(m, rw.std) : m;
         }, Infinity);
         var stdValue = x.std + (typeof x.std === "number" && x.std === minStd ? "※" : "");
-        html += '<td title="' + r.num + '，STD' + w + '" class="' + stdClass.trim() + '"><span class="' + stdTextClass.trim() + '">' + stdValue + '</span></td>';
-        html += '<td title="' + r.num + '，RSV' + w + '" class="' + rsvClass.trim() + '">' + (x.rsv != null ? x.rsv : "-") + '</td><td title="' + r.num + '，K' + w + '">' + (x.k != null ? x.k : "-") + '</td><td title="' + r.num + '，D' + w + '">' + (x.d != null ? x.d : "-") + '</td><td title="' + r.num + '，J' + w + '">' + (x.j != null ? x.j : "-") + "</td>";
+        html += '<td title="' + r.num + '，STD' + w + '" class="' + stdClass.trim() + '"><span class="' + stdTextClass.trim() + '">' + stdValue + (closestToMean[w] && closestToMean[w].std === r.num ? " x̄" : "") + (closestTo2nd[w] && closestTo2nd[w].std === r.num ? " △" : "") + '</span></td>';
+        html += '<td title="' + r.num + '，RSV' + w + '" class="' + rsvClass.trim() + '"><span class="' + rsvTextClass.trim() + '">' + (x.rsv != null ? x.rsv + (closestToMean[w] && closestToMean[w].rsv === r.num ? " x̄" : "") + (closestTo2nd[w] && closestTo2nd[w].rsv === r.num ? " △" : "") : "-") + '</span></td><td title="' + r.num + '，K' + w + '" class="' + kClass.trim() + '"><span class="' + kTextClass.trim() + '">' + (x.k != null ? x.k + (closestToMean[w] && closestToMean[w].k === r.num ? " x̄" : "") + (closestTo2nd[w] && closestTo2nd[w].k === r.num ? " △" : "") : "-") + '</span></td><td title="' + r.num + '，D' + w + '" class="' + dClass.trim() + '"><span class="' + dTextClass.trim() + '">' + (x.d != null ? x.d + (closestToMean[w] && closestToMean[w].d === r.num ? " x̄" : "") + (closestTo2nd[w] && closestTo2nd[w].d === r.num ? " △" : "") : "-") + '</span></td><td title="' + r.num + '，J' + w + '" class="' + jClass.trim() + '"><span class="' + jTextClass.trim() + '">' + (x.j != null ? x.j + (closestToMean[w] && closestToMean[w].j === r.num ? " x̄" : "") + (closestTo2nd[w] && closestTo2nd[w].j === r.num ? " △" : "") : "-") + "</span></td>";
       });
       html += "</tr>";
     });
+    // 歷史平均值行（x̄）— 獨立顯示，方便查驗
+    html += '<tr class="next-mean-row"><td class="fw-bold">x̄</td>';
+    wins.forEach(function (w) {
+      var range = _predict.ranges && _predict.ranges[pos.sheet] && _predict.ranges[pos.sheet].windows
+        ? _predict.ranges[pos.sheet].windows[w] : null;
+      var avgMean = range && typeof range.avgMean === "number" ? range.avgMean.toFixed(2) : "-";
+      var stdMean = range && typeof range.stdMean === "number" ? range.stdMean.toFixed(2) : "-";
+      var rsvMean = range && typeof range.rsvMean === "number" ? range.rsvMean.toFixed(2) : "-";
+      var kMean = range && typeof range.kMean === "number" ? range.kMean.toFixed(2) : "-";
+      var dMean = range && typeof range.dMean === "number" ? range.dMean.toFixed(2) : "-";
+      var jMean = range && typeof range.jMean === "number" ? range.jMean.toFixed(2) : "-";
+      html += '<td>' + avgMean + '</td><td>' + stdMean + '</td>';
+      html += '<td>' + rsvMean + '</td><td>' + kMean + '</td><td>' + dMean + '</td><td>' + jMean + '</td>';
+    });
+    html += "</tr>";
     html += "</tbody></table></div>";
     $container.html(html);
     $container.find(".next-table tbody tr").on("mouseenter", function () {
@@ -420,14 +522,25 @@
     var pos = _predict.positions[_activePos] || _predict.positions[0];
     var metric = $("#chartMetric").val() || "avg";
     var win = Number($("#chartWindow").val()) || 5;
+    // 顯示/隱藏 K/D/J 切換開關
+    if (metric === "rsv") {
+      $("#chartToggleKD").removeClass("d-none").addClass("d-flex");
+    } else {
+      $("#chartToggleKD").addClass("d-none").removeClass("d-flex");
+    }
     var wanted = Math.max(2, Math.min(100, parseInt($("#chartPeriod").val(), 10) || 25));
     var snaps = _snapshots.slice(0, wanted).reverse();
-    var chartMetrics = metric === "rsv" ? [
-      { key: "rsv", name: "RSV", color: "#0d6efd" },
-      { key: "k", name: "K", color: "#fd7e14" },
-      { key: "d", name: "D", color: "#6f42c1" },
-      { key: "j", name: "J", color: "#dc3545" },
-    ] : [{ key: metric, name: metric.toUpperCase(), color: metric === "avg" ? "#0d6efd" : "#198754" }];
+    var chartColorMap = { avg: "#0d6efd", std: "#6f42c1", rsv: "#0d6efd", k: "#fd7e14", d: "#6f42c1", j: "#dc3545" };
+    var chartMetrics;
+    if (metric === "rsv") {
+      chartMetrics = [{ key: "rsv", name: "RSV", color: chartColorMap.rsv }];
+      if ($("#toggleK").is(":checked")) chartMetrics.push({ key: "k", name: "K", color: chartColorMap.k });
+      if ($("#toggleD").is(":checked")) chartMetrics.push({ key: "d", name: "D", color: chartColorMap.d });
+      if ($("#toggleJ").is(":checked")) chartMetrics.push({ key: "j", name: "J", color: chartColorMap.j });
+      if (chartMetrics.length === 1) chartMetrics = [{ key: "rsv", name: "RSV", color: chartColorMap.rsv }]; // 至少顯示 RSV
+    } else {
+      chartMetrics = [{ key: metric, name: metric.toUpperCase(), color: chartColorMap[metric] || "#198754" }];
+    }
     var actual = snaps.map(function(snap) {
       var sp = snap.positions && snap.positions[_activePos];
       var item = sp && (sp.wins || []).filter(function(x) { return Number(x.w) === win; })[0];
@@ -457,7 +570,28 @@
         borderDash: [6, 3], pointRadius: 2, pointHoverRadius: 5, tension: 0.15, spanGaps: false,
       });
     });
-    var metricName = metric === "rsv" ? "RSV/K/D/J" : metric.toUpperCase();
+    var answerNum = pos.col === "S1" ? _answerSpecial : _answerNumbers[_activePos];
+    if (_showAnswer && answerNum != null) {
+      var answerCandidateIndex = -1;
+      candidates.forEach(function(c, ci) { if (Number(c.label) === Number(answerNum)) answerCandidateIndex = ci; });
+      if (answerCandidateIndex >= 0) {
+        chartMetrics.forEach(function(m) {
+          var answerData = actual.map(function() { return null; }).concat(candidates.map(function(x, ci) {
+            if (ci !== answerCandidateIndex) return null;
+            return x.values[m.key];
+          }));
+          datasets.push({
+            label: "★ 答案 " + answerNum + "：" + m.name + win,
+            data: answerData,
+            type: "scatter",
+            borderColor: "#ff0000", backgroundColor: "#ff0000",
+            pointRadius: 9, pointHoverRadius: 12, pointStyle: "star",
+            showLine: false,
+          });
+        });
+      }
+    }
+    var metricName = metric === "rsv" ? chartMetrics.map(function(m){return m.name;}).join("/") : metric.toUpperCase();
     var html = "";
     if (_notice) html += '<div class="alert alert-warning py-1 px-2 small mb-2">' + _notice + "</div>";
     html += '<div class="small text-muted mb-2">' + _predict.date + "｜" + (pos.title || "") + "｜" + metricName + win +
@@ -467,8 +601,91 @@
     $container.html(html);
     _destroyPredictChart();
     var canvas = document.getElementById("nextPredictChart");
+    var crosshairPlugin = {
+      id: "crosshair",
+      afterEvent: function(chart, args) {
+        var event = args.event;
+        if (event.type === "mousemove") {
+          chart._crosshair = { x: event.x, y: event.y };
+          chart.draw();
+        } else if (event.type === "mouseout") {
+          chart._crosshair = null;
+          chart.draw();
+        }
+      },
+      afterDraw: function(chart) {
+        if (!chart._crosshair) return;
+        var ctx = chart.ctx;
+        var chartArea = chart.chartArea;
+        if (!chartArea) return;
+        var x = chart._crosshair.x;
+        var y = chart._crosshair.y;
+        if (x < chartArea.left || x > chartArea.right || y < chartArea.top || y > chartArea.bottom) return;
+        ctx.save();
+        ctx.strokeStyle = "rgba(128,128,128,0.5)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, chartArea.top);
+        ctx.lineTo(x, chartArea.bottom);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, y);
+        ctx.lineTo(chartArea.right, y);
+        ctx.stroke();
+        ctx.restore();
+      }
+    };
+    // 取得歷史平均值，用於繪製平均線
+    var meanRange = _predict.ranges && _predict.ranges[pos.sheet] && _predict.ranges[pos.sheet].windows
+      ? _predict.ranges[pos.sheet].windows[win] : null;
+    var meanKeyMap = { avg: "avgMean", std: "stdMean", rsv: "rsvMean", k: "kMean", d: "dMean", j: "jMean" };
+    var meanLines = [];
+    chartMetrics.forEach(function(m) {
+      if (meanRange && typeof meanRange[meanKeyMap[m.key]] === "number") {
+        meanLines.push({ key: m.key, name: m.name, color: m.color, value: meanRange[meanKeyMap[m.key]] });
+      }
+    });
+    var meanLinePlugin = {
+      id: "meanLine",
+      afterDraw: function(chart) {
+        if (!meanLines.length) return;
+        var ctx = chart.ctx;
+        var chartArea = chart.chartArea;
+        if (!chartArea) return;
+        var yScale = chart.scales.y;
+        meanLines.forEach(function(ml, idx) {
+          var y = yScale.getPixelForValue(ml.value);
+          if (!isFinite(y)) return;
+          var drawTop = Math.max(chartArea.top - 20, Math.min(chartArea.bottom + 20, y));
+          if (drawTop < chartArea.top - 20 || drawTop > chartArea.bottom + 20) return;
+          ctx.save();
+          ctx.strokeStyle = ml.color;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.globalAlpha = 0.7;
+          ctx.beginPath();
+          ctx.moveTo(chartArea.left, y);
+          ctx.lineTo(chartArea.right, y);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = ml.color;
+          ctx.font = "bold 10px sans-serif";
+          ctx.textAlign = "right";
+          ctx.textBaseline = "bottom";
+          // 垂直偏移：每條線標籤上下交錯，避免重疊
+          var labelY = y - 2 - (idx * 14);
+          if (labelY < chartArea.top + 2) {
+            labelY = y + 12 + ((meanLines.length - 1 - idx) * 14);
+          }
+          ctx.fillText("x̄" + ml.name + "=" + ml.value.toFixed(2), chartArea.right - 2, labelY);
+          ctx.restore();
+        });
+      }
+    };
     _predictChart = new Chart(canvas, {
       type: "line",
+      plugins: [crosshairPlugin, meanLinePlugin],
       data: {
         labels: chartLabels,
         datasets: datasets,
@@ -488,7 +705,25 @@
         },
         scales: {
           x: { title: { display: true, text: "歷史日期／候選號碼" }, ticks: { autoSkip: true, maxTicksLimit: 18, minRotation: 35, maxRotation: 70 } },
-          y: { title: { display: true, text: metricName + win }, beginAtZero: false },
+          y: { title: { display: true, text: metricName + win }, beginAtZero: false, min: (function() {
+            var vals = [];
+            datasets.forEach(function(d) { d.data.forEach(function(v) { if (v !== null && isFinite(v)) vals.push(v); }); });
+            meanLines.forEach(function(m) { vals.push(m.value); });
+            if (vals.length === 0) return undefined;
+            var mn = Math.min.apply(null, vals);
+            var mx = Math.max.apply(null, vals);
+            var pad = (mx - mn) * 0.05 || 1;
+            return mn - pad;
+          })(), max: (function() {
+            var vals = [];
+            datasets.forEach(function(d) { d.data.forEach(function(v) { if (v !== null && isFinite(v)) vals.push(v); }); });
+            meanLines.forEach(function(m) { vals.push(m.value); });
+            if (vals.length === 0) return undefined;
+            var mn = Math.min.apply(null, vals);
+            var mx = Math.max.apply(null, vals);
+            var pad = (mx - mn) * 0.05 || 1;
+            return mx + pad;
+          })() },
         },
       },
     });

@@ -86,7 +86,7 @@ function fixNextWinHeaders(lotto) {
     var nextSS = getNextSpreadsheets(lotto).nextSS;
     var names = [];
     _nextPositions(lotto).forEach(function(p) {
-      names.push(p.sheet, p.nsheet, p.kdsheet, p.nkdsheet, p.varsheet);
+      names.push(p.sheet, p.nsheet, p.kdsheet, p.nkdsheet, p.varsheet, p.nkdvarsheet);
     });
     var fixedSheets = [];
     names.forEach(function(nm) {
@@ -114,7 +114,7 @@ function fixNextWinHeaders(lotto) {
     return { status: "success", lotto: lotto, fixedSheets: fixedSheets };
   } catch (e) {
     logSystemError("fixNextWinHeaders", e.toString(), "ERROR", "修正窗口標頭失敗", { lotto: lotto });
-    return { status: "error", message: e.toString() };
+    return { status: "error", message: e && e.message ? e.message : String(e) };
   }
 }
 
@@ -124,6 +124,9 @@ function fixNextWinHeaders(lotto) {
  * @returns {Array} [{ pos, col, sheet, nsheet, kdsheet, numCol, title }]
  */
 function _nextPositions(lotto) {
+  if (["L539", "L649", "L638", "LSix"].indexOf(lotto) === -1) {
+    throw new Error("不支援的彩種：" + lotto);
+  }
   var list = [];
   var nCount = (lotto === "L539" ? 5 : 6);
   for (var p = 1; p <= nCount; p++) {
@@ -133,14 +136,15 @@ function _nextPositions(lotto) {
       sheet: "DataN0" + p,
       nsheet: "DataNNext0" + p,
       kdsheet: "DataNKD0" + p,
-      numCol: "lngN" + p,
       nkdsheet: "DataNNextKD0" + p,
+      numCol: "lngN" + p,
       varsheet: "DataNVAR0" + p,
+      nkdvarsheet: "DataNKDVAR0" + p,
       title: "第" + p + "柱",
     });
   }
   if (lotto === "L649" || lotto === "LSix") {
-    list.push({ pos: 7, col: "S1", sheet: "DataN07", nsheet: "DataNNext07", kdsheet: "DataNKD07", nkdsheet: "DataNNextKD07", varsheet: "DataNVAR07", numCol: "lngS1", title: "特別號" });
+    list.push({ pos: 7, col: "S1", sheet: "DataN07", nsheet: "DataNNext07", kdsheet: "DataNKD07", nkdsheet: "DataNNextKD07", nkdvarsheet: "DataNKDVAR07", varsheet: "DataNVAR07", numCol: "lngS1", title: "特別號" });
   }
   return list;
 }
@@ -206,16 +210,6 @@ function _calcPositionWindows(series) {
     var mx = tail.length ? Math.max.apply(null, tail) : 0;
     return { w: w, avg: _nextRound3(avg), std: _nextRound3(std), min: _nextRound3(mn), max: _nextRound3(mx) };
   });
-}
-
-/** DataNVAR0x 標頭（每窗口 AvgVar/StdVar/MinVar/MaxVar 四欄） */
-function _nextVarHeaders(posDef) {
-  var h = ["lngDataN00SN"];
-  _nextWindows().forEach(function(w) {
-    var sfx = posDef.pos + _nextWinSuffix(w);
-    h.push("sglAvg" + sfx + "Var", "sglStd" + sfx + "Var", "intMin" + sfx + "Var", "intMax" + sfx + "Var");
-  });
-  return h;
 }
 
 /** 依單柱歷史數列計算 5 窗口變異量（DataNVAR 規格）：
@@ -284,6 +278,28 @@ function _nextNextKDHeaders(posDef) {
   return h;
 }
 
+/** DataNVAR0x header */
+function _nextVarHeaders(posDef) {
+  var h = ["lngDataN00SN"];
+  _nextWindows().forEach(function(w) {
+    var sfx = posDef.pos + _nextWinSuffix(w);
+    h.push("sglAvg" + sfx + "Var", "sglStd" + sfx + "Var", "intMin" + sfx + "Var", "intMax" + sfx + "Var");
+  });
+  return h;
+}
+/** DataNKDVAR0x 標頭（鍵＝目標日 KDSN、第 2 欄＝候選號；每窗口 RSV/K/D/J Var + Min/Max） */
+function _nextNKDVARHeaders(posDef) {
+  var h = ["lngDataN00KDSN", posDef.numCol];
+  _nextWindows().forEach(function(w) {
+    var sfx = posDef.pos + _nextWinSuffix(w);
+    h.push("sglRSV" + sfx + "Var", "intMinRSV" + sfx + "Var", "intMaxRSV" + sfx + "Var");
+    h.push("sglK" + sfx + "Var", "intMinK" + sfx + "Var", "intMaxK" + sfx + "Var");
+    h.push("sglD" + sfx + "Var", "intMinD" + sfx + "Var", "intMaxD" + sfx + "Var");
+    h.push("sglJ" + sfx + "Var", "intMinJ" + sfx + "Var", "intMaxJ" + sfx + "Var");
+  });
+  return h;
+}
+
 /**
  * 預測 KD：以候選號當期 AVG 為 Current，Min/Max 取目標日（不含）前 intRSVn 期含觀測日的 AVG，
  * 前筆 RSV/K/D 取觀測日 DataNKD 已捨入值（同 C# SearchDataNNextKD 口徑）；
@@ -321,36 +337,86 @@ function _calcNextKD(avgSeries, curAvg, intRSVn, prev) {
  * @returns {{rsv:number, k:number, d:number, j:number}}
  */
 function _calcKD(series, w, intRSVn) {
-  // 滾動 AVG(w) 序列（含當期：AVG[i] = mean(series[i-w+1..i])）
+  var all = _calcKDAll(series, w, intRSVn);
+  if (all.length === 0) return { rsv: 0, k: NEXT_KD_SEED, d: NEXT_KD_SEED, j: _nextRound3(3 * NEXT_KD_SEED - 2 * NEXT_KD_SEED) };
+  return all[all.length - 1];
+}
+
+/** 計算所有 KD 值（供變異量計算使用） */
+function _calcKDAll(series, w, intRSVn) {
   var avgSeries = [];
   for (var i = w - 1; i < series.length; i++) {
     var tail = series.slice(i - w + 1, i + 1);
     avgSeries.push(_nextAvg(tail));
   }
-  var co = Math.round(NEXT_KD_RSVCO * 1000) / 1000; // 同 C# Math.Round(DblCoKD,3) = 0.333
+  var co = Math.round(NEXT_KD_RSVCO * 1000) / 1000;
   var round3 = function(x) { return Math.round(x * 1000) / 1000; };
-  var rsv = 0, k = NEXT_KD_SEED, d = NEXT_KD_SEED; // 同 C# 首列：RSV=0、K=50、D=50
+  var rsv = 0, k = NEXT_KD_SEED, d = NEXT_KD_SEED;
+  var results = [];
   if (avgSeries.length > intRSVn) {
     for (var i = intRSVn; i < avgSeries.length; i++) {
       var win = avgSeries.slice(i - intRSVn, i);
       var mn = Math.min.apply(null, win);
       var mx = Math.max.apply(null, win);
-      // MX=MN 時沿用前筆 RSV（同 C# 取前日已存值）
       if (mx !== mn) rsv = (avgSeries[i] - mn) / (mx - mn) * 100;
       var kRaw = (1 - co) * k + co * rsv;
       var dRaw = (1 - co) * d + co * kRaw;
       rsv = round3(rsv);
       k = round3(kRaw);
       d = round3(dRaw);
+      results.push({ rsv: rsv, k: k, d: d, j: round3(3 * k - 2 * d) });
     }
+  } else if (avgSeries.length > 0) {
+    results.push({ rsv: 0, k: NEXT_KD_SEED, d: NEXT_KD_SEED, j: round3(3 * NEXT_KD_SEED - 2 * NEXT_KD_SEED) });
   }
-  return { rsv: rsv, k: k, d: d, j: round3(3 * k - 2 * d) };
+  return results;
+}
+
+/** 計算 RSV/K/D/J 差異值（DataNKDVAR0x 用） */
+function _calcPositionKDVar(series, intRSVn) {
+  return _nextWindows().map(function(w) {
+    if (series.length < 2) {
+      return { w: w, rsv: 0, k: 0, d: 0, j: 0, minRsv: 0, maxRsv: 0, minK: 0, maxK: 0, minD: 0, maxD: 0, minJ: 0, maxJ: 0 };
+    }
+    var allKD = _calcKDAll(series, w, intRSVn);
+    if (allKD.length < 2) {
+      return { w: w, rsv: 0, k: 0, d: 0, j: 0, minRsv: 0, maxRsv: 0, minK: 0, maxK: 0, minD: 0, maxD: 0, minJ: 0, maxJ: 0 };
+    }
+    // Compute variance for each period
+    var varArr = [];
+    for (var i = 1; i < allKD.length; i++) {
+      varArr.push({
+        rsv: _nextRound3(allKD[i].rsv - allKD[i-1].rsv),
+        k: _nextRound3(allKD[i].k - allKD[i-1].k),
+        d: _nextRound3(allKD[i].d - allKD[i-1].d),
+        j: _nextRound3(allKD[i].j - allKD[i-1].j)
+      });
+    }
+    var last = varArr[varArr.length - 1];
+    var tN = varArr.slice(Math.max(0, varArr.length - w));
+
+    var minRsv = Math.min.apply(null, tN.map(function(x) { return x.rsv; }));
+    var maxRsv = Math.max.apply(null, tN.map(function(x) { return x.rsv; }));
+    var minK = Math.min.apply(null, tN.map(function(x) { return x.k; }));
+    var maxK = Math.max.apply(null, tN.map(function(x) { return x.k; }));
+    var minD = Math.min.apply(null, tN.map(function(x) { return x.d; }));
+    var maxD = Math.max.apply(null, tN.map(function(x) { return x.d; }));
+    var minJ = Math.min.apply(null, tN.map(function(x) { return x.j; }));
+    var maxJ = Math.max.apply(null, tN.map(function(x) { return x.j; }));
+
+    return { w: w,
+      rsv: last.rsv, k: last.k, d: last.d, j: last.j,
+      minRsv: _nextRound3(minRsv), maxRsv: _nextRound3(maxRsv),
+      minK: _nextRound3(minK), maxK: _nextRound3(maxK),
+      minD: _nextRound3(minD), maxD: _nextRound3(maxD),
+      minJ: _nextRound3(minJ), maxJ: _nextRound3(maxJ) };
+  });
 }
 
 /** 批次附加多列（表不存在則建表含標頭；依 dedupCol 去重，預設第 1 欄）。
  * @param {string} [dedupCol] 去重欄名（省略則用第 1 欄）
  * @returns {number} 實際寫入列數（失敗抛錯，由呼叫端捕捉記入 writeLog） */
-function _appendNextRows(nextSS, sheetName, headers, rows, dedupCol, skipDedup) {
+function _appendNextRows(nextSS, sheetName, headers, rows, dedupCol, skipDedup, keyHeaders) {
   if (!rows || rows.length === 0) return 0;
   var sheet = nextSS.getSheetByName(sheetName);
   if (!sheet) {
@@ -361,18 +427,59 @@ function _appendNextRows(nextSS, sheetName, headers, rows, dedupCol, skipDedup) 
     sheet.appendRow(headers);
     sheet.setFrozenRows(1);
   }
-  var toWrite = rows;
-  if (!skipDedup && sheet.getLastRow() > 1) {
-    var dedupIdx = dedupCol ? headers.indexOf(dedupCol) : 0;
-    if (dedupIdx === -1) dedupIdx = 0;
-    var col = sheet.getRange(2, dedupIdx + 1, sheet.getLastRow() - 1, 1).getValues();
-    var have = {};
-    col.forEach(function(r) { have[String(r[0])] = true; });
-    toWrite = rows.filter(function(r) { return !have[String(r[dedupIdx])]; });
-    if (toWrite.length === 0) return 0;
+    // Every append is idempotent. Read live sheet values because a timed-out run
+    // may have committed rows after this invocation built its in-memory cache.
+  var keyCols = (keyHeaders && keyHeaders.length ? keyHeaders : [dedupCol || headers[0]])
+    .map(function(name) { return headers.indexOf(name); });
+  if (keyCols.some(function(ix) { return ix < 0; })) throw new Error("去重欄位不存在於標頭: " + sheetName);
+  var existingRowsByKey = {};
+  if (sheet.getLastRow() > 1) {
+    var liveRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+    liveRows.forEach(function(row, index) {
+      var key = keyCols.map(function(ix) { return String(row[ix]); }).join("\u001f");
+      if (!existingRowsByKey[key]) existingRowsByKey[key] = [];
+      existingRowsByKey[key].push({ rowNumber: index + 2, row: row });
+    });
   }
-  sheet.getRange(sheet.getLastRow() + 1, 1, toWrite.length, toWrite[0].length).setValues(toWrite);
-  return toWrite.length;
+  var pending = {};
+  var rowKeyMap = {};
+  var toWrite = [];
+  var updates = {};
+  var removeRows = {};
+  rows.forEach(function(row) {
+    var key = keyCols.map(function(ix) { return String(row[ix]); }).join("\u001f");
+    if (pending[key]) {
+      rowKeyMap[key] = row;
+      var pendingRow = pending[key];
+      if (pendingRow.type === "update") updates[pendingRow.rowNumber] = row;
+      else pendingRow.row = row;
+      return;
+    }
+    pending[key] = true;
+    rowKeyMap[key] = row;
+    var existing = existingRowsByKey[key];
+    if (existing && existing.length) {
+      // Heal legacy duplicate keys in-place: retain the first row, update it,
+      // and remove any later duplicate rows, bottom-up.
+      pending[key] = { type: "update", rowNumber: existing[0].rowNumber };
+      updates[existing[0].rowNumber] = row;
+      for (var ei = 1; ei < existing.length; ei++) removeRows[existing[ei].rowNumber] = true;
+    } else {
+      pending[key] = { type: "append", row: row };
+    }
+  });
+  Object.keys(updates).map(Number).forEach(function(rowNumber) {
+    var row = updates[rowNumber];
+    sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
+  });
+  Object.keys(removeRows).map(Number).sort(function(a, b) { return b - a; }).forEach(function(rowNumber) {
+    sheet.deleteRow(rowNumber);
+  });
+  Object.keys(pending).forEach(function(key) {
+    if (pending[key].type === "append") toWrite.push(pending[key].row);
+  });
+  if (toWrite.length) sheet.getRange(sheet.getLastRow() + 1, 1, toWrite.length, toWrite[0].length).setValues(toWrite);
+  return Object.keys(updates).length + toWrite.length;
 }
 
 /** 單次讀取工作表的必要範圍，供完整性檢查與回讀共用。 */
@@ -472,24 +579,130 @@ function _nextMissingCandidates(rows, indexes, keyHeader, requiredHeaders, poolM
   return missing;
 }
 
-/** 依工作表現有快取刪除指定 key 的重複/無效列。 */
-function _removeInvalidNextKey(cache, groups, keyHeader, key, isValidRow) {
-  var rows = groups[String(key)] || [];
-  if (!rows.length || !cache || !cache.sheet) return 0;
-  var allRows = cache.rows, ix = cache.indexes[keyHeader];
-  var deleteIndexes = [];
-  var rowCountByCandidate = {};
-  rows.forEach(function(row) {
-    var candidate = String(row[ix]);
-    rowCountByCandidate[candidate] = (rowCountByCandidate[candidate] || 0) + 1;
+function _isNextCandidateSetComplete(candidateMap, poolMax) {
+  if (!candidateMap || Object.keys(candidateMap).length !== poolMax) return false;
+  for (var n = 1; n <= poolMax; n++) {
+    if (!Object.prototype.hasOwnProperty.call(candidateMap, n)) return false;
+  }
+  return true;
+}
+
+function _getPredictRangeForWindow(kdsn, posDef, windowSize, indicator, spreadsheet) {
+  var sheet = spreadsheet.getSheetByName(posDef.nkdsheet);
+  if (!sheet || sheet.getLastRow() <= 1) return null;
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0].map(function(c) { return String(c || "").trim(); });
+  var keyCol = headers.indexOf("lngDataN00KDSN");
+  var suffix = posDef.pos + _nextWinSuffix(windowSize);
+  var field = indicator === "avg" ? "sglAvg" + suffix : (indicator === "std" ? "sglStd" + suffix : "sglAvg" + suffix + indicator.toUpperCase());
+  var valueCol = headers.indexOf(field);
+  if (keyCol < 0 || valueCol < 0) return null;
+  var values = [];
+  for (var r = 1; r < data.length; r++) {
+    if (Number(data[r][keyCol]) !== Number(kdsn)) continue;
+    var value = Number(data[r][valueCol]);
+    if (isFinite(value)) values.push(value);
+  }
+  return values.length ? { min: Math.min.apply(null, values), max: Math.max.apply(null, values) } : null;
+}
+
+/** Build auditable threshold sides and adjacent-number boundary sets for RSV predictions. */
+function _buildNextBoundaryAnalysis(candidateRows, latestByWindow, targetMeta, rsvDirection, rangesByIndicator) {
+  var indicators = ["avg", "std", "rsv", "k", "d", "j"];
+  var detailByNum = {};
+  var eligible = {};
+  var boundaries = {};
+  var directionField = rsvDirection === "UP" ? "high" : "low";
+  (candidateRows || []).forEach(function(row) {
+    var num = Number(row.num);
+    if (!isFinite(num)) return;
+    var detail = detailByNum[num] = detailByNum[num] || { num: num, indicators: {}, boundaryHits: [], score: 0 };
+    var rsvSide = null;
+    indicators.forEach(function(indicator) {
+      var latest = Number(latestByWindow && latestByWindow[indicator]);
+      var value = Number(row[indicator]);
+      var range = rangesByIndicator && rangesByIndicator[indicator];
+      var min = range && Number(range.min), max = range && Number(range.max);
+      var inRange = isFinite(value) && isFinite(min) && isFinite(max) && value >= min && value <= max;
+      var hasRange = isFinite(min) && isFinite(max);
+      var side = !isFinite(latest) || !isFinite(value) ? "unavailable" : (value < latest ? "low" : (value > latest ? "high" : "equal"));
+      var rangeSide = !hasRange ? "unavailable" : (!inRange ? "outside" : (value < latest ? "low" : (value > latest ? "high" : "equal")));
+      detail.indicators[indicator] = {
+        value: isFinite(value) ? value : null,
+        latest: isFinite(latest) ? latest : null,
+        min: isFinite(min) ? min : null,
+        max: isFinite(max) ? max : null,
+        hasRange: hasRange,
+        inRange: inRange,
+        side: side,
+        rangeSide: rangeSide
+      };
+      if (indicator === "rsv") rsvSide = side;
+      if (side !== "unavailable" && inRange) {
+        var set = boundaries[indicator] || (boundaries[indicator] = { low: [], high: [], equal: [] });
+        if (!set[side].length || set[side][set[side].length - 1].num !== num) set[side].push({ num: num, side: side });
+      }
+    });
+    var rsvInRange = detail.indicators.rsv && detail.indicators.rsv.inRange;
+    if (rsvSide === directionField && rsvInRange) {
+      eligible[num] = true;
+      detail.rsvDirectionMatch = true;
+      detail.score += 1;
+    } else {
+      detail.rsvDirectionMatch = false;
+    }
   });
-  allRows.forEach(function(row, i) {
-    if (String(row[ix]) !== String(key)) return;
-    var candidate = String(row[ix]);
-    if (rowCountByCandidate[candidate] > 1 || !isValidRow(row, cache.indexes)) deleteIndexes.push(i + 2);
+
+  indicators.forEach(function(indicator) {
+    var sides = boundaries[indicator];
+    if (!sides) return;
+    sides.low.sort(function(a, b) { return a.num - b.num; });
+    sides.high.sort(function(a, b) { return a.num - b.num; });
+    var nums = Object.keys(detailByNum).map(Number).sort(function(a, b) { return a - b; });
+    for (var i = 0; i < nums.length - 1; i++) {
+      var left = detailByNum[nums[i]].indicators[indicator];
+      var right = detailByNum[nums[i + 1]].indicators[indicator];
+      if (!left.inRange || !right.inRange || left.side === "unavailable" || right.side === "unavailable" || left.side === "equal" || right.side === "equal" || left.side === right.side) continue;
+      var crossing = { lowerNum: nums[i], upperNum: nums[i + 1], from: left.side, to: right.side };
+      sides.crossings = sides.crossings || [];
+      sides.crossings.push(crossing);
+      for (var delta = -2; delta <= 2; delta++) {
+        [nums[i] + delta, nums[i + 1] + delta].forEach(function(n) {
+          if (!detailByNum[n]) return;
+          if (detailByNum[n].boundaryHits.indexOf(indicator) === -1) {
+            detailByNum[n].boundaryHits.push(indicator);
+            detailByNum[n].score += 1;
+          }
+        });
+      }
+    }
   });
-  deleteIndexes.sort(function(a, b) { return b - a; }).forEach(function(rowNum) { cache.sheet.deleteRow(rowNum); });
-  return deleteIndexes.length;
+
+  var candidates = Object.keys(eligible).map(Number).sort(function(a, b) {
+    var scoreDiff = detailByNum[b].score - detailByNum[a].score;
+    if (scoreDiff) return scoreDiff;
+    return rsvDirection === "DOWN" ? b - a : a - b;
+  });
+  var ranked = Object.keys(detailByNum).map(Number).sort(function(a, b) {
+    var scoreDiff = detailByNum[b].score - detailByNum[a].score;
+    if (scoreDiff) return scoreDiff;
+    return rsvDirection === "DOWN" ? b - a : a - b;
+  });
+  var boundaryCandidates = candidates.filter(function(num) {
+    return detailByNum[num].boundaryHits.length > 0;
+  });
+  return {
+    candidates: candidates,
+    boundaryCandidates: boundaryCandidates,
+    details: ranked.map(function(n, index) {
+      var d = detailByNum[n];
+      return { num: n, rank: index + 1, score: d.score, rsvDirectionMatch: !!d.rsvDirectionMatch,
+        boundaryHits: d.boundaryHits.slice(), indicators: d.indicators };
+    }),
+    boundaries: boundaries,
+    direction: rsvDirection,
+    method: "RSV side selects; each crossed indicator boundary contributes one audit score; not a calibrated probability"
+  };
 }
 
 /** 僅刪除預測候選的重複/無效列，保留同一鍵下其他有效候選。 */
@@ -524,14 +737,6 @@ function _removeInvalidNextCandidates(cache, groups, parentKeyHeader, parentKey,
   return badRows.length;
 }
 
-/** SN 欄是否為第 1 欄（我方寫入格式） */
-function _nextSNCol(sheet) {
-  if (!sheet || sheet.getLastRow() < 1) return -1;
-  var h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
-    .map(function(c) { return String(c || "").trim(); });
-  return h.indexOf("lngDataN00SN");
-}
-
 /**
  * 主入口：取得基準日期前 limit 期震盪快照（由新到舊；缺快照即計算＋寫入）
  * 窗口含當期本身：例 2026-10-09 的 AVG105 ＝ 10-09,10-08,10-07,10-06,10-05 的 N1 平均
@@ -545,8 +750,15 @@ function _nextSNCol(sheet) {
  */
 function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
   startTime = new Date().getTime();
+  var nextDataLock = LockService.getScriptLock();
+  if (!nextDataLock.tryLock(1000)) {
+    return { status: "error", message: "NextData 正由另一個請求計算中，請稍後重試。" };
+  }
   try {
     lotto = lotto || "L539";
+    if (["L539", "L649", "L638", "LSix"].indexOf(lotto) === -1) {
+      return { status: "error", message: "不支援的彩種：" + lotto };
+    }
     methodSN = Number(methodSN) || 1;
     baseRange = parseInt(baseRange, 10);
     if (isNaN(baseRange) || baseRange < 10) baseRange = 200;
@@ -629,7 +841,7 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
     });
     allDatesAsc.sort();
 
-    // 初始化每张 NextData 快取表的窄欄读取，后续索引、完整性与回读共用同一份数据。
+    // 初始化每張 NextData 快取表的必要欄位讀取，供索引、完整性檢查與回讀共用。
     var tableCaches = {};
     function addTableCache(nm, required) {
       if (tableCaches[nm]) return;
@@ -641,6 +853,7 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
       addTableCache(p.varsheet, _nextVarHeaders(p));
       addTableCache(p.kdsheet, _nextKDHeaders(p));
       addTableCache(p.nkdsheet, _nextNextKDHeaders(p));
+      addTableCache(p.nkdvarsheet, _nextNKDVARHeaders(p));
     });
     addTableCache("DataN00", _nextN00Headers());
     addTableCache("DataNKD00", _nextKD00Headers());
@@ -650,10 +863,11 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
     if (badSchemas.length) {
       return { status: "error", message: "NextData 工作表標頭與程式規格不符，為避免錯欄寫入已停止：" + badSchemas.join("、") };
     }
-    var histGroups = {}, nextGroups = {}, varGroups = {}, kdGroups = {}, nextKDGroups = {};
+    var histGroups = {}, nextGroups = {}, varGroups = {}, kdGroups = {}, nextKDGroups = {}, nkdVarGroups = {};
     positions.forEach(function(p) {
       var statHeaders = _nextSheetHeaders(p), varHeaders = _nextVarHeaders(p);
       var kdHeaders = _nextKDHeaders(p), nextKDHeaders = _nextNextKDHeaders(p);
+      var nkdVarHeaders = _nextNKDVARHeaders(p);
       histGroups[p.sheet] = _nextGroupRows(tableCaches[p.sheet], "lngDataN00SN", function(row, ix) {
         return _nextRowHasFiniteValues(row, ix, statHeaders, ["lngDataN00SN", p.numCol, "strcheck"]);
       });
@@ -669,17 +883,23 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
       nextKDGroups[p.nkdsheet] = _nextGroupRows(tableCaches[p.nkdsheet], "lngDataN00KDSN", function(row, ix) {
         return _nextRowHasFiniteValues(row, ix, nextKDHeaders, ["lngDataN00KDSN", p.numCol]);
       });
+      nkdVarGroups[p.nkdvarsheet] = _nextGroupRows(tableCaches[p.nkdvarsheet], "lngDataN00KDSN", function(row, ix) {
+        return _nextRowHasFiniteValues(row, ix, nkdVarHeaders, ["lngDataN00KDSN", p.numCol]);
+      });
       tableCaches[p.sheet].requiredHeaders = statHeaders;
       tableCaches[p.nsheet].requiredHeaders = statHeaders;
       tableCaches[p.varsheet].requiredHeaders = varHeaders;
       tableCaches[p.kdsheet].requiredHeaders = kdHeaders;
       tableCaches[p.nkdsheet].requiredHeaders = nextKDHeaders;
+      tableCaches[p.nkdvarsheet].requiredHeaders = nkdVarHeaders;
     });
 
     // 2. DataN00 索引 strcheck → SN；配置新 SN
     var intRSVn = [5, 7, 9, 14].indexOf(Number(rsvn)) > -1 ? Number(rsvn) : (NEXT_KD_RSVN[lotto] || 9);
     var checkToSN = {};
     var maxSN = 0;
+    var seenSN = {};
+    checkToSN.__written = {};
     var n00Cache = tableCaches.DataN00;
     if (n00Cache && n00Cache.valid) {
       var chkCol = n00Cache.indexes.strcheck;
@@ -687,6 +907,8 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
       n00Cache.rows.forEach(function(row) {
         var sn = Number(row[snCol]) || 0;
         if (sn > maxSN) maxSN = sn;
+        if (sn > 0) seenSN[String(sn)] = true;
+        if (sn > 0) checkToSN.__written[String(sn)] = true;
         checkToSN[String(row[chkCol]).trim()] = sn;
       });
     }
@@ -694,6 +916,7 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
     // 2b. DataNKD00 索引 strcheck → KDSN；配置新 KDSN
     var checkToKDSN = {};
     var maxKDSN = 0;
+    checkToKDSN.__written = {};
     var kd00Cache = tableCaches.DataNKD00;
     if (kd00Cache && kd00Cache.valid) {
       var kdKdCol = kd00Cache.indexes.lngDataN00KDSN;
@@ -703,6 +926,7 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
       kd00Cache.rows.forEach(function(row) {
         var kdsn = Number(row[kdKdCol]) || 0;
         if (kdsn > maxKDSN) maxKDSN = kdsn;
+        if (kdsn > 0) checkToKDSN.__written[String(kdsn)] = true;
         checkToKDSN[String(row[kdChkCol]).trim()] = kdsn;
         if (kdsn > 0) checkToKDSN.__byKDSN[String(kdsn)] = {
           lngDataN00SN: Number(row[kdDateSNCol]) || 0,
@@ -711,6 +935,7 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
         };
       });
     }
+    if (!checkToKDSN.__byKDSN) checkToKDSN.__byKDSN = {};
 
     // 3. 缺快照或子表缺列即計算（由舊到新），收集批次寫入列
     //    子表缺列時沿用原 SN 補算（自癒毒快取，不另配新號）
@@ -739,11 +964,16 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
     // 預測 KD 工作表準備（DataNNextKD0x，欄 0 ＝ 目標日 KDSN）
     var nkSheetRows = {};
     var nkSheetHeaders = {};
+    var nkdVarSheetRows = {};
+    var nkdVarSheetHeaders = {};
     positions.forEach(function(p) {
       nkSheetRows[p.nkdsheet] = [];
       nkSheetHeaders[p.nkdsheet] = _nextNextKDHeaders(p);
+      nkdVarSheetRows[p.nkdvarsheet] = [];
+      nkdVarSheetHeaders[p.nkdvarsheet] = _nextNKDVARHeaders(p);
     });
     var nkSheetNames = Object.keys(nkSheetRows);
+    var nkdVarSheetNames = Object.keys(nkdVarSheetRows);
     var poolMax = _nextPoolMax(lotto);
     var snOfDate = {};
     var targetOfDate = {};
@@ -786,9 +1016,11 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
       var isNewSnap = sn === 0;
       // 先配快照 SN（kdCheck 依 SN 組成，須先有 SN 才能建 KD strcheck）
       if (sn === 0) {
-        maxSN++;
+        do { maxSN++; } while (seenSN[String(maxSN)]);
         sn = maxSN;
+        seenSN[String(sn)] = true;
         checkToSN[check] = sn;
+        checkToSN.__written[String(sn)] = false;
         n00Rows.push([sn, methodSN, flat, baseRange, check]);
       }
       snOfDate[ds] = sn;
@@ -802,15 +1034,29 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
       var tCheck = methodSN + "#" + tFlat + "#" + baseRange;
       var tSn = checkToSN[tCheck] || 0;
       if (tSn === 0) {
-        maxSN++;
+        do { maxSN++; } while (seenSN[String(maxSN)]);
         tSn = maxSN;
+        seenSN[String(tSn)] = true;
         checkToSN[tCheck] = tSn;
+        checkToSN.__written[String(tSn)] = false;
         n00Rows.push([tSn, methodSN, tFlat, baseRange, tCheck]);
       }
       targetOfDate[ds] = tSn;
       targetDateOf[ds] = tDs;
       var histRebuild = {}, nextRebuild = {}, varRebuild = {}, kdRebuild = {};
       var rowKeyValid = function(row, indexes, required, keys) { return _nextRowHasFiniteValues(row, indexes, required, keys); };
+      var kdCheck = sn + "#" + intRSVn + "#" + NEXT_KD_RSVCO;
+      var kdsn = checkToKDSN[kdCheck] || 0;
+      var nkdVarRebuild = {};
+      if (kdsn === 0) {
+        do { maxKDSN++; } while (checkToKDSN.__byKDSN[String(maxKDSN)]);
+        kdsn = maxKDSN;
+        checkToKDSN[kdCheck] = kdsn;
+        checkToKDSN.__byKDSN[String(kdsn)] = { lngDataN00SN: sn, intRSVn: intRSVn, sglRSVCo: NEXT_KD_RSVCO };
+        kd00Rows.push([kdsn, sn, intRSVn, NEXT_KD_RSVCO, kdCheck]);
+        checkToKDSN.__written[String(kdsn)] = false;
+      }
+      checkToKDSN.__written = checkToKDSN.__written || {};
       var histComplete = true;
       positions.forEach(function(p) {
         var nm = p.sheet;
@@ -839,6 +1085,26 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
           varGroups[nm][String(sn)] = [];
         }
       });
+      // DataNKDVAR 完整性：每個快照 KDSN 各位置恰一列，所有指標欄皆有效。
+      var nkdVarComplete = true;
+      positions.forEach(function(p) {
+        var nm = p.nkdvarsheet;
+        var rows = nkdVarGroups[nm][String(kdsn)] || [];
+        var good = rows._validRows || [];
+        var nkdVarNumIx = tableCaches[nm].indexes[p.numCol];
+        var currentNum = rowByDate[ds] && colIdx[p.col] > -1 ? Number(rowByDate[ds][colIdx[p.col]]) || 0 : 0;
+        nkdVarRebuild[nm] = kdsn === 0 || rows.length !== 1 || good.length !== 1 ||
+          !good.length || Number(good[0][nkdVarNumIx]) !== currentNum;
+        if (nkdVarRebuild[nm]) {
+          if (kdsn) {
+            clearGroupedKey(tableCaches[nm], nkdVarGroups[nm], "lngDataN00KDSN", kdsn, function(row, ix) {
+              return rowKeyValid(row, ix, tableCaches[nm].requiredHeaders, ["lngDataN00KDSN", p.numCol]);
+            });
+            nkdVarGroups[nm][String(kdsn)] = [];
+          }
+          nkdVarComplete = false;
+        }
+      });
       var missingNext = {};
       var nextComplete = true;
       nextSheetNames.forEach(function(nm) {
@@ -856,8 +1122,6 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
         if (nextRebuild[nm]) nextComplete = false;
       });
       // KD 完整性：每個快照 KDSN 每位置恰一列，所有指標欄皆有效。
-      var kdCheck = sn + "#" + intRSVn + "#" + NEXT_KD_RSVCO;
-      var kdsn = checkToKDSN[kdCheck] || 0;
       var kdComplete = kdsn > 0;
       positions.forEach(function(p) {
         var nm = p.kdsheet;
@@ -917,14 +1181,17 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
         }
         if (missingNextKD[nm].length) nextKdComplete = false;
       });
-      if (histComplete && nextComplete && kdComplete && nextKdComplete && varComplete) return;
+      if (histComplete && nextComplete && kdComplete && nextKdComplete && varComplete && nkdVarComplete) return;
       // 目標日 KDSN 配號（尚未開獎的目標日也先建 DataNKD00 列，開獎後沿用同 KDSN 補子列）
       if (!nextKdComplete && tKdsn === 0) {
-        maxKDSN++;
+        do { maxKDSN++; } while (checkToKDSN.__byKDSN[String(maxKDSN)]);
         tKdsn = maxKDSN;
         checkToKDSN[nextKdCheck] = tKdsn;
-        kd00Rows.push([tKdsn, tSn, intRSVn, NEXT_KD_RSVCO, nextKdCheck]);
         checkToKDSN.__byKDSN[String(tKdsn)] = { lngDataN00SN: tSn, intRSVn: intRSVn, sglRSVCo: NEXT_KD_RSVCO };
+      }
+      if (tKdsn > 0 && !checkToKDSN.__written[String(tKdsn)]) {
+        kd00Rows.push([tKdsn, tSn, intRSVn, NEXT_KD_RSVCO, nextKdCheck]);
+        checkToKDSN.__written[String(tKdsn)] = false;
       }
       // 以該期為界：含當期在內往前 BASE＋200 期為數列，當期列為號碼
       var endIx = priorIndexByDate[ds];
@@ -954,11 +1221,20 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
           sheetRows[p.sheet].push(row);
         }
         // 變異量表 DataNVAR0x：一列（僅當變異量表不完整時）
-        if (!varComplete && varRebuild[p.varsheet]) {
+        if (!varComplete) {
           var varWins = _calcPositionVar(series);
           var varRow = [sn];
           varWins.forEach(function(r) { varRow.push(r.avgVar, r.stdVar, r.minVar, r.maxVar); });
           sheetRows[p.varsheet].push(varRow);
+        }
+        // DataNKDVAR0x 表：一列（跳過未配號的 kdsn=0）
+        if (nkdVarRebuild[p.nkdvarsheet] && kdsn > 0) {
+           var varRow = [kdsn, num];
+           var varWins = _calcPositionKDVar(series, intRSVn);
+           varWins.forEach(function(r) {
+             varRow.push(r.rsv, r.minRsv, r.maxRsv, r.k, r.minK, r.maxK, r.d, r.minD, r.maxD, r.j, r.minJ, r.maxJ);
+           });
+           if (nkdVarSheetRows[p.nkdvarsheet]) nkdVarSheetRows[p.nkdvarsheet].push(varRow);
         }
         // 預測表 DataNNext0x：全號池每號一列（欄位 0 ＝ 目標日 SN，strcheck＝目標SN#cand）
         var candWins = null;
@@ -980,16 +1256,9 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
             sheetRows[p.nsheet].push(crow);
           }
         }
-        // KD 表 DataNKD0x：僅當 KD 不完整時計算
+        // KD 表 DataNKD0x：KD 歷史不完整，或預測 KD 需要以前一期 KD 為遞迴初值時才計算。
         var kdWins = null;
         if (!kdComplete || !nextKdComplete) {
-          if (!kdComplete && kdsn === 0) {
-            maxKDSN++;
-            kdsn = maxKDSN;
-            checkToKDSN[kdCheck] = kdsn;
-            kd00Rows.push([kdsn, sn, intRSVn, NEXT_KD_RSVCO, kdCheck]);
-            checkToKDSN.__byKDSN[String(kdsn)] = { lngDataN00SN: sn, intRSVn: intRSVn, sglRSVCo: NEXT_KD_RSVCO };
-          }
           kdWins = _nextWindows().map(function(w) {
             var kd = _calcKD(series, w, intRSVn);
             return { w: w, rsv: _nextRound3(kd.rsv), k: _nextRound3(kd.k), d: _nextRound3(kd.d), j: _nextRound3(kd.j) };
@@ -1003,6 +1272,13 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
         }
         // 預測 KD 表 DataNNextKD0x：候選號 × 5 窗口（Current＝候選 AVG，前筆＝觀測日 DataNKD 值）
         if (nextKdCandidatesToWrite.length) {
+          // 保護候選 KD 遞迴初值；即使完整性狀態日後調整，也不會讀取 null。
+          if (!kdWins) {
+            kdWins = _nextWindows().map(function(w) {
+              var kd = _calcKD(series, w, intRSVn);
+              return { w: w, rsv: _nextRound3(kd.rsv), k: _nextRound3(kd.k), d: _nextRound3(kd.d), j: _nextRound3(kd.j) };
+            });
+          }
           var avgByW = {};
           _nextWindows().forEach(function(w) {
             var a = [];
@@ -1017,33 +1293,36 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
               var nd = _calcNextKD(avgByW[w], cwins[wi].avg, intRSVn, kdWins[wi]);
               nkRow.push(nd.rsv, nd.k, nd.d, nd.j);
             });
-            nkSheetRows[p.nkdsheet].push(nkRow);
+            if (nkSheetRows[p.nkdsheet]) nkSheetRows[p.nkdsheet].push(nkRow);
           }
         }
       });
-      if (!histComplete || !nextComplete || !kdComplete || !nextKdComplete || !varComplete) computedCount++;
-      Logger.log("[getNextData] %s sn=%d tSn=%d(%s) kdsn=%d %s hist=%s next=%s kd=%s nkd=%s var=%s series=[%s]",
+      if (!histComplete || !nextComplete || !kdComplete || !nextKdComplete || !varComplete || !nkdVarComplete) computedCount++;
+      Logger.log("[getNextData] %s sn=%d tSn=%d(%s) kdsn=%d %s hist=%s next=%s kd=%s nkd=%s var=%s nkdvar=%s series=[%s]",
         ds, sn, tSn, tDs, kdsn, isNewSnap ? "new" : "heal",
         histComplete ? "ok" : "rebuild", nextComplete ? "ok" : "rebuild", kdComplete ? "ok" : "rebuild",
-        nextKdComplete ? "ok" : "rebuild", varComplete ? "ok" : "rebuild", lens.join(","));
+        nextKdComplete ? "ok" : "rebuild", varComplete ? "ok" : "rebuild", nkdVarComplete ? "ok" : "rebuild", lens.join(","));
       if (isNearTimeout()) {
         Logger.log("[getNextData] near timeout, computed %d snapshots so far", computedCount);
       }
     });
 
-    // 4. 批次寫入（快取 rows 已在完整性階段清掉壞 key；只附加本輪缺漏/重建資料）
+    // 4. 批次寫入（快取 rows 已在完整性階段清掉壞 key；本階段略過去重，只附加已確認缺漏/需重建的列）
     var writeLog = [];
     var allOk = true;
     Object.keys(sheetRows).forEach(function(nm) {
+      if (!nm || nm === "undefined") return;
+      if (!sheetHeaders[nm] || !sheetRows[nm]) return;
       try {
-        var nw = _appendNextRows(nextSS, nm, sheetHeaders[nm], sheetRows[nm], null, true);
-        if (nw > 0) writeLog.push(nm + "寫入" + nw + "列");
-        if (nw > 0) {
-          var posDef = positions.filter(function(p) { return p.sheet === nm || p.nsheet === nm || p.varsheet === nm; })[0];
-          var keyHeader = "lngDataN00SN";
-          var groupMap = nm.indexOf("DataNNext") === 0 ? nextGroups : (nm.indexOf("DataNVAR") === 0 ? varGroups : histGroups);
-          _mergeNextCacheRows(tableCaches[nm], groupMap[nm], keyHeader, sheetRows[nm]);
-        }
+        var childKeyHeaders = nm.indexOf("DataNVAR") === 0
+          ? ["lngDataN00SN"]
+          : (nm.indexOf("DataNNext") === 0
+            ? ["lngDataN00SN", positions.filter(function(p) { return p.nsheet === nm; })[0].numCol]
+            : ["lngDataN00SN", positions.filter(function(p) { return p.sheet === nm; })[0].numCol]);
+        var nw = _appendNextRows(nextSS, nm, sheetHeaders[nm], sheetRows[nm], null, true, childKeyHeaders);
+        if (nw > 0) writeLog.push(nm + "寫入/更新" + nw + "列");
+        var groupMap = nm.indexOf("DataNNext") === 0 ? nextGroups : (nm.indexOf("DataNVAR") === 0 ? varGroups : histGroups);
+        if (nw > 0) _mergeNextCacheRows(tableCaches[nm], groupMap[nm], "lngDataN00SN", sheetRows[nm]);
       } catch (e) {
         allOk = false;
         writeLog.push("ERR " + nm + "寫入失敗：" + e.toString());
@@ -1053,11 +1332,32 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
     // KD 子表只寫入實際需要重建的列；以 strcheck 去重。
     positions.forEach(function(p) {
       var nm = p.kdsheet;
+      if (!nm) return;
+      if (!kdSheetHeaders[nm] || !kdSheetRows[nm]) return;
       try {
-        var nw = _appendNextRows(nextSS, nm, kdSheetHeaders[nm], kdSheetRows[nm], null, true);
-        if (nw > 0) writeLog.push(nm + "寫入" + nw + "列");
+        var kdPos = positions.filter(function(posDef) { return posDef.kdsheet === nm; })[0];
+        var nw = _appendNextRows(nextSS, nm, kdSheetHeaders[nm], kdSheetRows[nm], null, true,
+          ["lngDataN00KDSN"]);
+        if (nw > 0) writeLog.push(nm + "寫入/更新" + nw + "列");
         if (nw > 0) _mergeNextCacheRows(tableCaches[nm], kdGroups[nm], "lngDataN00KDSN", kdSheetRows[nm], function(row, ix) {
           return _nextRowHasFiniteValues(row, ix, tableCaches[nm].requiredHeaders, ["lngDataN00KDSN", "strcheck"]);
+        });
+      } catch (e) {
+        allOk = false;
+        writeLog.push("ERR " + nm + "寫入失敗：" + e.toString());
+        Logger.log("[getNextData] write %s failed: %s", nm, e.toString());
+      }
+    });
+    // DataNKDVAR 子表寫入（去重欄 = lngDataN00KDSN）
+    positions.forEach(function(p) {
+      var nm = p.nkdvarsheet;
+      if (!nm) return;
+      if (!nkdVarSheetHeaders[nm] || !nkdVarSheetRows[nm]) return;
+      try {
+        var nw = _appendNextRows(nextSS, nm, nkdVarSheetHeaders[nm], nkdVarSheetRows[nm], "lngDataN00KDSN", false, ["lngDataN00KDSN"]);
+        if (nw > 0) writeLog.push(nm + "寫入/更新" + nw + "列");
+        if (nw > 0) _mergeNextCacheRows(tableCaches[nm], nkdVarGroups[nm], "lngDataN00KDSN", nkdVarSheetRows[nm], function(row, ix) {
+          return _nextRowHasFiniteValues(row, ix, tableCaches[nm].requiredHeaders, ["lngDataN00KDSN", p.numCol]);
         });
       } catch (e) {
         allOk = false;
@@ -1068,9 +1368,13 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
     // 預測 KD 子表依 strcheck（KDSN#候選號）去重，只補缺漏候選。
     positions.forEach(function(p) {
       var nm = p.nkdsheet;
+      if (!nm) return;
+      if (!nkSheetHeaders[nm] || !nkSheetRows[nm]) return;
       try {
-        var nw = _appendNextRows(nextSS, nm, nkSheetHeaders[nm], nkSheetRows[nm], null, true);
-        if (nw > 0) writeLog.push(nm + "寫入" + nw + "列");
+        var kdPos = positions.filter(function(posDef) { return posDef.nkdsheet === nm; })[0];
+        var nw = _appendNextRows(nextSS, nm, nkSheetHeaders[nm], nkSheetRows[nm], null, true,
+          ["lngDataN00KDSN", kdPos.numCol]);
+        if (nw > 0) writeLog.push(nm + "寫入/更新" + nw + "列");
         if (nw > 0) _mergeNextCacheRows(tableCaches[nm], nextKDGroups[nm], "lngDataN00KDSN", nkSheetRows[nm], function(row, ix) {
           return _nextRowHasFiniteValues(row, ix, tableCaches[nm].requiredHeaders, ["lngDataN00KDSN", p.numCol]);
         });
@@ -1082,9 +1386,9 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
     });
     if (allOk) {
       try {
-        var n0 = _appendNextRows(nextSS, "DataN00", _nextN00Headers(), n00Rows, null, true);
-        if (n0 > 0) writeLog.push("DataN00寫入" + n0 + "列");
-        if (n0 > 0) _mergeNextCacheOnly(tableCaches.DataN00, n00Rows);
+        var n0 = _appendNextRows(nextSS, "DataN00", _nextN00Headers(), n00Rows, null, true, ["strcheck"]);
+      if (n0 > 0) writeLog.push("DataN00寫入/更新" + n0 + "列");
+      if (n0 > 0) _mergeNextCacheOnly(tableCaches.DataN00, n00Rows);
       } catch (e) {
         allOk = false;
         writeLog.push("ERR DataN00寫入失敗：" + e.toString());
@@ -1093,8 +1397,8 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
       // DataNKD00 寫入（去重欄 = strcheck，支援同 SN 多組 KD 參數）
       if (kd00Rows.length > 0) {
         try {
-          var nw = _appendNextRows(nextSS, "DataNKD00", _nextKD00Headers(), kd00Rows, null, true);
-          if (nw > 0) writeLog.push("DataNKD00寫入" + nw + "列");
+          var nw = _appendNextRows(nextSS, "DataNKD00", _nextKD00Headers(), kd00Rows, null, true, ["strcheck"]);
+          if (nw > 0) writeLog.push("DataNKD00寫入/更新" + nw + "列");
           if (nw > 0) _mergeNextCacheOnly(tableCaches.DataNKD00, kd00Rows);
         } catch (e) {
           allOk = false;
@@ -1109,13 +1413,13 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
 
     // 5. 讀回本頁快照（由新到舊）＋最新期預測表（候選排名用）
     var snapshots = pageDates.map(function(ds) {
-      return _readNextSnapshot(nextSS, lotto, positions, snOfDate[ds], methodSN, ds, baseRange, checkToKDSN, intRSVn, tableCaches, histGroups, kdGroups);
+      return _readNextSnapshot(positions, snOfDate[ds], methodSN, ds, baseRange, checkToKDSN, intRSVn, tableCaches, histGroups, kdGroups);
     });
     var predict = null;
     if (pageDates.length > 0) {
       var pTsn = targetOfDate[pageDates[0]];
       var pTKdsn = checkToKDSN[pTsn + "#" + intRSVn + "#" + NEXT_KD_RSVCO] || 0;
-      var predictRanges = _readPredictRanges(nextSS, positions, targetDateOf[pageDates[0]].replace(/-/g, ""), methodSN, baseRange, intRSVn, tableCaches, histGroups, varGroups, kdGroups, checkToKDSN);
+      var predictRanges = _readPredictRanges(positions, targetDateOf[pageDates[0]].replace(/-/g, ""), methodSN, baseRange, intRSVn, tableCaches, histGroups, varGroups, kdGroups, nkdVarGroups, checkToKDSN);
       predict = _readNextPredict(nextSS, positions, pTsn, targetDateOf[pageDates[0]], pTKdsn, predictRanges, tableCaches, nextGroups, nextKDGroups);
     }
 
@@ -1132,11 +1436,13 @@ function getNextData(lotto, dateStr, methodSN, baseRange, limit, offset, rsvn) {
   } catch (e) {
     logSystemError("getNextData", e.toString(), "ERROR", "取得震盪表失敗", { lotto: lotto, dateStr: dateStr, methodSN: methodSN });
     return { status: "error", message: e.toString() };
+  } finally {
+    nextDataLock.releaseLock();
   }
 }
 
 /** 依 N00SN 讀回單期各柱列（含 KD 指標，經 strcheck→KDSN 對應） */
-function _readNextSnapshot(nextSS, lotto, positions, sn, methodSN, ymdDash, baseRange, checkToKDSN, intRSVn, tableCaches, histGroups, kdGroups) {
+function _readNextSnapshot(positions, sn, methodSN, ymdDash, baseRange, checkToKDSN, intRSVn, tableCaches, histGroups, kdGroups) {
   var flat = ymdDash.replace(/-/g, "");
   var kdCheck = sn + "#" + intRSVn + "#" + NEXT_KD_RSVCO;
   var kdsn = (checkToKDSN && checkToKDSN[kdCheck]) || 0;
@@ -1189,7 +1495,7 @@ function _readNextSnapshot(nextSS, lotto, positions, sn, methodSN, ymdDash, base
 }
 
 /** 讀取預測標示需要的歷史範圍：DataN0x/DataNVAR0x 中目標日之前最近 100 期。 */
-function _readPredictRanges(nextSS, positions, cutoffDate, methodSN, baseRange, intRSVn, tableCaches, histGroups, varGroups, kdGroups, checkToKDSN) {
+function _readPredictRanges(positions, cutoffDate, methodSN, baseRange, intRSVn, tableCaches, histGroups, varGroups, kdGroups, nkdVarGroups, checkToKDSN) {
   var out = {};
   var n00Cache = tableCaches.DataN00, dateBySN = {};
   if (n00Cache && n00Cache.valid) {
@@ -1237,16 +1543,36 @@ function _readPredictRanges(nextSS, positions, cutoffDate, methodSN, baseRange, 
       kdRows.sort(function(a, b) { return a.date.localeCompare(b.date); });
       kdRows = kdRows.slice(-100);
     }
+    // DataNKDVAR 讀取（依 KDSN 對應，取最近 100 期）
+    var nkdVarCache = tableCaches[p.nkdvarsheet];
+    var nkdVarRows = [];
+    if (nkdVarCache && nkdVarCache.valid) {
+      var nkdVarHeader = "lngDataN00KDSN", nkdVarIx = nkdVarCache.indexes[nkdVarHeader];
+      Object.keys(nkdVarGroups[p.nkdvarsheet] || {}).forEach(function(kdKey) {
+        var nkdVarGroup = nkdVarGroups[p.nkdvarsheet][kdKey] || [];
+        var nkdVarGood = nkdVarGroup._validRows || [];
+        var kdCheck = checkToKDSN && checkToKDSN.__byKDSN ? checkToKDSN.__byKDSN[kdKey] : null;
+        var snKey = kdCheck ? Number(kdCheck.lngDataN00SN) : 0;
+        var ds = dateBySN[snKey];
+        if (!ds || ds >= cutoffDate || nkdVarGroup.length !== 1 || nkdVarGood.length !== 1 ||
+            kdCheck.intRSVn !== Number(intRSVn) || kdCheck.sglRSVCo !== Number(NEXT_KD_RSVCO)) return;
+        nkdVarRows.push({ date: ds, row: nkdVarGood[0], headers: nkdVarCache.headers });
+      });
+      nkdVarRows.sort(function(a, b) { return a.date.localeCompare(b.date); });
+      nkdVarRows = nkdVarRows.slice(-100);
+    }
     var latest = histRows.length ? histRows[histRows.length - 1] : null;
     var latestVar = varRows.length ? varRows[varRows.length - 1] : null;
     var latestKD = kdRows.length ? kdRows[kdRows.length - 1] : null;
+    var latestNkdVar = nkdVarRows.length ? nkdVarRows[nkdVarRows.length - 1] : null;
     var ranges = {};
     _nextWindows().forEach(function(w) {
       var sfx = p.pos + _nextWinSuffix(w);
       var fields = {
         avg: "sglAvg" + sfx, std: "sglStd" + sfx,
         avgVar: "sglAvg" + sfx + "Var", stdVar: "sglStd" + sfx + "Var",
-        rsv: "sglAvg" + sfx + "RSV",
+        rsv: "sglAvg" + sfx + "RSV", k: "sglAvg" + sfx + "K", d: "sglAvg" + sfx + "D", j: "sglAvg" + sfx + "J",
+        rsvVar: "sglRSV" + sfx + "Var", kVar: "sglK" + sfx + "Var", dVar: "sglD" + sfx + "Var", jVar: "sglJ" + sfx + "Var",
       };
       function vals(rows, field) {
         if (!rows.length) return [];
@@ -1254,6 +1580,13 @@ function _readPredictRanges(nextSS, positions, cutoffDate, methodSN, baseRange, 
         return idx < 0 ? [] : rows.map(function(r) { return Number(r.row[idx]); }).filter(function(v) { return isFinite(v); });
       }
       function extrema(v) { return v.length ? { min: Math.min.apply(null, v), max: Math.max.apply(null, v) } : null; }
+      function mean(v) { return v.length ? v.reduce(function(a, b) { return a + b; }, 0) / v.length : null; }
+      function closestToMean(min, max) {
+        if (min !== null && max !== null) return (min + max) / 2;
+        if (min !== null) return min;
+        if (max !== null) return max;
+        return null;
+      }
       function getVal(entry, field) {
         if (!entry) return null;
         var idx = entry.headers.indexOf(field);
@@ -1264,10 +1597,18 @@ function _readPredictRanges(nextSS, positions, cutoffDate, methodSN, baseRange, 
       ranges[w] = {
         avg: extrema(vals(histRows, fields.avg)), std: extrema(vals(histRows, fields.std)),
         avgVar: extrema(vals(varRows, fields.avgVar)), stdVar: extrema(vals(varRows, fields.stdVar)),
-        rsv: extrema(vals(kdRows, fields.rsv)),
+        rsv: extrema(vals(kdRows, fields.rsv)), k: extrema(vals(kdRows, fields.k)), d: extrema(vals(kdRows, fields.d)), j: extrema(vals(kdRows, fields.j)),
+        rsvVar: extrema(vals(nkdVarRows, fields.rsvVar)), kVar: extrema(vals(nkdVarRows, fields.kVar)), dVar: extrema(vals(nkdVarRows, fields.dVar)), jVar: extrema(vals(nkdVarRows, fields.jVar)),
         latestAvg: getVal(latest, fields.avg), latestStd: getVal(latest, fields.std),
         latestAvgVar: getVal(latestVar, fields.avgVar), latestStdVar: getVal(latestVar, fields.stdVar),
-        latestRsv: getVal(latestKD, fields.rsv),
+        latestRsv: getVal(latestKD, fields.rsv), latestK: getVal(latestKD, fields.k), latestD: getVal(latestKD, fields.d), latestJ: getVal(latestKD, fields.j),
+        latestRsvVar: getVal(latestNkdVar, fields.rsvVar), latestKVar: getVal(latestNkdVar, fields.kVar), latestDVar: getVal(latestNkdVar, fields.dVar), latestJVar: getVal(latestNkdVar, fields.jVar),
+        avgMean: (function() { var v = vals(histRows, fields.avg); var m = mean(v); return m !== null ? m : closestToMean(extrema(v) ? extrema(v).min : null, extrema(v) ? extrema(v).max : null); })(),
+        stdMean: (function() { var v = vals(histRows, fields.std); var m = mean(v); return m !== null ? m : closestToMean(extrema(v) ? extrema(v).min : null, extrema(v) ? extrema(v).max : null); })(),
+        rsvMean: (function() { var v = vals(kdRows, fields.rsv); var m = mean(v); return m !== null ? m : closestToMean(extrema(v) ? extrema(v).min : null, extrema(v) ? extrema(v).max : null); })(),
+        kMean: (function() { var v = vals(kdRows, fields.k); var m = mean(v); return m !== null ? m : closestToMean(extrema(v) ? extrema(v).min : null, extrema(v) ? extrema(v).max : null); })(),
+        dMean: (function() { var v = vals(kdRows, fields.d); var m = mean(v); return m !== null ? m : closestToMean(extrema(v) ? extrema(v).min : null, extrema(v) ? extrema(v).max : null); })(),
+        jMean: (function() { var v = vals(kdRows, fields.j); var m = mean(v); return m !== null ? m : closestToMean(extrema(v) ? extrema(v).min : null, extrema(v) ? extrema(v).max : null); })(),
       };
     });
     out[p.nsheet] = { position: p.pos, historyCount: histRows.length, varHistoryCount: varRows.length,
@@ -1426,18 +1767,29 @@ function clearNextSnapshots(lotto, methodSN, baseRange) {
             kdDelRows.push(ki + 1);
           }
         }
-        // 刪 DataNKD0x / DataNNextKD0x 子列（以 KDSN 為鍵）
+        // 刪 DataNKD0x / DataNNextKD0x / DataNKDVAR0x 子列（以 KDSN 或 SN 為鍵，依對應欄位）
         _nextPositions(lotto).forEach(function(p) {
           [p.kdsheet, p.nkdsheet].forEach(function(nm) {
-            var sh = nextSS.getSheetByName(nm);
-            if (!sh || sh.getLastRow() <= 1) return;
-            var d2 = sh.getDataRange().getValues();
+             // 舊有邏輯：DataNKD0x/DataNNextKD0x 欄 0 為 KDSN
+             var sh = nextSS.getSheetByName(nm);
+             if (!sh || sh.getLastRow() <= 1) return;
+             var d2 = sh.getDataRange().getValues();
+             var del = [];
+             for (var j = 1; j < d2.length; j++) {
+               if (victimKDSN[Number(d2[j][0])]) del.push(j + 1);
+             }
+             del.sort(function(a, b) { return b - a; }).forEach(function(r) { sh.deleteRow(r); });
+          });
+          // 刪 DataNKDVAR0x 子列（以 KDSN 為鍵）
+          var shVar = nextSS.getSheetByName(p.nkdvarsheet);
+          if (shVar && shVar.getLastRow() > 1) {
+            var d2 = shVar.getDataRange().getValues();
             var del = [];
             for (var j = 1; j < d2.length; j++) {
               if (victimKDSN[Number(d2[j][0])]) del.push(j + 1);
             }
-            del.sort(function(a, b) { return b - a; }).forEach(function(r) { sh.deleteRow(r); });
-          });
+            del.sort(function(a, b) { return b - a; }).forEach(function(r) { shVar.deleteRow(r); });
+          }
         });
         // 刪 DataNKD00 自身
         kdDelRows.sort(function(a, b) { return b - a; }).forEach(function(r) { kd00.deleteRow(r); });
@@ -1466,6 +1818,37 @@ function clearNextSnapshots(lotto, methodSN, baseRange) {
     return { status: "success", deleted: n00DelRows.length };
   } catch (e) {
     logSystemError("clearNextSnapshots", e.toString(), "ERROR", "清理震盪快照失敗", { lotto: lotto });
+    return { status: "error", message: e.toString() };
+  }
+}
+
+/** 快速清除所有震盪表工作表（含 DataNVAR0x / DataNKDVAR0x），讓系統自動重建。
+ * 適用於 clearNextSnapshots 執行逾時的情況。直接刪除工作表而非逐行刪除，速度較快。
+ * 例：clearNextDataTables("L539")
+ */
+function clearNextDataTables(lotto) {
+  try {
+    lotto = lotto || "L539";
+    var nextSS = getNextSpreadsheets(lotto).nextSS;
+    var sheets = ["DataN00", "DataNKD00"];
+    _nextPositions(lotto).forEach(function(p) {
+      sheets.push(p.sheet, p.nsheet, p.kdsheet, p.nkdsheet, p.varsheet, p.nkdvarsheet);
+    });
+    if (lotto === "L638" || lotto === "L649" || lotto === "LSix") {
+      sheets.push("DataN07", "DataNNext07");
+    }
+    var deleted = 0;
+    sheets.forEach(function(nm) {
+      var sh = nextSS.getSheetByName(nm);
+      if (sh) {
+        nextSS.deleteSheet(sh);
+        deleted++;
+      }
+    });
+    SpreadsheetApp.flush();
+    return { status: "success", deleted: deleted, lotto: lotto };
+  } catch (e) {
+    logSystemError("clearNextDataTables", e.toString(), "ERROR", "快速清除震盪表工作表失敗", { lotto: lotto });
     return { status: "error", message: e.toString() };
   }
 }

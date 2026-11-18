@@ -210,6 +210,94 @@ function combineData(sheetname) {
 }
 
 /**
+ * 一次性清理指定彩種 All 工作表重複資料。
+ * 優先以期號作為唯一鍵；若沒有期號欄，使用日期與開獎號碼組合作為唯一鍵。
+ * 保留每組重複資料中最後出現的一列，其他欄位內容不做重算。
+ * @param {string} sheetname 彩種代碼
+ * @returns {{status:string,message:string,removed?:number}}
+ */
+function removeDuplicateAllRows(sheetname) {
+  const allowedLottos = ["L539", "L649", "L638", "LSix"];
+  if (allowedLottos.indexOf(sheetname) === -1) {
+    return { status: "error", message: "無效的彩種：" + sheetname };
+  }
+
+  try {
+    const target = getTargetsheet("Sheets", sheetname);
+    const sheet = target.spreadsheet.getSheetByName("All");
+    if (!sheet || sheet.getLastRow() < 2) {
+      return { status: "complete", message: sheetname + " All 沒有可清理的資料。", removed: 0 };
+    }
+
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0].map((value) => String(value).trim());
+    const periodCol = headers.indexOf("period");
+    const dateCol = headers.indexOf("Date");
+    if (dateCol < 0) {
+      return { status: "error", message: sheetname + " All 缺少 Date 欄位，停止清理以避免誤刪。" };
+    }
+
+    const numberCols = headers
+      .map((header, index) => ({ header: header, index: index }))
+      .filter((item) => /^N\d+$/.test(item.header))
+      .map((item) => item.index);
+    if (numberCols.length === 0) {
+      return { status: "error", message: sheetname + " All 找不到 N1..Nn 開獎號碼欄位，停止清理。" };
+    }
+
+    const seen = new Map();
+    const keptRows = [values[0]];
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      if (!row.some((value) => value !== "" && value !== null)) continue;
+
+      const period = periodCol >= 0 ? String(row[periodCol]).replace(/^'/, "").trim() : "";
+      const date = normDrawDateStr(row[dateCol]) || String(row[dateCol]).trim();
+      const numbers = numberCols.map((col) => String(row[col]).trim()).join(",");
+      const key = period
+        ? "period:" + period
+        : "draw:" + date + ":" + numbers;
+
+      if (seen.has(key)) {
+        // 以最後一筆為準：替換原保留列，讓重複列中較新的欄位資料留下。
+        keptRows[seen.get(key)] = row;
+      } else {
+        seen.set(key, keptRows.length);
+        keptRows.push(row);
+      }
+    }
+
+    const removed = values.length - keptRows.length;
+    if (removed > 0) {
+      sheet.clearContents();
+      sheet.getRange(1, 1, keptRows.length, keptRows[0].length).setValues(keptRows);
+      SpreadsheetApp.flush();
+    }
+
+    return {
+      status: "complete",
+      message: sheetname + " All 重複資料清理完成，移除 " + removed + " 筆。",
+      removed: removed,
+    };
+  } catch (e) {
+    logSystemError("removeDuplicateAllRows", e.toString(), "ERROR", sheetname + " All 重複資料清理失敗");
+    return { status: "error", message: sheetname + " All 重複資料清理失敗：" + e.message };
+  }
+}
+
+/** 清理四個彩種 All 工作表的重複資料。 */
+function removeDuplicateAllRowsForAllLottos() {
+  const lottos = ["L539", "L649", "L638", "LSix"];
+  const results = lottos.map((lotto) => removeDuplicateAllRows(lotto));
+  const failed = results.filter((result) => result.status === "error");
+  return {
+    status: failed.length ? "warning" : "complete",
+    results: results,
+    message: results.map((result) => result.message).join("\n"),
+  };
+}
+
+/**
  * 一鍵清理所有彩種過期快取與進度 (後端維護函式)
  * 遍歷所有彩種，清理全局任務進度並觸發各試算表內部的過期版本管理
  * @returns {Object} 執行報告

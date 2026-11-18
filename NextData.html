@@ -69,6 +69,20 @@
               <select id="chartMetric" class="form-select form-select-sm" style="width:90px">
                 <option value="avg">AVG</option><option value="std">STD</option><option value="rsv">RSV</option>
               </select>
+              <div id="chartToggleKD" class="d-none align-items-center gap-2 ms-2">
+                <div class="form-check form-check-inline mb-0">
+                  <input class="form-check-input" type="checkbox" id="toggleK" checked>
+                  <label class="form-check-label small" for="toggleK">K</label>
+                </div>
+                <div class="form-check form-check-inline mb-0">
+                  <input class="form-check-input" type="checkbox" id="toggleD" checked>
+                  <label class="form-check-label small" for="toggleD">D</label>
+                </div>
+                <div class="form-check form-check-inline mb-0">
+                  <input class="form-check-input" type="checkbox" id="toggleJ" checked>
+                  <label class="form-check-label small" for="toggleJ">J</label>
+                </div>
+              </div>
               <label class="small mb-0" for="chartWindow">窗口</label>
               <select id="chartWindow" class="form-select form-select-sm" style="width:80px">
                 <option value="5">5</option><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option>
